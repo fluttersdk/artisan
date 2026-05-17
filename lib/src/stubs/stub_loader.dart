@@ -68,17 +68,17 @@ class StubLoader {
 
   /// Resolves the default `assets/stubs/` search paths.
   ///
-  /// Uses multiple strategies to locate the `magic_cli` package root:
+  /// Uses multiple strategies to locate the `fluttersdk_artisan` package root:
   ///
-  /// 1. Parse `.dart_tool/package_config.json` for the `magic_cli` rootUri
-  ///    (works for `dart run magic_cli:magic` from any consumer project).
+  /// 1. Parse `.dart_tool/package_config.json` for the `fluttersdk_artisan` rootUri
+  ///    (works for `dart run fluttersdk_artisan:magic` from any consumer project).
   /// 2. Walk up from `Platform.script` to find `pubspec.yaml` with
-  ///    `name: magic_cli` (works for direct script execution).
+  ///    `name: fluttersdk_artisan` (works for direct script execution).
   /// 3. Check common development paths as fallback.
   static List<String> _defaultSearchPaths() {
     // 1. Environment variable override — highest priority.
-    //    Used in tests: set MAGIC_CLI_STUBS_DIR to point at a custom stubs dir.
-    final envDir = Platform.environment['MAGIC_CLI_STUBS_DIR'];
+    //    Used in tests: set ARTISAN_STUBS_DIR to point at a custom stubs dir.
+    final envDir = Platform.environment['ARTISAN_STUBS_DIR'];
     if (envDir != null && Directory(envDir).existsSync()) {
       return [envDir];
     }
@@ -95,7 +95,7 @@ class StubLoader {
       }
     }
 
-    // 3. Walk up from Platform.script to find the magic_cli pubspec.
+    // 3. Walk up from Platform.script to find the fluttersdk_artisan pubspec.
     //    Works when running the CLI directly from its own directory.
     final scriptPath = Platform.script.toFilePath();
     var current = Directory(path.dirname(scriptPath));
@@ -104,7 +104,7 @@ class StubLoader {
       final pubspec = File(path.join(current.path, 'pubspec.yaml'));
       if (pubspec.existsSync()) {
         final content = pubspec.readAsStringSync();
-        if (content.contains('name: magic_cli')) {
+        if (content.contains('name: fluttersdk_artisan')) {
           return [path.join(current.path, 'assets', 'stubs')];
         }
       }
@@ -116,7 +116,7 @@ class StubLoader {
     // 4. Fallback: check current directory and common dev paths.
     final possibleRoots = [
       Directory.current.path,
-      path.join(Directory.current.path, 'plugins', 'magic_cli'),
+      path.join(Directory.current.path, 'plugins', 'fluttersdk_artisan'),
     ];
 
     for (final root in possibleRoots) {
@@ -130,10 +130,10 @@ class StubLoader {
     return [path.join(Directory.current.path, 'assets', 'stubs')];
   }
 
-  /// Resolves the `magic_cli` package root from `.dart_tool/package_config.json`.
+  /// Resolves the `fluttersdk_artisan` package root from `.dart_tool/package_config.json`.
   ///
   /// Walks up from `Directory.current` to find the nearest `package_config.json`,
-  /// parses it, and extracts the `rootUri` for the `magic_cli` package entry.
+  /// parses it, and extracts the `rootUri` for the `fluttersdk_artisan` package entry.
   ///
   /// Returns the absolute path to the package root, or `null` if not found.
   static String? _resolveFromPackageConfig() {
@@ -154,7 +154,7 @@ class StubLoader {
 
           for (final pkg in packages) {
             final entry = pkg as Map<String, dynamic>;
-            if (entry['name'] == 'magic_cli') {
+            if (entry['name'] == 'fluttersdk_artisan') {
               final rootUri = entry['rootUri'] as String;
 
               // rootUri can be absolute (file:///) or relative (../)
