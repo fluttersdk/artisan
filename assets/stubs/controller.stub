@@ -1,0 +1,31 @@
+import 'package:flutter/material.dart';
+import 'package:magic/magic.dart';
+
+// TODO: Import your views
+// import '../../resources/views/{{ snakeName }}/index_view.dart';
+
+/// {{ className }} Controller.
+class {{ className }}Controller extends MagicController {
+  /// Singleton accessor with lazy registration.
+  static {{ className }}Controller get instance =>
+      Magic.findOrPut({{ className }}Controller.new);
+
+  // ---------------------------------------------------------------------------
+  // Actions (return Widget from resources/views)
+  // ---------------------------------------------------------------------------
+
+  /// GET /{{ snakeName }} — Display the index view.
+  Widget index() {
+    // return const {{ className }}IndexView();
+    return const Scaffold(
+      body: Center(child: Text('{{ className }} Index')),
+    );
+  }
+
+  /// GET /{{ snakeName }}/:id — Display a single item.
+  Widget show(String id) {
+    return Scaffold(
+      body: Center(child: Text('{{ className }} #$id')),
+    );
+  }
+}

@@ -1,0 +1,45 @@
+import 'package:magic/magic.dart';
+
+/// {{ className }} model.
+class {{ className }} extends Model with HasTimestamps, InteractsWithPersistence {
+  {{ className }}() : super();
+
+  /// The table associated with the model.
+  @override
+  String get table => '{{ tableName }}';
+
+  /// The API resource endpoint for remote operations.
+  @override
+  String get resource => '{{ resourceName }}';
+
+  /// The attributes that are mass assignable.
+  @override
+  List<String> get fillable => [];
+
+  /// The attributes that should be cast.
+  @override
+  Map<String, String> get casts => {};
+
+  // ---------------------------------------------------------------------------
+  // Typed Accessors
+  // ---------------------------------------------------------------------------
+  //
+  // Define your fillable and casts above, then run:
+  //   magic make:model-types {{ className }}
+  //
+  // Or add manually:
+  //   String? get name => get<String>('name');
+  //   set name(String? value) => set('name', value);
+
+  // ---------------------------------------------------------------------------
+  // Static Helpers
+  // ---------------------------------------------------------------------------
+
+  /// Find a {{ className }} by ID.
+  static Future<{{ className }}?> find(dynamic id) =>
+      InteractsWithPersistence.findById<{{ className }}>(id, {{ className }}.new);
+
+  /// Get all {{ className }} records.
+  static Future<List<{{ className }}>> all() =>
+      InteractsWithPersistence.allModels<{{ className }}>({{ className }}.new);
+}

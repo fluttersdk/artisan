@@ -1,0 +1,22 @@
+import 'package:magic/magic.dart';
+
+import '../events/{{ eventSnakeName }}.dart';
+
+/// {{ className }}
+///
+/// Handles [{{ eventClass }}] events.
+///
+/// ## Registration
+///
+/// ```dart
+/// // In EventServiceProvider:
+/// EventDispatcher.instance.register({{ eventClass }}, [
+///   () => {{ className }}(),
+/// ]);
+/// ```
+class {{ className }} extends MagicListener<{{ eventClass }}> {
+  @override
+  Future<void> handle({{ eventClass }} event) async {
+    // TODO: Implement your event handling logic here.
+  }
+}

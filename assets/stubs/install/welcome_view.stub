@@ -1,0 +1,204 @@
+import 'package:flutter/material.dart';
+import 'package:magic/magic.dart';
+
+/// Welcome view — the default landing page for a new Magic application.
+///
+/// Centered card layout matching the auth page design pattern.
+/// Displays app name, Magic branding, and quick-link cards.
+class WelcomeView extends StatelessWidget {
+    /// Creates the [WelcomeView].
+    const WelcomeView({super.key});
+
+    @override
+    Widget build(BuildContext context) {
+        final appName = Config.get('app.name', '{{ appName }}') ?? '{{ appName }}';
+
+        return Scaffold(
+            backgroundColor: wColor(
+                context,
+                'gray',
+                shade: 50,
+                darkColorName: 'gray',
+                darkShade: 900,
+            ),
+            body: Center(
+                child: SingleChildScrollView(
+                    primary: true,
+                    child: WDiv(
+                        className: 'w-full max-w-[480px] mx-auto p-4 lg:p-8',
+                        child: WDiv(
+                            className: '''
+                                rounded-2xl bg-white dark:bg-gray-800
+                                border border-gray-200 dark:border-gray-700
+                                p-6 lg:p-8 flex flex-col items-center
+                            ''',
+                            children: [
+                                // --------------------------------------------------
+                                // Hero Section
+                                // --------------------------------------------------
+                                WDiv(
+                                    className: '''
+                                        w-20 h-20 rounded-2xl
+                                        flex items-center justify-center
+                                        bg-gradient-to-br from-violet-500 to-purple-600
+                                        animate-bounce
+                                    ''',
+                                    child: WIcon(
+                                        Icons.auto_awesome,
+                                        className: 'text-white text-4xl',
+                                    ),
+                                ),
+                                const WSpacer(className: 'h-6'),
+                                WText(
+                                    appName,
+                                    className: '''
+                                        text-2xl lg:text-3xl font-bold
+                                        text-gray-900 dark:text-white text-center
+                                    ''',
+                                ),
+                                const WSpacer(className: 'h-2'),
+                                WText(
+                                    'Built with Magic Framework',
+                                    className:
+                                        'text-base text-gray-500 dark:text-gray-400',
+                                ),
+
+                                const WSpacer(className: 'h-8'),
+
+                                // --------------------------------------------------
+                                // Quick-link cards
+                                // --------------------------------------------------
+                                WDiv(
+                                    className: 'w-full flex flex-col gap-3',
+                                    children: [
+                                        _buildLinkCard(
+                                            icon: Icons.menu_book,
+                                            title: 'Documentation',
+                                            description:
+                                                'Read the Magic Framework docs to get started.',
+                                            url: 'https://magic.fluttersdk.com',
+                                        ),
+                                        _buildLinkCard(
+                                            icon: Icons.code,
+                                            title: 'GitHub',
+                                            description:
+                                                'Star the repo, report issues, or contribute code.',
+                                            url: 'https://github.com/fluttersdk/magic',
+                                        ),
+                                        _buildLinkCard(
+                                            icon: Icons.terminal,
+                                            title: 'CLI Commands',
+                                            description:
+                                                'Run `magic --help` to see all available commands.',
+                                            url: 'https://magic.fluttersdk.com/packages/magic-cli',
+                                        ),
+                                    ],
+                                ),
+
+                                const WSpacer(className: 'h-8'),
+
+                                // --------------------------------------------------
+                                // Footer
+                                // --------------------------------------------------
+                                WDiv(
+                                    className: 'flex flex-row items-center justify-center gap-1',
+                                    children: [
+                                        WText(
+                                            'Made with',
+                                            className: 'text-xs text-gray-400 dark:text-gray-500',
+                                        ),
+                                        WDiv(
+                                            className: 'animate-pulse',
+                                            child: WText(
+                                                '❤️',
+                                                className: 'text-xs text-red-500',
+                                            ),
+                                        ),
+                                        WText(
+                                            'by',
+                                            className: 'text-xs text-gray-400 dark:text-gray-500',
+                                        ),
+                                        WAnchor(
+                                            onTap: () => Launch.url('https://anilcancakir.com'),
+                                            child: WText(
+                                                'Anılcan Çakır',
+                                                className: '''
+                                                    text-xs font-medium text-primary
+                                                    dark:text-primary-400
+                                                ''',
+                                            ),
+                                        ),
+                                    ],
+                                ),
+                            ],
+                        ),
+                    ),
+                ),
+            ),
+        );
+    }
+
+    /// Builds a single quick-link card with icon, title, description, and link.
+    Widget _buildLinkCard({
+        required IconData icon,
+        required String title,
+        required String description,
+        required String url,
+    }) {
+        return WDiv(
+            className: '''
+                w-full flex flex-col p-4 rounded-xl
+                bg-gray-50 dark:bg-gray-700/30
+                border border-gray-100 dark:border-gray-700
+            ''',
+            children: [
+                WDiv(
+                    className: 'flex flex-row items-center gap-3 mb-2',
+                    children: [
+                        WDiv(
+                            className: '''
+                                p-2 rounded-lg
+                                bg-primary/10 dark:bg-primary-900/30
+                            ''',
+                            child: WIcon(
+                                icon,
+                                className: 'text-lg text-primary dark:text-primary-400',
+                            ),
+                        ),
+                        WText(
+                            title,
+                            className: '''
+                                text-base font-semibold
+                                text-gray-900 dark:text-white
+                            ''',
+                        ),
+                    ],
+                ),
+                WText(
+                    description,
+                    className: 'text-sm text-gray-500 dark:text-gray-400 mb-3',
+                ),
+                WAnchor(
+                    onTap: () => Launch.url(url),
+                    child: WDiv(
+                        className: 'flex flex-row items-center gap-1',
+                        children: [
+                            WText(
+                                'Learn more',
+                                className: '''
+                                    text-sm font-medium
+                                    text-primary dark:text-primary-400
+                                ''',
+                            ),
+                            WIcon(
+                                Icons.arrow_forward_outlined,
+                                className:
+                                    'text-sm text-primary dark:text-primary-400',
+                            ),
+                        ],
+                    ),
+                ),
+            ],
+        );
+    }
+}

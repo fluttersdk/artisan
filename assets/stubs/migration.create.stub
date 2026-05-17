@@ -1,0 +1,23 @@
+import 'package:magic/magic.dart';
+
+/// Migration: {{ fullName }}
+///
+/// Creates the {{ tableName }} table.
+class {{ className }} extends Migration {
+  @override
+  String get name => '{{ fullName }}';
+
+  @override
+  void up() {
+    Schema.create('{{ tableName }}', (Blueprint table) {
+      table.id();
+      // Add your columns here.
+      table.timestamps();
+    });
+  }
+
+  @override
+  void down() {
+    Schema.dropIfExists('{{ tableName }}');
+  }
+}

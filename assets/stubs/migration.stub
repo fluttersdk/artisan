@@ -1,0 +1,17 @@
+import 'package:magic/magic.dart';
+
+/// Migration: {{ fullName }}
+class {{ className }} extends Migration {
+  @override
+  String get name => '{{ fullName }}';
+
+  @override
+  void up() {
+    // Define your migration here.
+  }
+
+  @override
+  void down() {
+    // Reverse the migration.
+  }
+}

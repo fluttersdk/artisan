@@ -1,0 +1,14 @@
+import 'package:magic/magic.dart';
+
+/// {{ className }} event.
+///
+/// Dispatched when {{ description }}.
+///
+/// ## Dispatch
+///
+/// ```dart
+/// Event.dispatch({{ className }}());
+/// ```
+class {{ className }} extends MagicEvent {
+  {{ className }}();
+}

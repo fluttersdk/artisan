@@ -1,0 +1,25 @@
+import 'package:magic/magic.dart';
+
+/// {{ className }}
+///
+/// HTTP middleware — intercepts navigation and performs checks before
+/// allowing the request to proceed.
+///
+/// ## Registration
+///
+/// ```dart
+/// // In Kernel:
+/// Kernel.register('{{ snakeName }}', () => {{ className }}());
+///
+/// // On a route:
+/// MagicRoute.page('/protected', () => controller.index())
+///     .middleware(['{{ snakeName }}']);
+/// ```
+class {{ className }} extends MagicMiddleware {
+  @override
+  Future<void> handle(void Function() next) async {
+    // TODO: Add your middleware logic here.
+    // Call next() to allow the request to proceed.
+    next();
+  }
+}

@@ -1,0 +1,41 @@
+import 'package:magic/magic.dart';
+
+// TODO: Import your model
+// import '../models/{{ modelSnakeName }}.dart';
+
+/// {{ className }}
+///
+/// Defines authorization rules for [{{ modelClass }}] resources.
+class {{ className }} extends Policy {
+  @override
+  void register() {
+    Gate.define('view-{{ modelSnakeName }}', _view);
+    Gate.define('create-{{ modelSnakeName }}', _create);
+    Gate.define('update-{{ modelSnakeName }}', _update);
+    Gate.define('delete-{{ modelSnakeName }}', _delete);
+  }
+
+  /// Determine if the user can view the [{{ modelName }}].
+  bool _view(Authenticatable user, dynamic arguments) {
+    // TODO: Implement your authorization logic.
+    return true;
+  }
+
+  /// Determine if the user can create a [{{ modelName }}].
+  bool _create(Authenticatable user, dynamic arguments) {
+    // TODO: Implement your authorization logic.
+    return true;
+  }
+
+  /// Determine if the user can update the [{{ modelName }}].
+  bool _update(Authenticatable user, dynamic arguments) {
+    // TODO: Implement your authorization logic.
+    return true;
+  }
+
+  /// Determine if the user can delete the [{{ modelName }}].
+  bool _delete(Authenticatable user, dynamic arguments) {
+    // TODO: Implement your authorization logic.
+    return true;
+  }
+}

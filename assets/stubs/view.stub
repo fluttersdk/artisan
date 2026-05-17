@@ -1,0 +1,28 @@
+import 'package:flutter/material.dart';
+import 'package:magic/magic.dart';
+
+// TODO: Import your controller
+// import '../../../app/controllers/{{ snakeName }}_controller.dart';
+
+/// {{ className }} View.
+class {{ className }}View extends StatelessWidget {
+  const {{ className }}View({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return WDiv(
+      className: 'flex flex-col p-6',
+      children: [
+        WText(
+          '{{ className }}',
+          className: 'text-2xl font-bold text-gray-900 dark:text-white',
+        ),
+        const WSpacer(className: 'h-4'),
+        WText(
+          'This is the {{ className }} view.',
+          className: 'text-sm text-gray-500 dark:text-gray-400',
+        ),
+      ],
+    );
+  }
+}

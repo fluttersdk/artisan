@@ -1,0 +1,17 @@
+import 'package:flutter/material.dart';
+import 'package:magic/magic.dart';
+{{ configImports }}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Magic.init(
+    configFactories: [
+{{ configFactories }}
+    ],
+  );
+
+  runApp(
+    MagicApplication(title: '{{ appName }}'),
+  );
+}
