@@ -1,0 +1,18 @@
+import 'package:fluttersdk_artisan/artisan.dart';
+
+class {{ className }}Command extends ArtisanCommand {
+  @override
+  String get name => '{{ className }}'; // TODO: choose name, e.g. 'foo:bar'
+
+  @override
+  String get description => 'TODO: describe what this command does.';
+
+  @override
+  CommandBoot get boot => CommandBoot.none;
+
+  @override
+  Future<int> handle(ArtisanContext ctx) async {
+    ctx.output.success('Hello from {{ className }}Command');
+    return 0;
+  }
+}
