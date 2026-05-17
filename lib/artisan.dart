@@ -62,6 +62,17 @@ export 'src/commands/status_command.dart';
 export 'src/commands/stop_command.dart';
 export 'src/commands/tinker_command.dart';
 
+// Installer DSL: typed exceptions + driver abstractions + DI container + FS + operation taxonomy.
+export 'src/installer/conflict_detector.dart';
+export 'src/installer/dry_run_renderer.dart';
+export 'src/installer/install_context.dart';
+export 'src/installer/install_exception.dart';
+export 'src/installer/install_operation.dart';
+export 'src/installer/install_transaction.dart';
+export 'src/installer/prompt_driver.dart';
+export 'src/installer/stub_driver.dart';
+export 'src/installer/virtual_fs.dart';
+
 // Tinker REPL hooks. Integration packages populate
 // `Tinker.autocompleteCorpus / classAliases / casters` in their host-side
 // install entry to enrich the REPL output for that ecosystem (Magic ships
