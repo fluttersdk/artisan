@@ -61,6 +61,8 @@ List<ArtisanCommand> _builtinCommands(ArtisanRegistry registry) =>
       StopCommand(),
       StatusCommand(),
       LogsCommand(),
+      ReloadCommand(),
+      HotRestartCommand(),
       RestartCommand(),
       DoctorCommand(),
       ListCommand(registry),

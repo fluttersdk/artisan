@@ -60,6 +60,21 @@ class StartCommand extends ArtisanCommand {
     await logFile.parent.create(recursive: true);
     await logFile.writeAsString('');
 
+    // Named pipe (FIFO) for sending keystrokes to flutter run's stdin.
+    // Lets `reload` / `hot-restart` simulate the `r` / `R` keypress that
+    // flutter run accepts in interactive mode — works on every device
+    // target (web/desktop/mobile) because we go through flutter_tools'
+    // own handler, not VM Service direct RPCs (which web dwds rejects).
+    final fifoPath = '${_logDir()}/flutter-dev.fifo';
+    final fifoFile = File(fifoPath);
+    if (fifoFile.existsSync()) await fifoFile.delete();
+    final mkfifoResult = await Process.run('mkfifo', <String>[fifoPath]);
+    if (mkfifoResult.exitCode != 0) {
+      throw StateError(
+        'mkfifo failed (Windows not yet supported; V1 is POSIX-only): ${mkfifoResult.stderr}',
+      );
+    }
+
     final flutterArgs = <String>[
       'run',
       '-d',
@@ -69,22 +84,44 @@ class StartCommand extends ArtisanCommand {
       '--dart-define=AI_TEST=1',
     ];
 
+    // Two background processes:
+    // 1. `tail -f /dev/null > fifo` — holds the FIFO's write end open so
+    //    flutter run's stdin doesn't EOF when our `echo r` writer closes.
+    //    Cross-POSIX idiom for "sleep forever" (macOS BSD `sleep` rejects
+    //    `sleep infinity`). Reads nothing, writes nothing, just stays alive
+    //    holding the file descriptor.
+    // 2. `nohup flutter run ... < fifo` — flutter run reading the FIFO
+    //    on its stdin. The keystroke writer (reload command) appends
+    //    'r\n' or 'R\n' to the FIFO and flutter run picks it up.
     final wrapperArgs = <String>['nohup', 'flutter', ...flutterArgs];
     final process = await Process.start(
-        'sh',
-        <String>[
-          '-c',
-          '${_shellQuote(wrapperArgs)} </dev/null >>${_shellQuote([
-                logFile.path
-              ])} 2>&1 & echo \$!',
-        ],
-        mode: ProcessStartMode.detachedWithStdio);
+      'sh',
+      <String>[
+        '-c',
+        // Two & echo for both PIDs in known order: holder first, flutter second.
+        'tail -f /dev/null > ${_shellQuote([fifoPath])} & echo HOLDER=\$! ; '
+            '${_shellQuote(wrapperArgs)} < ${_shellQuote([
+              fifoPath
+            ])} >> ${_shellQuote([logFile.path])} 2>&1 & echo FLUTTER=\$!',
+      ],
+      mode: ProcessStartMode.detachedWithStdio,
+    );
 
-    final childPid = await _scrapeChildPid(process);
+    final pids = await _scrapeTwoPids(process);
+    final holderPid = pids['HOLDER'];
+    final childPid = pids['FLUTTER'];
+    if (holderPid == null || childPid == null) {
+      throw StateError(
+        'Failed to capture child PIDs from start wrapper: $pids',
+      );
+    }
+
     final vmServiceUri = await _scrapeVmServiceUriFromFile(logFile);
 
     await StateFile.write(<String, dynamic>{
       'pid': childPid,
+      'stdinPipe': fifoPath,
+      'stdinHolderPid': holderPid,
       'vmServiceUri': vmServiceUri,
       'webPort': webPort,
       'vmServicePort': 8181,
@@ -119,17 +156,23 @@ class StartCommand extends ArtisanCommand {
     return uri.endsWith('/') ? '${uri}ws' : '$uri/ws';
   }
 
-  Future<int> _scrapeChildPid(Process process) async {
-    final completer = Completer<int>();
+  /// Parses `HOLDER=<int>` and `FLUTTER=<int>` lines emitted by the start
+  /// wrapper. Returns a map keyed by tag with the captured PIDs.
+  Future<Map<String, int>> _scrapeTwoPids(Process process) async {
+    final captured = <String, int>{};
+    final completer = Completer<Map<String, int>>();
     late final StreamSubscription<String> sub;
     sub = process.stdout
         .transform(const Utf8Decoder(allowMalformed: true))
         .transform(const LineSplitter())
         .listen((line) {
-      final pid = int.tryParse(line.trim());
-      if (pid != null && !completer.isCompleted) {
-        completer.complete(pid);
-        sub.cancel();
+      final match = RegExp(r'^(HOLDER|FLUTTER)=(\d+)$').firstMatch(line.trim());
+      if (match != null) {
+        captured[match.group(1)!] = int.parse(match.group(2)!);
+        if (captured.length == 2 && !completer.isCompleted) {
+          completer.complete(captured);
+          sub.cancel();
+        }
       }
     });
     return await completer.future.timeout(const Duration(seconds: 10));

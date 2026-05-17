@@ -87,8 +87,22 @@ class VmServiceClient {
     return await s.evaluate(isolateId, rootLibId, wrapped);
   }
 
-  /// Stream of isolate-level events (used by magic_tinker to invalidate its
-  /// autocomplete corpus on `kIsolateReload`).
+  /// Hot reload — incremental Dart source re-import without losing isolate
+  /// state. Equivalent to pressing `r` in `flutter run`. Caller invokes
+  /// `ext.flutter.reassemble` afterwards to rebuild the widget tree.
+  ///
+  /// `force=true` reimports every library even when unchanged (slower; used
+  /// by hot restart simulations).
+  Future<vm.ReloadReport> reloadSources(
+    String isolateId, {
+    bool force = false,
+  }) async {
+    final s = _requireConnected();
+    return await s.reloadSources(isolateId, force: force);
+  }
+
+  /// Stream of isolate-level events (used by tinker autocomplete to
+  /// invalidate its cached corpus on `kIsolateReload`).
   Stream<vm.Event> get onIsolateEvent => _requireConnected().onIsolateEvent;
 
   Future<void> streamListen(String streamId) async {

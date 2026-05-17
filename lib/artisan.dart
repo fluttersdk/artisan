@@ -43,9 +43,11 @@ export 'src/vm/vm_service_client.dart';
 // alongside ArtisanServiceProvider commands from the consumer's appConfig).
 export 'src/commands/doctor_command.dart';
 export 'src/commands/help_command.dart';
+export 'src/commands/hot_restart_command.dart';
 export 'src/commands/list_command.dart';
 export 'src/commands/logs_command.dart';
 export 'src/commands/make_command_command.dart';
+export 'src/commands/reload_command.dart';
 export 'src/commands/restart_command.dart';
 export 'src/commands/start_command.dart';
 export 'src/commands/status_command.dart';
