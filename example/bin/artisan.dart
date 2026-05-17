@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:example/app/commands/_index.g.dart' as auto;
 import 'package:fluttersdk_artisan/artisan.dart';
+import 'package:magic_logger/cli.dart';
 
 /// Consumer-side artisan dispatcher.
 ///
@@ -22,7 +23,9 @@ Future<void> main(List<String> args) async {
     );
     registry.registerAll(auto.commands, providerName: 'app');
 
-    // Third-party package providers — uncomment as needed.
+    // Third-party package providers.
+    registry.registerProvider(MagicLoggerArtisanProvider());
+    // Add more as you bring in pub packages with a cli.dart sub-barrel:
     // registry.registerProvider(DuskArtisanProvider());
     // registry.registerProvider(TelescopeArtisanProvider());
     // registry.registerProvider(MagicArtisanProvider());

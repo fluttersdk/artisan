@@ -41,6 +41,12 @@ dependencies:
   fluttersdk_artisan:
     path: ../
 
+  # Demo third-party artisan plugin shipped under example/packages/.
+  # Contributes `logger:install`, `logger:uninstall`, `logger:tail`,
+  # `logger:level` commands via MagicLoggerArtisanProvider.
+  magic_logger:
+    path: packages/magic_logger
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
