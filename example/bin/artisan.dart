@@ -1,15 +1,18 @@
 import 'dart:io';
 
+import 'package:example/app/commands/_index.g.dart' as auto;
 import 'package:example/config/artisan.dart';
 import 'package:fluttersdk_artisan/artisan.dart';
 
-/// Consumer-side artisan dispatcher. Runs under `dart run :artisan` or
-/// (auto-delegated) `dart run fluttersdk_artisan <cmd>`.
+/// Consumer-side artisan dispatcher.
 ///
-/// Two responsibilities:
-/// 1. Register the 9 builtin commands from fluttersdk_artisan.
-/// 2. Expand `artisanProviders` (from lib/config/artisan.dart) — each
-///    provider contributes its own command set under a namespace.
+/// Two registration paths:
+/// 1. Auto-discovery — every `ArtisanCommand` subclass under
+///    `lib/app/commands/` is registered from `_index.g.dart` (kept fresh
+///    by `make:command` and `commands:refresh`). Zero config.
+/// 2. Third-party providers — packages like `fluttersdk_dusk` or `magic`
+///    ship their own `ArtisanServiceProvider`; declare them in
+///    `lib/config/artisan.dart` once.
 Future<void> main(List<String> args) async {
   try {
     final registry = ArtisanRegistry();
@@ -17,6 +20,7 @@ Future<void> main(List<String> args) async {
       _builtinCommands(registry),
       providerName: 'fluttersdk_artisan',
     );
+    registry.registerAll(auto.commands, providerName: 'app');
     for (final factory in artisanProviders) {
       registry.registerProvider(factory());
     }
@@ -38,12 +42,13 @@ List<ArtisanCommand> _builtinCommands(ArtisanRegistry registry) =>
       StopCommand(),
       StatusCommand(),
       LogsCommand(),
+      RestartCommand(),
       ReloadCommand(),
       HotRestartCommand(),
-      RestartCommand(),
       DoctorCommand(),
       ListCommand(registry),
       HelpCommand(registry),
       MakeCommandCommand(),
+      CommandsRefreshCommand(),
       TinkerCommand(),
     ];

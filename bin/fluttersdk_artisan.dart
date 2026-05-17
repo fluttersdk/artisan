@@ -24,9 +24,17 @@ Future<void> main(List<String> args) async {
   final consumerWrapper = File(
     p.join(Directory.current.path, 'bin', 'artisan.dart'),
   );
-  if (consumerWrapper.existsSync()) {
+  // commands:refresh runs standalone even when a consumer wrapper exists.
+  // Otherwise a stale/broken lib/app/commands/_index.g.dart would block the
+  // wrapper from compiling, which would block the very command that fixes
+  // the index. Pure-substrate path stays compile-safe regardless of
+  // consumer-tree state.
+  final firstArg = args.isNotEmpty ? args.first : '';
+  final bypassDelegate = firstArg == 'commands:refresh';
+
+  if (consumerWrapper.existsSync() && !bypassDelegate) {
     // Delegate to the consumer wrapper. It owns the full provider list
-    // from lib/config/artisan.dart.
+    // from lib/config/artisan.dart + the auto-discovered commands index.
     final result = await Process.start(
       Platform.resolvedExecutable, // dart
       ['run', ':artisan', ...args],
@@ -68,5 +76,6 @@ List<ArtisanCommand> _builtinCommands(ArtisanRegistry registry) =>
       ListCommand(registry),
       HelpCommand(registry),
       MakeCommandCommand(),
+      CommandsRefreshCommand(),
       TinkerCommand(),
     ];
