@@ -5,8 +5,10 @@
 import 'package:fluttersdk_artisan/artisan.dart';
 
 import 'clean_cache.dart';
+import 'sync.dart';
 
 List<ArtisanCommand> get commands => <ArtisanCommand>[
   CleanCacheCommand(),
+  SyncCommand(),
 ];
 

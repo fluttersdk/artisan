@@ -22,6 +22,7 @@ export 'src/console/artisan_output.dart';
 export 'src/console/artisan_registry.dart';
 export 'src/console/artisan_service_provider.dart';
 export 'src/console/command_boot.dart';
+export 'src/console/command_signature.dart';
 export 'src/console/pid_parser.dart';
 export 'src/console/process_alive.dart';
 export 'src/console/shell_quote.dart';

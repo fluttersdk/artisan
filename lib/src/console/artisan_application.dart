@@ -76,7 +76,7 @@ class ArtisanApplication {
       return 0;
     }
 
-    final input = ArgvInput(parsed);
+    final input = ArgvInput(parsed, signature: command.parsedSignature);
     final output = StdioOutput(verbosity: input.verbosity);
 
     switch (command.boot) {
@@ -153,12 +153,38 @@ class ArtisanApplication {
   }
 
   void _printCommandHelp(ArtisanCommand command, ArgParser parser) {
+    final signature = command.parsedSignature;
+    final argsHint = signature == null
+        ? '[arguments]'
+        : signature.arguments.map((a) {
+            final base = a.isOptional ? '[${a.name}]' : '<${a.name}>';
+            return a.isVariadic ? '$base...' : base;
+          }).join(' ');
+
     stdout.writeln(ConsoleStyle.info('Description:'));
     stdout.writeln('  ${command.description}');
     stdout.writeln('');
     stdout.writeln(ConsoleStyle.info('Usage:'));
-    stdout.writeln('  artisan ${command.name} [options] [arguments]');
+    stdout.writeln('  artisan ${command.name} [options] $argsHint');
     stdout.writeln('');
+    stdout.writeln(ConsoleStyle.info('Boot mode:'));
+    stdout.writeln('  ${command.boot.name}');
+    stdout.writeln('');
+    if (signature != null && signature.arguments.isNotEmpty) {
+      stdout.writeln(ConsoleStyle.info('Arguments:'));
+      for (final a in signature.arguments) {
+        final attrs = <String>[
+          if (a.isOptional) 'optional',
+          if (a.isVariadic) 'variadic',
+          if (a.defaultValue != null) 'default=${a.defaultValue}',
+        ];
+        final attrsTail = attrs.isEmpty ? '' : '   [${attrs.join(', ')}]';
+        final desc =
+            a.description == null ? '' : '\n             ${a.description}';
+        stdout.writeln('  ${a.name.padRight(10)} $attrsTail$desc');
+      }
+      stdout.writeln('');
+    }
     if (parser.options.isNotEmpty) {
       stdout.writeln(ConsoleStyle.info('Options:'));
       stdout.writeln(

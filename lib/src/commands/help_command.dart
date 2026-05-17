@@ -34,14 +34,39 @@ class HelpCommand extends ArtisanCommand {
     }
     final parser = ArgParser();
     command.configure(parser);
+    final signature = command.parsedSignature;
+
+    final argsHint = signature == null
+        ? '[arguments]'
+        : signature.arguments.map((a) {
+            final base = a.isOptional ? '[${a.name}]' : '<${a.name}>';
+            return a.isVariadic ? '$base...' : base;
+          }).join(' ');
+
     ctx.output.info('Description:');
     ctx.output.writeln('  ${command.description}');
     ctx.output.writeln('');
     ctx.output.info('Usage:');
-    ctx.output.writeln('  artisan ${command.name} [options] [arguments]');
+    ctx.output.writeln('  artisan ${command.name} [options] $argsHint');
     ctx.output.writeln('');
     ctx.output.info('Boot mode:');
     ctx.output.writeln('  ${command.boot.name}');
+    if (signature != null && signature.arguments.isNotEmpty) {
+      ctx.output.writeln('');
+      ctx.output.info('Arguments:');
+      for (final a in signature.arguments) {
+        final attrs = <String>[
+          if (a.isOptional) 'optional',
+          if (a.isVariadic) 'variadic',
+          if (a.defaultValue != null) 'default=${a.defaultValue}',
+        ];
+        final attrsTail = attrs.isEmpty ? '' : '  [${attrs.join(', ')}]';
+        ctx.output.writeln('  ${a.name.padRight(12)}$attrsTail');
+        if (a.description != null) {
+          ctx.output.writeln('              ${a.description}');
+        }
+      }
+    }
     if (parser.options.isNotEmpty) {
       ctx.output.writeln('');
       ctx.output.info('Options:');
