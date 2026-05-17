@@ -49,8 +49,7 @@ abstract class ArtisanGeneratorCommand extends ArtisanCommand {
 
   /// Load stub, replace placeholders, return final content.
   String buildClass(String name) {
-    final stubsDir =
-        Platform.environment['ARTISAN_STUBS_DIR'] ??
+    final stubsDir = Platform.environment['ARTISAN_STUBS_DIR'] ??
         Platform.environment['MAGIC_CLI_STUBS_DIR'];
     final stubName = getStub();
     String stub;
@@ -73,9 +72,8 @@ abstract class ArtisanGeneratorCommand extends ArtisanCommand {
   String _replaceNamespace(String stub, String name) {
     final parsed = StringHelper.parseName(name);
     final defaultNs = getDefaultNamespace();
-    final namespace = parsed.directory.isEmpty
-        ? defaultNs
-        : '$defaultNs/${parsed.directory}';
+    final namespace =
+        parsed.directory.isEmpty ? defaultNs : '$defaultNs/${parsed.directory}';
     return stub.replaceAll('{{ namespace }}', namespace);
   }
 

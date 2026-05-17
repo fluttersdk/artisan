@@ -23,8 +23,7 @@ class ArtisanCommandCollisionException implements Exception {
   /// Name of the provider attempting the duplicate registration.
   final String newProvider;
 
-  String get message =>
-      "Command '$commandName' already registered by provider "
+  String get message => "Command '$commandName' already registered by provider "
       "'$existingProvider'. Pass `override: true` to "
       "$newProvider.registerInto(...) to intentionally replace.";
 

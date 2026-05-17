@@ -66,8 +66,8 @@ class ArgvInput implements ArtisanInput {
 /// In-memory map input for programmatic invocation (tests, command-from-command).
 class MapInput implements ArtisanInput {
   MapInput(this._options, {List<String>? positional, int verbosity = 1})
-    : _positional = positional ?? const [],
-      _verbosity = verbosity;
+      : _positional = positional ?? const [],
+        _verbosity = verbosity;
 
   final Map<String, dynamic> _options;
   final List<String> _positional;

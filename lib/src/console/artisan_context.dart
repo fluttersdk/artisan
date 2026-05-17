@@ -11,7 +11,7 @@ class ArtisanContext {
   ArtisanContext.bare(this.input, this.output) : vmClient = null;
 
   ArtisanContext.connected(this.input, this.output, VmServiceClient client)
-    : vmClient = client;
+      : vmClient = client;
 
   final ArtisanInput input;
   final ArtisanOutput output;
