@@ -1,11 +1,10 @@
 import 'dart:io';
 
-import 'package:vm_service/vm_service.dart';
-
 import '../console/artisan_command.dart';
 import '../console/artisan_context.dart';
 import '../console/command_boot.dart';
 import '../tinker/tinker.dart';
+import '../tinker/tinker_formatter.dart';
 
 /// `artisan tinker` — connected REPL into the running Flutter app.
 ///
@@ -38,7 +37,7 @@ class TinkerCommand extends ArtisanCommand {
       if (input == 'exit' || input == 'quit') break;
       try {
         final result = await ctx.evaluate(input);
-        ctx.output.writeln(_formatResult(result));
+        ctx.output.writeln(formatTinkerResult(result, casters: Tinker.casters));
       } catch (e) {
         ctx.output.error('$e');
       }
@@ -46,32 +45,5 @@ class TinkerCommand extends ArtisanCommand {
     ctx.output.writeln('');
     ctx.output.info('Tinker session ended.');
     return 0;
-  }
-
-  String _formatResult(Object? value) {
-    for (final caster in Tinker.casters) {
-      final formatted = caster(value);
-      if (formatted != null) return formatted;
-    }
-    return _defaultFormat(value);
-  }
-
-  /// Best-effort pretty-print for the raw VM Service evaluate result.
-  /// Unwraps [InstanceRef] into the value the user typed at the prompt
-  /// instead of dumping the raw VM internal shape.
-  String _defaultFormat(Object? value) {
-    if (value == null) return 'null';
-    if (value is InstanceRef) {
-      // Primitive scalars carry their printed form on `valueAsString`.
-      if (value.valueAsString != null) {
-        final printed = value.valueAsString!;
-        return value.kind == 'String' ? '"$printed"' : printed;
-      }
-      // Non-primitive InstanceRefs: tagged type hint.
-      final className = value.classRef?.name ?? 'Instance';
-      return '<$className#${value.id ?? '?'}>';
-    }
-    if (value is ErrorRef) return 'Error: ${value.message ?? value.id}';
-    return value.toString();
   }
 }

@@ -7,6 +7,8 @@ import 'package:args/args.dart';
 import '../console/artisan_command.dart';
 import '../console/artisan_context.dart';
 import '../console/command_boot.dart';
+import '../console/pid_parser.dart';
+import '../console/shell_quote.dart';
 import '../state/state_file.dart';
 
 /// Spawns `flutter run -d <device>` detached, scrapes the VM Service URI
@@ -99,10 +101,12 @@ class StartCommand extends ArtisanCommand {
       <String>[
         '-c',
         // Two & echo for both PIDs in known order: holder first, flutter second.
-        'tail -f /dev/null > ${_shellQuote([fifoPath])} & echo HOLDER=\$! ; '
-            '${_shellQuote(wrapperArgs)} < ${_shellQuote([
+        'tail -f /dev/null > ${shellQuoteTokens([
               fifoPath
-            ])} >> ${_shellQuote([logFile.path])} 2>&1 & echo FLUTTER=\$!',
+            ])} & echo HOLDER=\$! ; '
+            '${shellQuoteTokens(wrapperArgs)} < ${shellQuoteTokens([
+              fifoPath
+            ])} >> ${shellQuoteTokens([logFile.path])} 2>&1 & echo FLUTTER=\$!',
       ],
       mode: ProcessStartMode.detachedWithStdio,
     );
@@ -157,7 +161,8 @@ class StartCommand extends ArtisanCommand {
   }
 
   /// Parses `HOLDER=<int>` and `FLUTTER=<int>` lines emitted by the start
-  /// wrapper. Returns a map keyed by tag with the captured PIDs.
+  /// wrapper. Delegates the line→map parse to [parsePidLines]; this method
+  /// owns the stream-completion plumbing.
   Future<Map<String, int>> _scrapeTwoPids(Process process) async {
     final captured = <String, int>{};
     final completer = Completer<Map<String, int>>();
@@ -166,13 +171,11 @@ class StartCommand extends ArtisanCommand {
         .transform(const Utf8Decoder(allowMalformed: true))
         .transform(const LineSplitter())
         .listen((line) {
-      final match = RegExp(r'^(HOLDER|FLUTTER)=(\d+)$').firstMatch(line.trim());
-      if (match != null) {
-        captured[match.group(1)!] = int.parse(match.group(2)!);
-        if (captured.length == 2 && !completer.isCompleted) {
-          completer.complete(captured);
-          sub.cancel();
-        }
+      final parsed = parsePidLines(<String>[line]);
+      captured.addAll(parsed);
+      if (captured.length == 2 && !completer.isCompleted) {
+        completer.complete(captured);
+        sub.cancel();
       }
     });
     return await completer.future.timeout(const Duration(seconds: 10));
@@ -198,14 +201,6 @@ class StartCommand extends ArtisanCommand {
     throw StateError(
       'Timed out after 90s waiting for VM Service URI in ${logFile.path}.',
     );
-  }
-
-  static String _shellQuote(List<String> tokens) {
-    final bareword = RegExp(r'^[A-Za-z0-9_./=:-]+$');
-    return tokens.map((t) {
-      if (bareword.hasMatch(t)) return t;
-      return "'${t.replaceAll("'", r"'\''")}'";
-    }).join(' ');
   }
 
   static String _logDir() {

@@ -22,6 +22,9 @@ export 'src/console/artisan_output.dart';
 export 'src/console/artisan_registry.dart';
 export 'src/console/artisan_service_provider.dart';
 export 'src/console/command_boot.dart';
+export 'src/console/pid_parser.dart';
+export 'src/console/process_alive.dart';
+export 'src/console/shell_quote.dart';
 export 'src/console/string_helper.dart';
 
 // Helpers (ported as-is from magic_cli).
@@ -59,3 +62,4 @@ export 'src/commands/tinker_command.dart';
 // install entry to enrich the REPL output for that ecosystem (Magic ships
 // MagicTinkerIntegration which seeds ~30 facade symbols + Eloquent caster).
 export 'src/tinker/tinker.dart';
+export 'src/tinker/tinker_formatter.dart';
