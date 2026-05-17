@@ -50,3 +50,10 @@ export 'src/commands/restart_command.dart';
 export 'src/commands/start_command.dart';
 export 'src/commands/status_command.dart';
 export 'src/commands/stop_command.dart';
+export 'src/commands/tinker_command.dart';
+
+// Tinker REPL hooks. Integration packages populate
+// `Tinker.autocompleteCorpus / classAliases / casters` in their host-side
+// install entry to enrich the REPL output for that ecosystem (Magic ships
+// MagicTinkerIntegration which seeds ~30 facade symbols + Eloquent caster).
+export 'src/tinker/tinker.dart';

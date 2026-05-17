@@ -41,9 +41,6 @@ dependencies:
   fluttersdk_artisan:
     path: ../
 
-executables:
-  artisan: artisan
-
 dev_dependencies:
   flutter_test:
     sdk: flutter

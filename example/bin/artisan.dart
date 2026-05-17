@@ -43,4 +43,5 @@ List<ArtisanCommand> _builtinCommands(ArtisanRegistry registry) =>
       ListCommand(registry),
       HelpCommand(registry),
       MakeCommandCommand(),
+      TinkerCommand(),
     ];

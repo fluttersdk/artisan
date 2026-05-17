@@ -3,8 +3,8 @@ import 'package:fluttersdk_artisan/artisan.dart';
 import '../app/commands/clean_cache.dart';
 
 /// Consumer-side artisan provider list. The wrapper at `bin/artisan.dart`
-/// expands this list into the registry alongside the 9 builtin commands
-/// from fluttersdk_artisan.
+/// expands this list into the registry alongside the builtin commands
+/// from fluttersdk_artisan (which now includes `tinker` as builtin #10).
 ///
 /// Pure-Dart only — no Flutter imports. The wrapper runs under `dart run`,
 /// which cannot load `dart:ui`.
