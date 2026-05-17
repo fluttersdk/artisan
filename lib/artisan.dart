@@ -32,11 +32,17 @@ export 'src/console/string_helper.dart';
 // Helpers (ported as-is from magic_cli).
 export 'src/helpers/config_editor.dart';
 export 'src/helpers/console_style.dart';
+export 'src/helpers/env_editor.dart';
 export 'src/helpers/file_helper.dart';
+export 'src/helpers/gradle_editor.dart';
 export 'src/helpers/html_editor.dart';
 export 'src/helpers/json_editor.dart';
+export 'src/helpers/main_dart_editor.dart';
 export 'src/helpers/platform_helper.dart';
+export 'src/helpers/podfile_editor.dart';
+export 'src/helpers/route_registry_editor.dart';
 export 'src/helpers/xml_editor.dart';
+export 'src/helpers/plist_writer.dart';
 
 // State + VM Service + extension registration (substrate ported from ai-test).
 export 'src/extensions/register_extension_idempotent.dart';
