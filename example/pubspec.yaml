@@ -35,15 +35,18 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
-  # Consumer artisan wrapper imports lib/config/artisan.dart which imports
-  # ArtisanCommand. The classes are CLI-only but the import chain needs
-  # fluttersdk_artisan resolvable as a regular (not dev-only) dependency.
+  # CLI dispatcher dep — imported by bin/artisan.dart and every
+  # `ArtisanCommand` subclass under lib/app/commands/. The Flutter
+  # runtime (lib/main.dart) never touches it, so release builds
+  # tree-shake the entire branch — there is zero runtime cost.
+  #
+  # Listed as a regular dependency (not dev_dependencies) because
+  # lib/app/commands/*.dart references it; dev_dep + lib/ import would
+  # trigger `depend_on_referenced_packages` lint hints on every command
+  # file (Anilcan rule: zero linter suppressions).
   fluttersdk_artisan:
     path: ../
 
-  # Demo third-party artisan plugin shipped under example/packages/.
-  # Contributes `logger:install`, `logger:uninstall`, `logger:tail`,
-  # `logger:level` commands via MagicLoggerArtisanProvider.
   magic_logger:
     path: packages/magic_logger
 

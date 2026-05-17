@@ -54,6 +54,7 @@ export 'src/commands/hot_restart_command.dart';
 export 'src/commands/list_command.dart';
 export 'src/commands/logs_command.dart';
 export 'src/commands/make_command_command.dart';
+export 'src/commands/plugin_install_command.dart';
 export 'src/commands/reload_command.dart';
 export 'src/commands/restart_command.dart';
 export 'src/commands/start_command.dart';

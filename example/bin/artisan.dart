@@ -22,10 +22,9 @@ Future<void> main(List<String> args) async {
       providerName: 'fluttersdk_artisan',
     );
     registry.registerAll(auto.commands, providerName: 'app');
-
-    // Third-party package providers.
     registry.registerProvider(MagicLoggerArtisanProvider());
-    // Add more as you bring in pub packages with a cli.dart sub-barrel:
+
+    // Third-party package providers — uncomment as you add them.
     // registry.registerProvider(DuskArtisanProvider());
     // registry.registerProvider(TelescopeArtisanProvider());
     // registry.registerProvider(MagicArtisanProvider());
@@ -56,5 +55,6 @@ List<ArtisanCommand> _builtinCommands(ArtisanRegistry registry) =>
       HelpCommand(registry),
       MakeCommandCommand(),
       CommandsRefreshCommand(),
+      PluginInstallCommand(),
       TinkerCommand(),
     ];
