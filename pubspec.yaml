@@ -21,4 +21,4 @@ dev_dependencies:
   test: ^1.25.0
 
 executables:
-  artisan: artisan_main
+  fluttersdk_artisan: fluttersdk_artisan
