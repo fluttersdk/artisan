@@ -344,12 +344,173 @@ final class McpServer extends MCPServer with ToolsSupport {
           'artisan_${command.name.replaceAll(':', '_').replaceAll('-', '_')}';
       tools.add(McpToolDescriptor(
         name: toolName,
-        description: command.description,
+        // MCP descriptions are richer than the CLI command's one-liner
+        // `description` field so the LLM picks the right tool reliably.
+        // Format mirrors Claude Code's built-in tool descriptions
+        // (imperative opening + brief context + `Usage:` bullets +
+        // constraint-forward language; truncated by CC at 2KB chars).
+        description: _mcpDescriptionFor(command),
         inputSchema: _commandInputSchema(command),
         extensionMethod: '$_artisanDispatchPrefix${command.name}',
       ));
     }
     return tools;
+  }
+
+  /// Per-command MCP tool description in canonical Claude Code format.
+  /// Falls back to the CLI [command.description] for any future allowlist
+  /// addition that lacks an explicit case.
+  String _mcpDescriptionFor(ArtisanCommand command) {
+    switch (command.name) {
+      case 'start':
+        return 'Boot a Flutter app in detached mode and record its VM '
+            'Service URI for downstream tools.\n'
+            '\n'
+            'Spawns `flutter run -d <device>` as a background process and '
+            'writes the resulting VM Service URI + pid + web port to '
+            '`~/.artisan/state.json`. Other tools (artisan_status, '
+            'artisan_logs, dusk_*, telescope_*, tinker_eval) read this '
+            'state file to find the running app. ONLY ONE Flutter app per '
+            'machine can be tracked at a time (single-slot state).\n'
+            '\n'
+            'Usage:\n'
+            '- Call this BEFORE invoking any plugin tool (dusk_snap, '
+            'telescope_tail, tinker_eval) that needs VM Service access.\n'
+            '- Default device is the first available; pass `device: '
+            '"chrome"` for web (port 3100), `device: "macos"` for desktop, '
+            'or `device: "<serial>"` for a connected mobile.\n'
+            '- Returns immediately once the VM Service URI is captured; '
+            'the Flutter process keeps running in the background.\n'
+            '- To stop call `artisan_stop`. To full-cycle restart call '
+            '`artisan_restart`. For source-change reload call '
+            '`artisan_reload` (state preserved) or `artisan_hot_restart` '
+            '(state dropped).\n'
+            '- Fails with "another app is recorded" when state.json already '
+            'has a running pid; call `artisan_stop` first.';
+
+      case 'stop':
+        return 'Stop the currently-running Flutter app and clear its state '
+            'file.\n'
+            '\n'
+            'Sends SIGTERM to the `flutter run` process recorded in '
+            '`~/.artisan/state.json`, then deletes the state file. Safe to '
+            'call when no app is running (returns success, no-op).\n'
+            '\n'
+            'Usage:\n'
+            '- Call after development is done OR before `artisan_start` if '
+            'the previous app process is stale.\n'
+            '- No-op when `~/.artisan/state.json` is absent; never errors '
+            'on missing state.';
+
+      case 'status':
+        return 'Return the JSON status of the recorded Flutter app.\n'
+            '\n'
+            'Reads `~/.artisan/state.json` and reports pid, vmServiceUri, '
+            'device, webPort, profile, startedAt. Also probes whether the '
+            'recorded pid is still alive (process may have crashed without '
+            'cleaning state).\n'
+            '\n'
+            'Usage:\n'
+            '- Use to discover the VM Service URI before manually '
+            'connecting other tooling, or to confirm `artisan_start` '
+            'succeeded.\n'
+            '- Returns `{"running": false}` when no state file exists.';
+
+      case 'logs':
+        return 'Read the captured `flutter run` log output.\n'
+            '\n'
+            'Reads the stdout/stderr captured by the background Flutter '
+            'process started via `artisan_start`. Returns recent lines OR '
+            'tails the live stream with `follow: true`.\n'
+            '\n'
+            'Usage:\n'
+            '- Pass `follow: true` to tail until interrupted; default '
+            'returns the most recent buffered lines.\n'
+            '- Returns empty when no app has been started yet.';
+
+      case 'restart':
+        return 'Stop and re-start the running Flutter app preserving the '
+            'same device.\n'
+            '\n'
+            'Convenience wrapper around `artisan_stop` + `artisan_start`. '
+            'Slower than `artisan_reload` (which preserves Dart state) and '
+            '`artisan_hot_restart` (which keeps the process alive but '
+            'drops state). Only use when the others cannot apply the '
+            'change (e.g. native plugin added, pubspec dep change).\n'
+            '\n'
+            'Usage:\n'
+            '- No parameters; uses the device + flags from the prior '
+            '`artisan_start`.\n'
+            '- Reuses the same VM Service port + web port when possible.';
+
+      case 'reload':
+        return 'Hot reload the running Flutter app.\n'
+            '\n'
+            'Sends `r` to the `flutter run` process stdin via the recorded '
+            'FIFO pipe. Triggers Flutter\'s hot reload: Dart state is '
+            'preserved, the widget tree rebuilds with the new source. The '
+            'standard fast-iteration verb during Flutter development.\n'
+            '\n'
+            'Usage:\n'
+            '- Call after every meaningful source edit to see the change '
+            'immediately.\n'
+            '- If hot reload fails (state mismatch, breaking source '
+            'change), Flutter logs the error to the captured output; check '
+            '`artisan_logs` and consider `artisan_hot_restart` instead.\n'
+            '- Returns the response Flutter wrote back to stdin (typically '
+            'blank on success).';
+
+      case 'hot-restart':
+        return 'Hot restart the running Flutter app (drops Dart state, '
+            'keeps process).\n'
+            '\n'
+            'Sends `R` to the `flutter run` process stdin. Stronger than '
+            '`artisan_reload`: drops all Dart state but keeps the same '
+            'process + VM Service connection. Use when hot reload cannot '
+            'apply the change (e.g. const constructors changed, top-level '
+            'state corrupted).\n'
+            '\n'
+            'Usage:\n'
+            '- Slower than `artisan_reload`; faster than `artisan_restart` '
+            '(no process re-spawn).\n'
+            '- Call when source changes invalidate existing app state but '
+            'the process itself is fine.\n'
+            '- Preserves the recorded VM Service URI; downstream tooling '
+            'stays connected.';
+
+      case 'doctor':
+        return 'Run preflight environment checks for Flutter development.\n'
+            '\n'
+            'Verifies: `flutter` on PATH, `dart` on PATH, default ports '
+            'free (e.g. 3100 for chrome web). Reports each check as `✓` / '
+            '`✗` with the underlying command output. Exits non-zero when '
+            'any hard check fails.\n'
+            '\n'
+            'Usage:\n'
+            '- Run this when setup feels broken OR before starting a new '
+            'development session on an unfamiliar machine.\n'
+            '- Stale `.mcp.json` entries pointing at the removed '
+            '`fluttersdk_mcp` package surface here as a WARN (advisory; '
+            'not a hard failure).';
+
+      case 'list':
+        return 'List every registered artisan command grouped by '
+            'namespace.\n'
+            '\n'
+            'Returns the full CLI command surface available to the '
+            'consumer app: builtins (start, stop, doctor, etc.), plugin '
+            'commands (dusk:*, telescope:*, plugin:*), make:* generators, '
+            'mcp:* meta. Useful for discovering what is available without '
+            'inspecting source.\n'
+            '\n'
+            'Usage:\n'
+            '- No parameters; returns plain text grouped by `:` namespace.\n'
+            '- The total command count appears at the top so plugin '
+            'loading can be sanity-checked at a glance.';
+
+      default:
+        return command.description;
+    }
   }
 
   /// Per-command JSON Schema. V1 covers the parameter surface of the 9
@@ -367,24 +528,33 @@ final class McpServer extends MCPServer with ToolsSupport {
           'properties': <String, dynamic>{
             'device': <String, dynamic>{
               'type': 'string',
-              'description':
-                  'Target Flutter device id (`chrome`, `macos`, `<serial>`).',
+              'description': 'Target Flutter device id. Common values: '
+                  '`chrome` (web), `macos` (desktop), `<adb-serial>` '
+                  '(Android), or any id from `flutter devices`. Omit to '
+                  'let Flutter pick the first available.',
             },
             'port': <String, dynamic>{
               'type': 'string',
-              'description': 'Web port for chrome device (default `3100`).',
+              'description': 'Web port for the chrome device as a numeric '
+                  'string (Flutter parses `--port` as String). Default '
+                  '`3100`. Ignored for non-web devices.',
             },
             'vm-service-port': <String, dynamic>{
               'type': 'string',
-              'description': 'VM Service port (default `8181`).',
+              'description': 'Port the VM Service binds to on the host as '
+                  'a numeric string. Default `8181`. Change when 8181 is '
+                  'already taken by a sibling process.',
             },
             'dds': <String, dynamic>{
               'type': 'boolean',
-              'description': 'Enable Dart Development Service (default false).',
+              'description': 'Enable the Dart Development Service (DDS) '
+                  'proxy in front of the VM Service. Default `false`. Set '
+                  '`true` when a tool needs DDS-only features.',
             },
             'profile-static': <String, dynamic>{
               'type': 'boolean',
-              'description': 'Use the static profile binary (default false).',
+              'description': 'Run Flutter in `--profile` mode (release-like '
+                  'performance numbers, no hot reload). Default `false`.',
             },
           },
         };
@@ -395,7 +565,10 @@ final class McpServer extends MCPServer with ToolsSupport {
           'properties': <String, dynamic>{
             'follow': <String, dynamic>{
               'type': 'boolean',
-              'description': 'Tail the captured flutter run log (-f short).',
+              'description': 'When `true`, tail the live log stream until '
+                  'the client disconnects (`-f` short form on the CLI). '
+                  'When `false` or omitted, return the most recent '
+                  'buffered lines and exit immediately. Default `false`.',
             },
           },
         };
