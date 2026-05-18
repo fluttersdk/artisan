@@ -70,7 +70,7 @@ class CommandSignature {
     if (!_namePattern.hasMatch(name)) {
       throw FormatException(
         'Invalid command name "$name": must match $_namePatternSource '
-        '(lowercase kebab-case, optional colon-separated namespaces).',
+        '(lowercase snake_case or kebab-case, optional colon-separated namespaces).',
       );
     }
 
@@ -211,7 +211,7 @@ class CommandSignature {
     );
   }
 
-  static const String _namePatternSource = r'^[a-z0-9]+([:-][a-z0-9]+)*$';
+  static const String _namePatternSource = r'^[a-z0-9_]+([:-][a-z0-9_]+)*$';
   static final RegExp _namePattern = RegExp(_namePatternSource);
   static final RegExp _argNamePattern = RegExp(r'^[a-z0-9][a-z0-9_-]*$');
   static final RegExp _tokenPattern = RegExp(r'\{([^}]+)\}');

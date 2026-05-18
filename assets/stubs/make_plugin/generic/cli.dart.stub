@@ -1,0 +1,9 @@
+/// CLI barrel for {{ name }}.
+///
+/// Consumers import via `package:{{ name }}/cli.dart` and the
+/// `plugin:install {{ name }}` command resolves the provider symbol from this
+/// barrel. Keep the exports limited to CLI-relevant symbols (provider +
+/// runtime). Runtime-only classes belong in `package:{{ name }}/{{ name }}.dart`.
+library;
+
+export 'src/{{ name }}_artisan_provider.dart';

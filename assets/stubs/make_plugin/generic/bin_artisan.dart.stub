@@ -1,0 +1,12 @@
+import 'dart:io';
+
+import 'package:fluttersdk_artisan/artisan.dart';
+import 'package:{{ name }}/cli.dart' show {{ pascalName }}ArtisanProvider;
+
+Future<void> main(List<String> args) async {
+  exit(await runArtisan(
+    args,
+    baseProviders: [{{ pascalName }}ArtisanProvider()],
+    delegateToConsumer: false,
+  ));
+}

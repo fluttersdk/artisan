@@ -2,8 +2,9 @@
 ///
 /// Consumers import via `package:{{ name }}/cli.dart` and the
 /// `plugin:install {{ name }}` command resolves the provider symbol from this
-/// barrel. Keep the exports limited to CLI-relevant symbols (provider +
-/// commands); runtime-only classes belong in `package:{{ name }}/{{ name }}.dart`.
+/// barrel. Magic-mode plugins export the provider, install command, and
+/// uninstall command. Runtime-only classes belong in
+/// `package:{{ name }}/{{ name }}.dart`.
 library;
 
 export 'src/{{ name }}_artisan_provider.dart';

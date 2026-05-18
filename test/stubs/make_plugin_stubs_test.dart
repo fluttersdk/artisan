@@ -24,68 +24,94 @@ String _resolveCheckedInStubsDir() {
   return p.join(Directory.current.path, 'assets', 'stubs', 'make_plugin');
 }
 
-/// Canonical replacement map used when rendering each stub. Mirrors the map
-/// `MakePluginCommand._buildReplacements` constructs at runtime.
+/// Canonical replacement map used when rendering each stub. Mirrors the full
+/// map `MakePluginCommand._buildReplacements` constructs at runtime, including
+/// the `artisanPath` and `magicPath` keys added in the generic/magic split.
 Map<String, String> _sampleReplacements() {
   return const <String, String>{
     'name': 'magic_logger',
     'pascalName': 'MagicLogger',
     'commandPrefix': 'logger',
     'bootstrapCommand': 'logger:install',
+    'artisanPath': '../fluttersdk_artisan',
+    'magicPath': '../magic',
   };
 }
 
-/// The 11-file scaffold roster Step 31 renders. Pinned here so this test
-/// stays the source of truth for "every stub must load and render".
-const List<String> _stubNames = <String>[
+/// The 7 stub file names that live under `generic/`. Pinned here so this test
+/// stays the source of truth for "every generic stub must load and render".
+/// `bin_artisan.dart` added in make-plugin-modes Wave 4 to make
+/// `dart run <plugin>:artisan` invocations work out-of-box.
+const List<String> _genericStubNames = <String>[
   'pubspec.yaml',
+  'bin_artisan.dart',
   'cli.dart',
   'runtime.dart',
   'provider.dart',
-  'install_command.dart',
-  'uninstall_command.dart',
-  'install.yaml',
-  'config_stub.dart',
   'provider_test.dart',
-  'install_command_test.dart',
   'readme.md',
 ];
 
-/// The four placeholder keys the renderer recognises. Used to assert no
-/// stub contains a `{{ <known> }}` after rendering (catches a stub that
-/// mis-spells a key).
-const Set<String> _knownPlaceholders = <String>{
+/// The 7 stub file names that live under `magic/`. The `cli.dart` and
+/// `pubspec.yaml` entries are magic-specific overrides that include the
+/// `magic:` dependency and magic command exports; they are distinct files from
+/// their generic counterparts.
+const List<String> _magicStubNames = <String>[
+  'pubspec.yaml',
+  'cli.dart',
+  'install.yaml',
+  'install_command.dart',
+  'uninstall_command.dart',
+  'install_command_test.dart',
+  'config_stub.dart',
+];
+
+/// The four known scaffold-time placeholder keys. Used to assert that no stub
+/// contains a `{{ <known> }}` token after rendering (catches a stub that
+/// mis-spells a key). Install-time tokens (`prompts.configPath`,
+/// `configFilePath`) survive rendering by design and are excluded.
+const Set<String> _knownScaffoldPlaceholders = <String>{
   'name',
   'pascalName',
   'commandPrefix',
   'bootstrapCommand',
+  'artisanPath',
+  'magicPath',
 };
 
 void main() {
   late String stubsDir;
+  late String genericDir;
+  late String magicDir;
 
   setUpAll(() {
     stubsDir = _resolveCheckedInStubsDir();
+    genericDir = p.join(stubsDir, 'generic');
+    magicDir = p.join(stubsDir, 'magic');
   });
 
-  group('make_plugin stub bundle — load', () {
-    test('every stub file loads without throwing', () {
-      for (final name in _stubNames) {
+  // ---------------------------------------------------------------------------
+  // Load — file presence assertions.
+  // ---------------------------------------------------------------------------
+
+  group('make_plugin stub bundle — generic load', () {
+    test('generic/ directory exists and is non-empty', () {
+      expect(Directory(genericDir).existsSync(), isTrue);
+    });
+
+    test('every generic stub file loads without throwing', () {
+      for (final name in _genericStubNames) {
         expect(
-          () => StubLoader.load(name, searchPaths: <String>[stubsDir]),
+          () => StubLoader.load(name, searchPaths: <String>[genericDir]),
           returnsNormally,
-          reason: '$name.stub failed to load from $stubsDir',
+          reason: '$name.stub failed to load from $genericDir',
         );
       }
     });
 
-    test('the bundle directory contains exactly the 11 expected stubs', () {
-      final dir = Directory(stubsDir);
-      expect(dir.existsSync(), isTrue);
-
-      // Compare by full file name minus the trailing `.stub` so we keep
-      // `pubspec.yaml`-vs-`pubspec.yml` precision.
-      final actualNames = dir
+    test('generic/ contains exactly the 7 expected stubs — no extras, no gaps',
+        () {
+      final actualNames = Directory(genericDir)
           .listSync(recursive: false)
           .whereType<File>()
           .where((f) => f.path.endsWith('.stub'))
@@ -94,55 +120,101 @@ void main() {
         return base.substring(0, base.length - '.stub'.length);
       }).toSet();
 
-      expect(actualNames, _stubNames.toSet());
+      expect(actualNames, equals(_genericStubNames.toSet()));
     });
   });
 
-  group('make_plugin stub bundle — render', () {
-    test('every rendered file has zero known placeholders remaining', () {
-      for (final name in _stubNames) {
-        final raw = StubLoader.load(name, searchPaths: <String>[stubsDir]);
+  group('make_plugin stub bundle — magic load', () {
+    test('magic/ directory exists and is non-empty', () {
+      expect(Directory(magicDir).existsSync(), isTrue);
+    });
+
+    test('every magic stub file loads without throwing', () {
+      for (final name in _magicStubNames) {
+        expect(
+          () => StubLoader.load(name, searchPaths: <String>[magicDir]),
+          returnsNormally,
+          reason: '$name.stub failed to load from $magicDir',
+        );
+      }
+    });
+
+    test('magic/ contains exactly the 7 expected stubs — no extras, no gaps',
+        () {
+      final actualNames = Directory(magicDir)
+          .listSync(recursive: false)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.stub'))
+          .map((f) {
+        final base = p.basename(f.path);
+        return base.substring(0, base.length - '.stub'.length);
+      }).toSet();
+
+      expect(actualNames, equals(_magicStubNames.toSet()));
+    });
+  });
+
+  group('make_plugin stub bundle — combined layout', () {
+    test('total distinct stub file count is 14 (7 generic + 7 magic)', () {
+      // generic/ + magic/ each contribute their full roster. cli.dart and
+      // pubspec.yaml appear in both subdirs as distinct, mode-specific files.
+      final genericCount = Directory(genericDir)
+          .listSync(recursive: false)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.stub'))
+          .length;
+      final magicCount = Directory(magicDir)
+          .listSync(recursive: false)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.stub'))
+          .length;
+
+      expect(genericCount, 7, reason: 'generic/ stub count mismatch');
+      expect(magicCount, 7, reason: 'magic/ stub count mismatch');
+      expect(genericCount + magicCount, 14);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Render — placeholder and format assertions.
+  // ---------------------------------------------------------------------------
+
+  group('make_plugin stub bundle — generic render', () {
+    test('every generic stub has zero known scaffold placeholders after render',
+        () {
+      for (final name in _genericStubNames) {
+        final raw = StubLoader.load(name, searchPaths: <String>[genericDir]);
         final rendered = StubLoader.replace(raw, _sampleReplacements());
 
-        for (final key in _knownPlaceholders) {
+        for (final key in _knownScaffoldPlaceholders) {
           expect(
             rendered.contains('{{ $key }}'),
             isFalse,
-            reason: '$name.stub still contains {{ $key }} after rendering',
+            reason:
+                'generic/$name.stub still contains {{ $key }} after rendering',
           );
         }
       }
     });
 
-    test('every YAML stub parses as valid YAML after rendering', () {
-      const yamlStubs = <String>['pubspec.yaml', 'install.yaml'];
-      for (final name in yamlStubs) {
-        final raw = StubLoader.load(name, searchPaths: <String>[stubsDir]);
-        final rendered = StubLoader.replace(raw, _sampleReplacements());
+    test('generic pubspec.yaml parses as valid YAML after rendering', () {
+      final raw =
+          StubLoader.load('pubspec.yaml', searchPaths: <String>[genericDir]);
+      final rendered = StubLoader.replace(raw, _sampleReplacements());
 
-        expect(
-          () => loadYaml(rendered),
-          returnsNormally,
-          reason: '$name.stub did not round-trip into valid YAML',
-        );
-      }
+      expect(
+        () => loadYaml(rendered),
+        returnsNormally,
+        reason: 'generic/pubspec.yaml.stub did not round-trip into valid YAML',
+      );
     });
 
-    test('every Dart stub passes a smoke check after rendering', () {
-      // The package does NOT depend on `analyzer`, so we do a string-based
-      // smoke check: rendered Dart must declare at least one top-level
-      // construct (class / void main / library / export / import). This
-      // catches the most common scaffolder bug (empty render due to stub
-      // path typo) without pulling in the heavy analyzer dep.
+    test('every generic Dart stub passes a smoke check after rendering', () {
       const dartStubs = <String>[
         'cli.dart',
         'runtime.dart',
         'provider.dart',
-        'install_command.dart',
-        'uninstall_command.dart',
-        'config_stub.dart',
         'provider_test.dart',
-        'install_command_test.dart',
       ];
 
       final declarationAnchors = <RegExp>[
@@ -154,7 +226,7 @@ void main() {
       ];
 
       for (final name in dartStubs) {
-        final raw = StubLoader.load(name, searchPaths: <String>[stubsDir]);
+        final raw = StubLoader.load(name, searchPaths: <String>[genericDir]);
         final rendered = StubLoader.replace(raw, _sampleReplacements());
 
         final hasAnchor =
@@ -162,21 +234,107 @@ void main() {
         expect(
           hasAnchor,
           isTrue,
-          reason: '$name.stub rendered without a top-level Dart construct',
+          reason:
+              'generic/$name.stub rendered without a top-level Dart construct',
+        );
+      }
+    });
+  });
+
+  group('make_plugin stub bundle — magic render', () {
+    test('every magic stub has zero known scaffold placeholders after render',
+        () {
+      for (final name in _magicStubNames) {
+        final raw = StubLoader.load(name, searchPaths: <String>[magicDir]);
+        final rendered = StubLoader.replace(raw, _sampleReplacements());
+
+        for (final key in _knownScaffoldPlaceholders) {
+          expect(
+            rendered.contains('{{ $key }}'),
+            isFalse,
+            reason:
+                'magic/$name.stub still contains {{ $key }} after rendering',
+          );
+        }
+      }
+    });
+
+    test('magic pubspec.yaml and install.yaml parse as valid YAML after render',
+        () {
+      const yamlStubs = <String>['pubspec.yaml', 'install.yaml'];
+      for (final name in yamlStubs) {
+        final raw = StubLoader.load(name, searchPaths: <String>[magicDir]);
+        final rendered = StubLoader.replace(raw, _sampleReplacements());
+
+        expect(
+          () => loadYaml(rendered),
+          returnsNormally,
+          reason: 'magic/$name.stub did not round-trip into valid YAML',
         );
       }
     });
 
-    test('install.yaml.stub preserves the manifest-resolved placeholder', () {
+    test('every magic Dart stub passes a smoke check after rendering', () {
+      const dartStubs = <String>[
+        'cli.dart',
+        'install_command.dart',
+        'uninstall_command.dart',
+        'install_command_test.dart',
+        'config_stub.dart',
+      ];
+
+      final declarationAnchors = <RegExp>[
+        RegExp(r'^class\s+\w+', multiLine: true),
+        RegExp(r'^void\s+main\b', multiLine: true),
+        RegExp(r'^library;?', multiLine: true),
+        RegExp(r'^import\s+', multiLine: true),
+        RegExp(r'^export\s+', multiLine: true),
+      ];
+
+      for (final name in dartStubs) {
+        final raw = StubLoader.load(name, searchPaths: <String>[magicDir]);
+        final rendered = StubLoader.replace(raw, _sampleReplacements());
+
+        final hasAnchor =
+            declarationAnchors.any((anchor) => anchor.hasMatch(rendered));
+        expect(
+          hasAnchor,
+          isTrue,
+          reason:
+              'magic/$name.stub rendered without a top-level Dart construct',
+        );
+      }
+    });
+
+    test(
+        'install.yaml.stub preserves install-time tokens after scaffold render',
+        () {
       // The manifest renderer (ManifestInstaller) resolves
       // `{{ prompts.configPath }}` at install time. The scaffolder MUST NOT
-      // touch that token — its replacement map only knows the four scaffold
+      // touch that token — its replacement map only knows the six scaffold
       // keys, so any `{{ <unknown> }}` survives by design.
+      // `configFilePath` is a YAML key (not a placeholder), so it appears as
+      // plain text in the rendered output.
       final raw =
-          StubLoader.load('install.yaml', searchPaths: <String>[stubsDir]);
+          StubLoader.load('install.yaml', searchPaths: <String>[magicDir]);
       final rendered = StubLoader.replace(raw, _sampleReplacements());
 
       expect(rendered, contains('{{ prompts.configPath }}'));
+      expect(rendered, contains('configFilePath'));
+    });
+
+    test(
+        'magic pubspec.yaml contains both artisanPath and magicPath after render',
+        () {
+      final raw =
+          StubLoader.load('pubspec.yaml', searchPaths: <String>[magicDir]);
+      final rendered = StubLoader.replace(raw, _sampleReplacements());
+
+      // Both path: entries must be resolved.
+      expect(rendered, isNot(contains('{{ artisanPath }}')));
+      expect(rendered, isNot(contains('{{ magicPath }}')));
+      expect(rendered, contains('../fluttersdk_artisan'));
+      expect(rendered, contains('../magic'));
     });
   });
 }

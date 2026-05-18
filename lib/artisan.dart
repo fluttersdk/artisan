@@ -71,6 +71,7 @@ export 'src/commands/start_command.dart';
 export 'src/commands/status_command.dart';
 export 'src/commands/stop_command.dart';
 export 'src/commands/tinker_command.dart';
+export 'src/commands/helpers/workspace_enroller.dart';
 
 // Installer DSL: typed exceptions + driver abstractions + DI container + FS + operation taxonomy.
 export 'src/installer/artisan_install_command.dart';

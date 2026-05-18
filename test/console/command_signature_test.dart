@@ -40,11 +40,12 @@ void main() {
           () => CommandSignature.parse('SyncMonitors'), throwsFormatException);
     });
 
-    test('rejects underscore in name', () {
-      expect(
-        () => CommandSignature.parse('sync_monitors'),
-        throwsFormatException,
-      );
+    test('accepts underscore in name (snake_case plugins)', () {
+      // Snake_case package names (e.g. magic_logger) produce snake_case
+      // command names via the make:plugin scaffold; the regex relaxation
+      // landed in make-plugin-modes plan to support nested workspace plugins.
+      final s = CommandSignature.parse('sync_monitors');
+      expect(s.name, 'sync_monitors');
     });
 
     test('rejects starting hyphen / colon', () {
