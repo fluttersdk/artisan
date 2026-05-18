@@ -37,3 +37,4 @@ dev_dependencies:
 
 executables:
   fluttersdk_artisan: fluttersdk_artisan
+  mcp: mcp

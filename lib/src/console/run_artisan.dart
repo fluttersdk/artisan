@@ -11,6 +11,9 @@ import '../commands/logs_command.dart';
 import '../commands/make_command_command.dart';
 import '../commands/make_plugin_command.dart';
 import '../commands/consumer_scaffold_command.dart';
+import '../commands/mcp_install_command.dart';
+import '../commands/mcp_serve_command.dart';
+import '../commands/mcp_uninstall_command.dart';
 import '../commands/plugin_install_command.dart';
 import '../commands/plugin_uninstall_command.dart';
 import '../commands/plugins_refresh_command.dart';
@@ -176,4 +179,7 @@ List<ArtisanCommand> _builtinCommands(ArtisanRegistry registry) =>
       PluginUninstallCommand(),
       ConsumerScaffoldCommand(),
       TinkerCommand(),
+      McpServeCommand(),
+      McpInstallCommand(),
+      McpUninstallCommand(),
     ];
