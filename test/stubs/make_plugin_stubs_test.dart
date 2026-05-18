@@ -52,18 +52,20 @@ const List<String> _genericStubNames = <String>[
   'readme.md',
 ];
 
-/// The 7 stub file names that live under `magic/`. The `cli.dart` and
-/// `pubspec.yaml` entries are magic-specific overrides that include the
-/// `magic:` dependency and magic command exports; they are distinct files from
-/// their generic counterparts.
+/// The 9 stub file names that live under `magic/`. The `cli.dart`,
+/// `pubspec.yaml`, and `runtime.dart` entries are magic-specific overrides
+/// (magic: dep, magic command exports, ServiceProvider re-export); they are
+/// distinct files from their generic counterparts.
 const List<String> _magicStubNames = <String>[
   'pubspec.yaml',
   'cli.dart',
+  'runtime.dart',
   'install.yaml',
   'install_command.dart',
   'uninstall_command.dart',
   'install_command_test.dart',
   'config_stub.dart',
+  'service_provider.dart',
 ];
 
 /// The four known scaffold-time placeholder keys. Used to assert that no stub
@@ -139,7 +141,7 @@ void main() {
       }
     });
 
-    test('magic/ contains exactly the 7 expected stubs — no extras, no gaps',
+    test('magic/ contains exactly the 9 expected stubs — no extras, no gaps',
         () {
       final actualNames = Directory(magicDir)
           .listSync(recursive: false)
@@ -155,9 +157,10 @@ void main() {
   });
 
   group('make_plugin stub bundle — combined layout', () {
-    test('total distinct stub file count is 14 (7 generic + 7 magic)', () {
-      // generic/ + magic/ each contribute their full roster. cli.dart and
-      // pubspec.yaml appear in both subdirs as distinct, mode-specific files.
+    test('total distinct stub file count is 16 (7 generic + 9 magic)', () {
+      // generic/ + magic/ each contribute their full roster. cli.dart,
+      // pubspec.yaml, and runtime.dart appear in both subdirs as distinct,
+      // mode-specific files.
       final genericCount = Directory(genericDir)
           .listSync(recursive: false)
           .whereType<File>()
@@ -170,8 +173,8 @@ void main() {
           .length;
 
       expect(genericCount, 7, reason: 'generic/ stub count mismatch');
-      expect(magicCount, 7, reason: 'magic/ stub count mismatch');
-      expect(genericCount + magicCount, 14);
+      expect(magicCount, 9, reason: 'magic/ stub count mismatch');
+      expect(genericCount + magicCount, 16);
     });
   });
 
@@ -277,10 +280,12 @@ void main() {
     test('every magic Dart stub passes a smoke check after rendering', () {
       const dartStubs = <String>[
         'cli.dart',
+        'runtime.dart',
         'install_command.dart',
         'uninstall_command.dart',
         'install_command_test.dart',
         'config_stub.dart',
+        'service_provider.dart',
       ];
 
       final declarationAnchors = <RegExp>[
@@ -321,6 +326,57 @@ void main() {
 
       expect(rendered, contains('{{ prompts.configPath }}'));
       expect(rendered, contains('configFilePath'));
+    });
+
+    test('install.yaml.stub publish key renders without double .stub suffix',
+        () {
+      // Change B regression: the publish map key previously rendered as
+      // `install/magic_logger_config.dart.stub` because the scaffold was
+      // appending `.stub` to the template token. The fix in install.yaml.stub
+      // removed the erroneous suffix so only `install/magic_logger_config.dart`
+      // reaches the installer at runtime.
+      final raw =
+          StubLoader.load('install.yaml', searchPaths: <String>[magicDir]);
+      final rendered = StubLoader.replace(raw, _sampleReplacements());
+      final yaml = loadYaml(rendered) as YamlMap;
+      final publishKeys =
+          (yaml['publish'] as YamlMap).keys.cast<String>().toList();
+
+      expect(
+        publishKeys.any((k) => k.endsWith('.stub.stub')),
+        isFalse,
+        reason: 'publish keys must not carry a double .stub suffix',
+      );
+      expect(
+        publishKeys,
+        contains('install/magic_logger_config.dart'),
+        reason: 'expected publish key without any .stub suffix',
+      );
+    });
+
+    test(
+        'install_command.dart.stub stubName arg references stubName without .stub suffix',
+        () {
+      // Change B regression: the publishConfig call previously passed
+      // `stubName: 'install/magic_logger_config.dart.stub'`, which caused the
+      // installer to look for a file that did not exist. The fix removed the
+      // trailing `.stub` from the template literal.
+      final raw = StubLoader.load(
+        'install_command.dart',
+        searchPaths: <String>[magicDir],
+      );
+      final rendered = StubLoader.replace(raw, _sampleReplacements());
+
+      expect(
+        rendered,
+        contains("stubName: 'install/magic_logger_config.dart'"),
+        reason: 'stubName must not carry a .stub suffix in the rendered source',
+      );
+      expect(
+        rendered,
+        isNot(contains("stubName: 'install/magic_logger_config.dart.stub'")),
+        reason: 'double .stub suffix must not appear in the rendered source',
+      );
     });
 
     test(
