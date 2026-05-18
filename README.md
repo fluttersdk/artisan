@@ -56,7 +56,7 @@ If you know Laravel's Artisan or Symfony Console, you already know fluttersdk_ar
 | 🎼 | **Command Registry** | Type-safe `ArtisanRegistry`, auto-discovery via `_plugins.g.dart` codegen, collision detection on register |
 | ✍️ | **Signature DSL** | Laravel-style `'cmd:name {arg} {arg?} {arg=default} {--flag} {--option=val}'` with help text inline |
 | 🧰 | **19 Built-in Commands** | `make:plugin`, `make:command`, `plugin:install`, `plugin:uninstall`, `plugins:refresh`, `consumer:scaffold`, `tinker`, `doctor`, `start`/`stop`/`restart`/`logs`, `reload`/`hot-restart`, `help`, `list`, `mcp:serve`, `mcp:install`, `mcp:uninstall` |
-| 🤖 | **MCP Server** | Single binary serves both CLI and MCP (Model Context Protocol). `mcp:install` writes a `.mcp.json` entry so any MCP-compatible client connects without extra setup. 11 V1 tools surfaced across Dusk, Telescope, and Tinker providers. Three-layer filter (file, env, CLI) controls which tools are exposed. |
+| 🤖 | **MCP Server** | Single binary serves both CLI and MCP (Model Context Protocol). `mcp:install` writes a `.mcp.json` entry so any MCP-compatible client connects without extra setup. 9 substrate tools (`artisan_start` / `_stop` / `_status` / `_logs` / `_restart` / `_reload` / `_hot_restart` / `_doctor` / `_list`) always available + up to 11 plugin tools (Dusk / Telescope / Tinker) when the consumer wrapper registers their providers. Three-layer filter (file, env, CLI) gates what each session sees. Soft-fails when no Flutter app is running; lazy-reconnects on the next tool call. |
 | 🌳 | **Magic-Free Path** | `consumer:scaffold` writes the canonical `bin/artisan.dart` + `lib/app/_plugins.g.dart` + `lib/app/commands/_index.g.dart` for plain Flutter projects. `plugin:install` works without `install.yaml` once the scaffold is present (writes to `.artisan/plugins.json` + refreshes `_plugins.g.dart` directly) |
 | 🔌 | **Plugin Protocol** | Declarative `install.yaml` manifest with `publish`, `magic.provider`, `native.*`, `prompts`, `bootstrap_command`. Procedural escape hatch via `ArtisanInstallCommand` |
 | 🏗️ | **PluginInstaller DSL** | Fluent builder: `injectProvider`, `injectConfigFactory`, `injectRoute`, `publishConfig`, `injectAndroidPermission`, `injectIntoWebHead`, `injectEnvVar` |
@@ -390,23 +390,47 @@ dart run artisan mcp:uninstall
 
 `mcp:install` writes a JSON entry under the `mcpServers.fluttersdk` key of the target `.mcp.json` file. On subsequent runs the entry is updated in place (idempotent); other server entries are preserved untouched. After install, reconnect the client once: in Claude Desktop / Claude Code run `/mcp reconnect fluttersdk`.
 
-### V1 Tool Catalog (11 tools)
+### Tool Catalog
 
-Tools are contributed by provider. Every plugin that overrides `mcpTools()` in its `ArtisanServiceProvider` subclass adds to this list.
+Two layers: **substrate** tools (always present, no plugin registration required) and **plugin** tools (contributed by any `ArtisanServiceProvider` that overrides `mcpTools()`).
+
+**Substrate tools (9 always-on)**: a curated subset of artisan's own builtin CLI commands surfaces as MCP tools so an MCP client can bootstrap the Flutter app without ever leaving the chat. Dispatch runs in-process via the registry; no VM Service required.
+
+| Tool | Wraps | What it does |
+|------|-------|--------------|
+| `artisan_start` | `start` | Boot `flutter run -d <device>` detached + record VM Service URI to `~/.artisan/state.json` |
+| `artisan_stop` | `stop` | SIGTERM the recorded `flutter run` process + delete state.json |
+| `artisan_status` | `status` | Return JSON status of the recorded Flutter app (pid + vmServiceUri + device + alive probe) |
+| `artisan_logs` | `logs` | Return recent buffered logs OR tail live with `follow: true` |
+| `artisan_restart` | `restart` | Stop + start (full process re-spawn) |
+| `artisan_reload` | `reload` | Hot reload (sends `r` to flutter run stdin); Dart state preserved |
+| `artisan_hot_restart` | `hot-restart` | Hot restart (sends `R`); drops Dart state, keeps process |
+| `artisan_doctor` | `doctor` | Preflight checks (flutter / dart / port availability) + stale `.mcp.json` advisory |
+| `artisan_list` | `list` | List every registered artisan command grouped by namespace |
+
+**Plugin tools (up to 11 V1)**: contributed by `ArtisanServiceProvider.mcpTools()` overrides. Only surface when the consumer's `bin/artisan.dart` wrapper registers the matching provider.
 
 | Provider | Tool | Description |
 |----------|------|-------------|
-| `fluttersdk_dusk` | `dusk_snap` | Capture a Semantics YAML snapshot of the running Flutter app |
-| `fluttersdk_dusk` | `dusk_tap` | Tap a widget by semantics label or test ID |
-| `fluttersdk_dusk` | `dusk_screenshot` | Capture a PNG screenshot of the current screen |
-| `fluttersdk_dusk` | `dusk_hover` | Hover over a widget (triggers hover state) |
-| `fluttersdk_dusk` | `dusk_drag` | Drag from one point to another by coordinates |
-| `fluttersdk_dusk` | `dusk_type` | Type text into the focused field |
-| `fluttersdk_telescope` | `telescope_tail` | Stream the last N HTTP + log events from Telescope |
-| `fluttersdk_telescope` | `telescope_requests` | List recorded HTTP requests with status + duration |
-| `fluttersdk_telescope` | `telescope_clear` | Clear all recorded Telescope events |
-| `fluttersdk_telescope` | `telescope_exceptions` | List recorded exceptions with stack traces |
-| `magic_tinker` | `tinker_eval` | Evaluate a Dart expression against the live Flutter VM |
+| `fluttersdk_dusk` | `dusk_snap` | Capture a Semantics YAML snapshot of the running Flutter app with `[ref=eN]` tokens for subsequent action tools |
+| `fluttersdk_dusk` | `dusk_tap` | Tap a widget by ref token from a prior `dusk_snap` |
+| `fluttersdk_dusk` | `dusk_screenshot` | Capture a JPEG / PNG screenshot of the current screen |
+| `fluttersdk_dusk` | `dusk_hover` | Hover a mouse cursor over a widget by ref (mouse-only, web + desktop) |
+| `fluttersdk_dusk` | `dusk_drag` | Drag from one widget ref to another by ref tokens |
+| `fluttersdk_dusk` | `dusk_type` | Type text into a TextField by ref (call `dusk_tap` first to focus) |
+| `fluttersdk_telescope` | `telescope_tail` | Return recent log records (filterable by level + limit) |
+| `fluttersdk_telescope` | `telescope_requests` | Return recent HTTP request records (method + url + status + duration) |
+| `fluttersdk_telescope` | `telescope_clear` | Wipe all Telescope ring buffers (http + logs + exceptions) |
+| `fluttersdk_telescope` | `telescope_exceptions` | Return recent uncaught exception records with stack traces |
+| `magic_tinker` | `tinker_eval` | Evaluate a Dart expression against the running app's root library (VM Service `evaluate` RPC) |
+
+Plugin tools need a running Flutter app (VM Service URI in `~/.artisan/state.json`) because their dispatch routes through `ext.*` VM Service extensions. Substrate tools that do not need a running app (`artisan_doctor`, `artisan_list`, `artisan_status` reading absent state) work even with no `flutter run` in progress; the others fail gracefully with `### Error\nRun \`artisan start\` to launch the Flutter app, then retry the tool call.`
+
+### MCP Server Lifecycle
+
+The server boots in **soft-fail mode**: if `~/.artisan/state.json` is missing at `initialize` time (no Flutter app running yet), the server stays online with 0 plugin tools registered and the 9 substrate tools available. On the next `tools/call` requiring VM Service, the server **lazy-reconnects** via a memoized in-flight future (race-guarded so two concurrent calls share one connect attempt). This lets MCP clients (Claude Code, Cursor, Windsurf) survive the natural dev cycle of starting and stopping the Flutter app without ever reconnecting the server.
+
+`bin/mcp.dart` is the canonical entry: `dart run fluttersdk_artisan:mcp`. It forces `delegateToConsumer: false` so the substrate's complete builtin list (including `mcp:serve`) owns dispatch even when the cwd has a consumer `bin/artisan.dart` wrapper that might be stale.
 
 ### Three-Layer Filter
 

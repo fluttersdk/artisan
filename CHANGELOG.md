@@ -57,10 +57,19 @@ Artisan absorbs `fluttersdk_mcp` into its core. The same binary that runs CLI co
 
 **Plugin-contributed tool catalog**: every `ArtisanServiceProvider` subclass may override `mcpTools()` (default: empty list) to contribute tools. The server collects tools from all registered providers at startup. No manual registration step is required.
 
-**11 V1 tools across three providers**:
-- `fluttersdk_dusk` (6 tools): `dusk_snap`, `dusk_tap`, `dusk_screenshot`, `dusk_hover`, `dusk_drag`, `dusk_type`.
-- `fluttersdk_telescope` (4 tools): `telescope_tail`, `telescope_requests`, `telescope_clear`, `telescope_exceptions`.
-- `magic_tinker` (1 tool): `tinker_eval`.
+**Two tool layers**:
+
+- **Substrate tools (9 always-on)**: a curated subset of artisan's own CLI commands surfaces as MCP tools via `McpServer._artisanCommandTools()` so an MCP client can bootstrap the Flutter app without ever leaving the chat. Dispatch runs in-process via the registry; no VM Service required. The 9: `artisan_start`, `artisan_stop`, `artisan_status`, `artisan_logs`, `artisan_restart`, `artisan_reload`, `artisan_hot_restart`, `artisan_doctor`, `artisan_list`. Per-command `inputSchema` is byte-verified against the underlying command's `configure(ArgParser)` declarations so the wire contract cannot drift from the CLI surface.
+- **Plugin tools (up to 11 V1)**: contributed by `ArtisanServiceProvider.mcpTools()` overrides. Dispatch routes through `ext.*` VM Service extensions.
+  - `fluttersdk_dusk` (6 tools): `dusk_snap`, `dusk_tap`, `dusk_screenshot`, `dusk_hover`, `dusk_drag`, `dusk_type`.
+  - `fluttersdk_telescope` (4 tools): `telescope_tail`, `telescope_requests`, `telescope_clear`, `telescope_exceptions`.
+  - `magic_tinker` (1 tool): `tinker_eval`.
+
+**Soft-fail server lifecycle**: when `~/.artisan/state.json` is absent at `initialize` time (no Flutter app running), the server stays online with the 9 substrate tools available + 0 plugin tools registered. On the next `tools/call` requiring VM Service, the server lazy-reconnects via a memoized in-flight future (race-guarded so two concurrent calls share one connect attempt). This lets MCP clients survive the natural dev cycle of starting and stopping the Flutter app without ever reconnecting the server. Tool calls without a running app return `CallToolResult(isError: true)` whose text contains `Run \`artisan start\` to launch the Flutter app, then retry the tool call.` so the client model can self-correct.
+
+**`bin/mcp.dart` canonical entry**: `dart run fluttersdk_artisan:mcp`. Forces `delegateToConsumer: false` so the substrate's complete builtin list (including `mcp:serve` itself) owns dispatch even when the cwd has a consumer `bin/artisan.dart` wrapper that might be missing the new `mcp:*` commands.
+
+**Tool descriptions in canonical Claude Code format**: imperative opening sentence + brief context paragraph + `Usage:` bullet list + constraint-forward language. Per-property `inputSchema` descriptions carry defaults + concrete examples. Critical info first because CC truncates MCP descriptions at 2KB chars (`MAX_MCP_DESCRIPTION_LENGTH`). Pattern adopted from CC's built-in tool descriptions (Read / Write / Edit / Bash / Glob / AskUserQuestion).
 
 **Three-layer filter** (Cargo-style precedence; deny wins at every layer):
 1. File: `.artisan/mcp.json` `packages.deny` / `packages.allow` (lowest priority).
@@ -72,6 +81,10 @@ Worked example: `.artisan/mcp.json` `{"packages":{"deny":["fluttersdk_telescope"
 ### Plugin Contract Extension
 
 `ArtisanServiceProvider` gains a new default-empty method `mcpTools()` that returns `List<McpToolDescriptor>`. Existing providers that do not override it continue to work without any change. Providers that want to expose MCP tools override the method and return their descriptor list (each carries `name`, `description`, `inputSchema` as a JSON Schema Map, and `extensionMethod` for VM Service dispatch); the MCP server collects these at startup automatically and routes tool calls through the matching `ext.*` VM Service extension.
+
+`ArtisanRegistry` gains `mcpTools` getter (immutable view), `registerMcpToolsFor(provider)` (mirrors `registerAll` collision pattern), and `providerNameFor(toolName)` (filter attribution lookup). A new `ArtisanMcpToolCollisionException` mirrors the existing `ArtisanCommandCollisionException` shape: when two plugins declare the same tool name the registry throws with both provider names in the message so the operator knows which packages clashed (instead of dart_mcp's unattributed `StateError`).
+
+`runArtisan(args, ...)` gains an optional `collectMcpTools: false` parameter and `delegateToConsumer: true` parameter. CLI invocations (`dart run :artisan list`) skip MCP collection entirely (no cost overhead). MCP server entry (`bin/mcp.dart`) opts in via `collectMcpTools: true` and opts out of consumer delegation via `delegateToConsumer: false`.
 
 ### Removed Packages: fluttersdk_mcp (absorbed into artisan core)
 

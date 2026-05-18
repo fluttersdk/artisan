@@ -560,7 +560,82 @@ Document this requirement in your plugin README.
 
 ---
 
-## 9. Anti-Patterns
+## 9. Contributing MCP Tools (`mcpTools()`)
+
+Artisan ships a built-in MCP (Model Context Protocol) server: the same binary that runs CLI commands also serves stdio JSON-RPC tools to Claude / Cursor / Windsurf via `dart run fluttersdk_artisan:mcp`. Plugins contribute tools through the same `ArtisanServiceProvider` that registers commands.
+
+### The contract
+
+`ArtisanServiceProvider` defines a default-empty `mcpTools()` method. Override it to return a list of `McpToolDescriptor`s. The MCP server collects descriptors from every registered provider at `initialize` time and surfaces them to the client. No separate registration step is required.
+
+```dart
+class AwesomePluginArtisanProvider extends ArtisanServiceProvider {
+  @override
+  String get providerName => 'fluttersdk_awesome';
+
+  @override
+  List<ArtisanCommand> commands() => [AwesomePingCommand()];
+
+  @override
+  List<McpToolDescriptor> mcpTools() => const <McpToolDescriptor>[
+        McpToolDescriptor(
+          name: 'awesome_ping',
+          description: 'Ping the awesome service and return latency.\n'
+              '\n'
+              'Calls the running app\'s `ext.awesome.ping` VM Service '
+              'extension with the provided URL and returns the measured '
+              'latency in milliseconds. Use to verify connectivity from '
+              'the running Flutter app without rebuilding the UI.\n'
+              '\n'
+              'Usage:\n'
+              '- Required: `url` (string). Must include scheme.\n'
+              '- Returns: `{latency_ms: <int>, status: <code>}`.\n'
+              '- Errors when the app has no `ext.awesome.ping` handler '
+              'registered; the plugin\'s runtime must call '
+              '`registerExtension(\'ext.awesome.ping\', handler)` during '
+              '`AwesomePlugin.install()`.',
+          inputSchema: <String, dynamic>{
+            'type': 'object',
+            'properties': <String, dynamic>{
+              'url': <String, dynamic>{
+                'type': 'string',
+                'description':
+                    'Target URL including scheme (e.g. `https://api.example.com`).',
+              },
+            },
+            'required': <String>['url'],
+          },
+          extensionMethod: 'ext.awesome.ping',
+        ),
+      ];
+}
+```
+
+### Description format
+
+Tool descriptions follow Claude Code's canonical format: imperative opening sentence + brief context paragraph + `Usage:` bullet list + constraint-forward language. Put the critical info first; CC truncates MCP descriptions at 2,048 chars. Per-property `inputSchema` descriptions should include defaults + concrete examples so the model picks the right argument shape without guessing. The artisan substrate's own `artisan_start` / `artisan_doctor` / `artisan_logs` descriptions (in `lib/src/mcp/mcp_server.dart`) are the canonical reference.
+
+### Dispatch
+
+Plugin tools route through `ext.*` VM Service extensions: when the MCP client invokes the tool, the server calls `vmClient.callServiceExtension(extensionMethod, isolateId, args)` and wraps the result in `CallToolResult(content: [TextContent(text: jsonEncode(result))])`. The plugin's runtime side (typically a `XxxPlugin.install()` method called from the app's `main.dart`) must register the matching extension method. Errors propagate as `CallToolResult(isError: true)` so the client model can self-correct.
+
+For a substrate-command-style tool that does NOT need a running app (a tool that dispatches to in-process Dart code), use a sentinel `extensionMethod` like `local:<tool-name>` and add a routing branch in your plugin's own MCP wrapping; artisan does not currently expose a public hook for non-VM-Service dispatch outside the substrate `artisan_*` allowlist.
+
+### Filtering
+
+The 3-layer filter (`.artisan/mcp.json` file + env vars + CLI flags) applies to plugin tools the same way it applies to substrate tools. A user can deny your entire plugin via `--exclude-package fluttersdk_awesome` or a specific tool via `--exclude-tool awesome_ping`. Provider name as reported by `ArtisanServiceProvider.providerName` is the filter key for package-level deny; tool name (from `McpToolDescriptor.name`) is the key for tool-level deny.
+
+### Testing
+
+Plugin tools are unit-testable via the same `_FakeMcpProvider` pattern used in `references/fluttersdk_artisan/test/mcp/mcp_server_test.dart`. Build an `ArtisanRegistry`, call `registerMcpToolsFor(_FakeMcpProvider(providerName: 'x', tools: [_tool('awesome_ping')]))`, spawn `McpServer.test(channel: ..., registry: registry, filter: McpFilterConfig.empty(), vmClientFactory: (_) => _StubVmServiceClient(...), stateReader: () async => ...)`, then drive it through a real `MCPClient` over an in-memory `StreamChannelController` pair. The pattern is documented in the existing test file; copy-paste the stub + harness for your plugin's test suite.
+
+### Consumer-side wiring
+
+Once your plugin ships `mcpTools()`, the consumer app's `bin/artisan.dart` wrapper needs to register your `ArtisanServiceProvider` (uncomment or add the `registry.registerProvider(AwesomePluginArtisanProvider())` line). The MCP server picks up the tools automatically on the next `mcp:serve` invocation; the user reconnects their MCP client via `/mcp reconnect fluttersdk` to refresh the tool manifest.
+
+---
+
+## 10. Anti-Patterns
 
 ### Do not bypass `InstallTransaction`
 
