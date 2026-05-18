@@ -242,6 +242,65 @@ void main() {
       expect(harness.stub.didConnect, isTrue);
     });
 
+    test('substrate commands surface as artisan_* MCP tools', () async {
+      // The 9 allowlisted substrate commands MUST appear as MCP tools even
+      // when no plugin providers are registered. This is the bootstrap path:
+      // an MCP client (Claude Code) can call artisan_start BEFORE any
+      // Flutter app is running.
+      final registry = ArtisanRegistry();
+      registry.registerAll(
+        <ArtisanCommand>[
+          _FakeSubstrateCommand(
+              'start', 'Boot flutter run -d <device> detached.'),
+          _FakeSubstrateCommand('doctor', 'Run environment preflight checks.'),
+        ],
+        providerName: 'fluttersdk_artisan',
+      );
+
+      final harness = await _TestHarness.build(
+        registry: registry,
+        filter: McpFilterConfig.empty(),
+      );
+      addTearDown(harness.dispose);
+
+      final tools = await harness.connection.listTools();
+      final names = tools.tools.map((t) => t.name).toList();
+      expect(names, contains('artisan_start'));
+      expect(names, contains('artisan_doctor'));
+    });
+
+    test('artisan_* tool dispatch runs command in-process + returns output',
+        () async {
+      final registry = ArtisanRegistry();
+      registry.registerAll(
+        <ArtisanCommand>[
+          _FakeSubstrateCommand(
+            'status',
+            'Print JSON status.',
+            onHandle: (ctx) async {
+              ctx.output.info('{"running":false}');
+              return 0;
+            },
+          ),
+        ],
+        providerName: 'fluttersdk_artisan',
+      );
+
+      final harness = await _TestHarness.build(
+        registry: registry,
+        filter: McpFilterConfig.empty(),
+      );
+      addTearDown(harness.dispose);
+
+      final result = await harness.connection.callTool(
+        CallToolRequest(name: 'artisan_status', arguments: const {}),
+      );
+      expect(result.isError, isFalse);
+      final text = (result.content.first as TextContent).text;
+      expect(text, contains('# `artisan status` exit 0'));
+      expect(text, contains('{"running":false}'));
+    });
+
     test('initialize stays online when state.json has no vmServiceUri',
         () async {
       // V1 soft-fail policy: the MCP server stays connected even when no
@@ -447,4 +506,30 @@ void main() {
       expect(harness.stub.calls, isEmpty);
     });
   });
+}
+
+/// File-private substrate command fake for the artisan_* tool tests.
+/// Skips the signature DSL boilerplate and lets the test pin an `onHandle`
+/// closure that observes the dispatch path without spinning up a real
+/// command implementation.
+class _FakeSubstrateCommand extends ArtisanCommand {
+  _FakeSubstrateCommand(this._name, this._description, {this.onHandle});
+
+  final String _name;
+  final String _description;
+  final Future<int> Function(ArtisanContext)? onHandle;
+
+  @override
+  String get name => _name;
+
+  @override
+  String get description => _description;
+
+  @override
+  CommandBoot get boot => CommandBoot.none;
+
+  @override
+  Future<int> handle(ArtisanContext ctx) async {
+    return onHandle?.call(ctx) ?? 0;
+  }
 }
