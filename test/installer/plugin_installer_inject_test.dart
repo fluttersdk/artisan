@@ -373,4 +373,138 @@ void main() {
       expect(chained, same(installer));
     });
   });
+
+  group('PluginInstaller — end-of-list inject (Change E pattern + indent)', () {
+    late Directory tempDir;
+
+    setUp(() {
+      tempDir = Directory.systemTemp.createTempSync('plinst_inj_end_');
+    });
+
+    tearDown(() {
+      if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+    });
+
+    /// lib/config/app.dart fixture with 3 existing provider entries, mirroring
+    /// the real magic:install scaffold shape. All three names end in
+    /// `ServiceProvider` to satisfy the production regex
+    /// `\w+ServiceProvider\(app\),(?=\s*\n\s*\])`. The closing `]` sits on its
+    /// own line with 6-space indent so the lookahead fires on the last entry.
+    const appConfigFixtureMultiProvider = '''
+import 'package:magic/magic.dart';
+
+class AppConfig {
+  static Map<String, dynamic> build() {
+    return {
+      'providers': [
+        (app) => AppServiceProvider(app),
+        (app) => RouteServiceProvider(app),
+        (app) => LoggingServiceProvider(app),
+      ],
+    };
+  }
+}
+''';
+
+    /// lib/main.dart fixture with 2 existing configFactories entries.
+    /// The closing `]` is on its own line so the lookahead `(?=\s*\n\s*\])` fires.
+    const mainDartFixtureMultiFactory = '''
+import 'package:magic/magic.dart';
+import 'config/app.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Magic.init(
+    configFactories: [
+      () => fooConfig,
+      () => barConfig,
+    ],
+  );
+  runApp(MyApp());
+}
+''';
+
+    test(
+        'injectProvider appends to the END of the providers list (not the top)',
+        () async {
+      // Seed the multi-provider fixture to disk.
+      final appConfigPath = p.join(tempDir.path, 'lib', 'config', 'app.dart');
+      File(appConfigPath).createSync(recursive: true);
+      File(appConfigPath).writeAsStringSync(appConfigFixtureMultiProvider);
+
+      final result =
+          await PluginInstaller(_ctxFor(tempDir), pluginName: 'mytest')
+              .injectProvider('MyTestProvider')
+              .commit(force: true);
+
+      expect(result, isA<Success>());
+      final content = File(appConfigPath).readAsStringSync();
+      // The new entry must land AFTER the last existing provider, not before it.
+      final newIdx = content.indexOf('MyTestProvider');
+      final lastExistingIdx = content.indexOf('LoggingServiceProvider');
+      expect(newIdx, greaterThan(lastExistingIdx));
+    });
+
+    test(
+        'injectProvider uses 6-space indent matching the surrounding list style',
+        () async {
+      final appConfigPath = p.join(tempDir.path, 'lib', 'config', 'app.dart');
+      File(appConfigPath).createSync(recursive: true);
+      File(appConfigPath).writeAsStringSync(appConfigFixtureMultiProvider);
+
+      final result =
+          await PluginInstaller(_ctxFor(tempDir), pluginName: 'mytest')
+              .injectProvider('MyTestProvider')
+              .commit(force: true);
+
+      expect(result, isA<Success>());
+      final content = File(appConfigPath).readAsStringSync();
+      // The injected line must start with exactly 6 spaces (matching list peers).
+      expect(
+        content,
+        matches(
+          RegExp(r'^      \(app\) => MyTestProvider\(app\),$', multiLine: true),
+        ),
+      );
+    });
+
+    test('injectConfigFactory appends to the END of the configFactories list',
+        () async {
+      // Seed the multi-factory main.dart fixture to disk.
+      final mainDartPath = p.join(tempDir.path, 'lib', 'main.dart');
+      File(mainDartPath).createSync(recursive: true);
+      File(mainDartPath).writeAsStringSync(mainDartFixtureMultiFactory);
+
+      final result =
+          await PluginInstaller(_ctxFor(tempDir), pluginName: 'mytest')
+              .injectConfigFactory('myConfig')
+              .commit(force: true);
+
+      expect(result, isA<Success>());
+      final content = File(mainDartPath).readAsStringSync();
+      // The new entry must land AFTER the last existing factory, not before it.
+      final newIdx = content.indexOf('myConfig');
+      final lastExistingIdx = content.indexOf('barConfig');
+      expect(newIdx, greaterThan(lastExistingIdx));
+    });
+
+    test('injectConfigFactory uses 6-space indent', () async {
+      final mainDartPath = p.join(tempDir.path, 'lib', 'main.dart');
+      File(mainDartPath).createSync(recursive: true);
+      File(mainDartPath).writeAsStringSync(mainDartFixtureMultiFactory);
+
+      final result =
+          await PluginInstaller(_ctxFor(tempDir), pluginName: 'mytest')
+              .injectConfigFactory('myConfig')
+              .commit(force: true);
+
+      expect(result, isA<Success>());
+      final content = File(mainDartPath).readAsStringSync();
+      // The injected line must start with exactly 6 spaces (matching list peers).
+      expect(
+        content,
+        matches(RegExp(r'^      \(\) => myConfig,$', multiLine: true)),
+      );
+    });
+  });
 }
