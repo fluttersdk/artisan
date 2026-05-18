@@ -269,9 +269,9 @@ That is the entire authoring loop. No manual provider edits, no manual registry 
 
 | Command | Description |
 |---------|-------------|
-| `mcp:serve [--allow-tool <name>] [--deny-tool <name>] [--filter-package <pkg>]` | Start the MCP server (stdio JSON-RPC). Merges three filter layers: `.artisan/mcp.json` (file), `ARTISAN_MCP_TOOLS_ALLOW` / `ARTISAN_MCP_TOOLS_DENY` (env), and CLI flags. Deny wins over allow at every layer. |
-| `mcp:install [--client=<name>]` | Write (or update) the `.mcp.json` entry for the named MCP client so it auto-starts `mcp:serve`. Defaults to Claude Desktop (`claude`). |
-| `mcp:uninstall [--client=<name>]` | Remove the artisan entry from `.mcp.json`. |
+| `mcp:serve [--include-tool <name>] [--exclude-tool <name>] [--include-package <pkg>] [--exclude-package <pkg>]` | Start the MCP server (stdio JSON-RPC). Merges three filter layers: `.artisan/mcp.json` (file), `ARTISAN_MCP_TOOLS_ALLOW` / `ARTISAN_MCP_TOOLS_DENY` / `ARTISAN_MCP_PACKAGES_ALLOW` / `ARTISAN_MCP_PACKAGES_DENY` (env), and CLI flags. Deny wins over allow at every layer. CLI flags are repeatable; CLI replaces env+file on the allow lists, deny lists from every layer union. |
+| `mcp:install [--path <file>]` | Write (or update) the `fluttersdk` entry under `mcpServers` in `.mcp.json` (default: `.mcp.json` in cwd). Idempotent; preserves other server entries. |
+| `mcp:uninstall [--path <file>]` | Remove the `fluttersdk` entry from `.mcp.json` (default: `.mcp.json` in cwd). |
 
 ## Command Signature DSL
 
@@ -378,17 +378,17 @@ One binary, two surfaces: CLI commands and MCP tools share the same `ArtisanRegi
 ### Installing the MCP entry
 
 ```bash
-# Write (or update) the .mcp.json entry for Claude Desktop (default)
+# Write the .mcp.json entry in the current directory (default: .mcp.json)
 dart run artisan mcp:install
 
-# Write for a specific client
-dart run artisan mcp:install --client=cursor
+# Write to a different config path
+dart run artisan mcp:install --path /path/to/.mcp.json
 
 # Remove the entry
 dart run artisan mcp:uninstall
 ```
 
-`mcp:install` writes a JSON entry under the `mcpServers` key of the client's config file. On subsequent runs the entry is updated in place (idempotent). After install, reconnect the client once: in Claude Desktop run `/mcp reconnect fluttersdk`.
+`mcp:install` writes a JSON entry under the `mcpServers.fluttersdk` key of the target `.mcp.json` file. On subsequent runs the entry is updated in place (idempotent); other server entries are preserved untouched. After install, reconnect the client once: in Claude Desktop / Claude Code run `/mcp reconnect fluttersdk`.
 
 ### V1 Tool Catalog (11 tools)
 
@@ -416,7 +416,7 @@ Tools are filtered at three layers. Deny wins over allow at every layer. The lay
 |-------|-----------|---------|
 | File | `.artisan/mcp.json` `packages.deny` / `packages.allow` | Remove all Telescope tools without touching env |
 | Env | `ARTISAN_MCP_TOOLS_DENY` / `ARTISAN_MCP_TOOLS_ALLOW` (comma-separated tool names) | Override file config in CI or per-session |
-| CLI | `--deny-tool <name>` / `--allow-tool <name>` flags on `mcp:serve` | One-shot override for a single server start |
+| CLI | `--exclude-tool <name>` / `--include-tool <name>` / `--include-package <pkg>` / `--exclude-package <pkg>` flags on `mcp:serve` (each repeatable) | One-shot override for a single server start |
 
 **Example: remove Telescope tools via file, then override one tool via env, then exclude tinker_eval via CLI**
 
@@ -439,7 +439,7 @@ export ARTISAN_MCP_TOOLS_DENY=dusk_snap
 Step 3: CLI flag for a one-shot session that additionally excludes `tinker_eval`:
 
 ```bash
-dart run artisan mcp:serve --deny-tool tinker_eval
+dart run artisan mcp:serve --exclude-tool tinker_eval
 ```
 
 Result: the running server exposes 5 tools (`dusk_tap`, `dusk_screenshot`, `dusk_hover`, `dusk_drag`, `dusk_type`). Deny at any layer is final: `dusk_snap` denied by env wins over any allow in the file; `tinker_eval` denied by CLI wins over everything.
@@ -455,21 +455,25 @@ Override `mcpTools()` in your `ArtisanServiceProvider` subclass to contribute to
 ```dart
 class AwesomePluginArtisanProvider extends ArtisanServiceProvider {
   @override
-  List<McpTool> mcpTools() => [
-        McpTool(
+  List<McpToolDescriptor> mcpTools() => const <McpToolDescriptor>[
+        McpToolDescriptor(
           name: 'awesome_ping',
           description: 'Ping the awesome service and return latency.',
-          inputSchema: McpInputSchema(
-            properties: {
-              'url': McpProperty.string(description: 'Target URL'),
+          inputSchema: <String, dynamic>{
+            'type': 'object',
+            'properties': <String, dynamic>{
+              'url': <String, dynamic>{
+                'type': 'string',
+                'description': 'Target URL',
+              },
             },
-            required: ['url'],
-          ),
-          handler: (args) async {
-            final url = args['url'] as String;
-            // ... your work ...
-            return McpToolResult.text('pong: 42ms');
+            'required': <String>['url'],
           },
+          // The MCP server dispatches `awesome_ping` by calling this VM
+          // Service extension on the running Flutter app. Register the
+          // handler in your plugin's runtime via `registerExtension('ext.
+          // awesome.ping', handler)` so the call lands in your app code.
+          extensionMethod: 'ext.awesome.ping',
         ),
       ];
 }

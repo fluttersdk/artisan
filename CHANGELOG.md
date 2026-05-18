@@ -45,9 +45,9 @@ First public release. Symfony-Console-grade CLI framework for Dart and Flutter. 
 - `help <cmd>`: detailed help for a single command.
 
 **MCP Server**
-- `mcp:serve [--allow-tool <name>] [--deny-tool <name>] [--filter-package <pkg>]`: start the MCP server (stdio JSON-RPC). Merges three filter layers: `.artisan/mcp.json` (file), env vars (env), CLI flags (highest priority). Deny wins over allow at every layer.
-- `mcp:install [--client=<name>]`: write (or update) the `.mcp.json` entry for the named MCP client. Defaults to Claude Desktop (`claude`). Idempotent.
-- `mcp:uninstall [--client=<name>]`: remove the artisan entry from `.mcp.json`.
+- `mcp:serve [--include-tool <name>] [--exclude-tool <name>] [--include-package <pkg>] [--exclude-package <pkg>]`: start the MCP server (stdio JSON-RPC). Each flag is repeatable. Merges three filter layers: `.artisan/mcp.json` (file), `ARTISAN_MCP_TOOLS_*` / `ARTISAN_MCP_PACKAGES_*` (env), CLI flags. Cargo-style replace on the allow lists (CLI replaces env+file), union on the deny lists, deny wins over allow at every layer.
+- `mcp:install [--path <file>]`: write (or update) the `mcpServers.fluttersdk` entry in `.mcp.json` (default: `.mcp.json` in cwd). Idempotent; preserves other server entries.
+- `mcp:uninstall [--path <file>]`: remove the `mcpServers.fluttersdk` entry from `.mcp.json` (default: `.mcp.json` in cwd).
 
 ### MCP Server
 
@@ -65,13 +65,13 @@ Artisan absorbs `fluttersdk_mcp` into its core. The same binary that runs CLI co
 **Three-layer filter** (Cargo-style precedence; deny wins at every layer):
 1. File: `.artisan/mcp.json` `packages.deny` / `packages.allow` (lowest priority).
 2. Env: `ARTISAN_MCP_TOOLS_DENY` / `ARTISAN_MCP_TOOLS_ALLOW` comma-separated tool names.
-3. CLI: `--deny-tool` / `--allow-tool` flags on `mcp:serve` (highest priority).
+3. CLI: `--include-tool` / `--exclude-tool` / `--include-package` / `--exclude-package` flags on `mcp:serve` (highest priority; each repeatable).
 
-Worked example: `.artisan/mcp.json` `{"packages":{"deny":["fluttersdk_telescope"]}}` removes 4 tools. `ARTISAN_MCP_TOOLS_DENY=dusk_snap` additionally removes `dusk_snap` regardless of the file. `--deny-tool tinker_eval` on `mcp:serve` removes `tinker_eval` for that session. Result: 5 tools exposed.
+Worked example: `.artisan/mcp.json` `{"packages":{"deny":["fluttersdk_telescope"]}}` removes 4 tools. `ARTISAN_MCP_TOOLS_DENY=dusk_snap` additionally removes `dusk_snap` regardless of the file. `--exclude-tool tinker_eval` on `mcp:serve` removes `tinker_eval` for that session. Result: 5 tools exposed.
 
 ### Plugin Contract Extension
 
-`ArtisanServiceProvider` gains a new default-empty method `mcpTools()` that returns `List<McpTool>`. Existing providers that do not override it continue to work without any change. Providers that want to expose MCP tools override the method and return their tool list; the MCP server collects these at startup automatically.
+`ArtisanServiceProvider` gains a new default-empty method `mcpTools()` that returns `List<McpToolDescriptor>`. Existing providers that do not override it continue to work without any change. Providers that want to expose MCP tools override the method and return their descriptor list (each carries `name`, `description`, `inputSchema` as a JSON Schema Map, and `extensionMethod` for VM Service dispatch); the MCP server collects these at startup automatically and routes tool calls through the matching `ext.*` VM Service extension.
 
 ### Removed Packages: fluttersdk_mcp (absorbed into artisan core)
 

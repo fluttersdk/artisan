@@ -116,6 +116,13 @@ final class McpServer extends MCPServer with ToolsSupport {
   /// Main isolate id captured at initialize time; reused for every dispatch.
   String? _isolateId;
 
+  /// Memoized in-flight lazy-reconnect future. When two concurrent tool
+  /// calls arrive while [_vmClient] is null, both await the same single
+  /// connect attempt instead of each spawning a fresh [VmServiceClient]
+  /// (which would leak the loser of the race). Cleared in `finally` so the
+  /// next call after a failed connect can retry.
+  Future<void>? _reconnecting;
+
   @override
   FutureOr<InitializeResult> initialize(InitializeRequest request) async {
     // 1. Let ToolsSupport register its request handlers and seed the result.
@@ -223,32 +230,28 @@ final class McpServer extends MCPServer with ToolsSupport {
     // every dispatch so users can `artisan start` AFTER the MCP server is
     // already serving and the very next tool call picks up the new app
     // without a reconnect cycle.
+    //
+    // Race guard: two concurrent tool calls arriving while `_vmClient` is
+    // null both await the same memoized in-flight future, so the factory
+    // runs exactly once per reconnect attempt. Cleared in finally so the
+    // next call after a failed connect retries cleanly.
     if (_vmClient == null) {
-      final state = await _stateReader();
-      final wsUri = state?['vmServiceUri'] as String?;
-      if (wsUri != null && wsUri.isNotEmpty) {
-        try {
-          final vmClient = _vmClientFactory(wsUri);
-          await vmClient.connect();
-          final isolateId = await vmClient.getMainIsolateId();
-          _vmClient = vmClient;
-          _isolateId = isolateId;
-          stderr.writeln(
-            '[fluttersdk_artisan_mcp] lazy-connected to VM Service at '
-            '$wsUri',
-          );
-        } catch (e) {
-          return CallToolResult(
-            isError: true,
-            content: [
-              TextContent(
-                text: '### Error\nVM Service connect failed: $e\n\n'
-                    'Run `artisan start` to launch the Flutter app, then '
-                    'retry the tool call.',
-              ),
-            ],
-          );
-        }
+      _reconnecting ??= _lazyReconnect();
+      try {
+        await _reconnecting;
+      } catch (e) {
+        return CallToolResult(
+          isError: true,
+          content: [
+            TextContent(
+              text: '### Error\nVM Service connect failed: $e\n\n'
+                  'Run `artisan start` to launch the Flutter app, then '
+                  'retry the tool call.',
+            ),
+          ],
+        );
+      } finally {
+        _reconnecting = null;
       }
     }
 
@@ -296,6 +299,30 @@ final class McpServer extends MCPServer with ToolsSupport {
     await super.shutdown();
   }
 
+  /// Single in-flight connect attempt shared across concurrent tool calls.
+  /// Reads state.json, instantiates one [VmServiceClient] via the factory,
+  /// connects, captures the isolate id, and populates the [_vmClient] +
+  /// [_isolateId] fields. Throws on any failure so the calling dispatch
+  /// surfaces an actionable error; the [_reconnecting] finally clears the
+  /// guard so the next dispatch retries cleanly.
+  Future<void> _lazyReconnect() async {
+    final state = await _stateReader();
+    final wsUri = state?['vmServiceUri'] as String?;
+    if (wsUri == null || wsUri.isEmpty) {
+      // No state file (or no URI) means no Flutter app running. Stay null;
+      // dispatch falls through to the actionable error below.
+      return;
+    }
+    final vmClient = _vmClientFactory(wsUri);
+    await vmClient.connect();
+    final isolateId = await vmClient.getMainIsolateId();
+    _vmClient = vmClient;
+    _isolateId = isolateId;
+    stderr.writeln(
+      '[fluttersdk_artisan_mcp] lazy-connected to VM Service at $wsUri',
+    );
+  }
+
   /// Walks the registry's command list and emits an [McpToolDescriptor] for
   /// every command in [_safeArtisanCommandNames]. The allowlist excludes
   /// interactive (`tinker`, `help`), codegen (`make:*`, `*:refresh`), MCP
@@ -326,35 +353,49 @@ final class McpServer extends MCPServer with ToolsSupport {
   }
 
   /// Per-command JSON Schema. V1 covers the parameter surface of the 9
-  /// allowlisted commands explicitly. Auto-deriving from
-  /// [ArtisanCommand.signature] is a follow-up.
+  /// allowlisted commands explicitly; each schema is verified against the
+  /// command's `configure(ArgParser)` declarations so the MCP wire contract
+  /// does not drift from the CLI surface. Auto-deriving from
+  /// [ArtisanCommand.signature] / `parser.options` is a V1.x follow-up.
   Map<String, dynamic> _commandInputSchema(ArtisanCommand command) {
     switch (command.name) {
       case 'start':
+        // Mirrors `StartCommand.configure(ArgParser)` exactly. All option
+        // values are strings at the parser layer; flags are booleans.
         return <String, dynamic>{
           'type': 'object',
           'properties': <String, dynamic>{
             'device': <String, dynamic>{
               'type': 'string',
-              'description': 'Target device id (`chrome`, `macos`, `<serial>`)',
+              'description':
+                  'Target Flutter device id (`chrome`, `macos`, `<serial>`).',
             },
             'port': <String, dynamic>{
-              'type': 'integer',
-              'description': 'Web port for `chrome` device',
-            },
-            'profile': <String, dynamic>{
               'type': 'string',
-              'enum': <String>['debug', 'profile', 'release'],
+              'description': 'Web port for chrome device (default `3100`).',
+            },
+            'vm-service-port': <String, dynamic>{
+              'type': 'string',
+              'description': 'VM Service port (default `8181`).',
+            },
+            'dds': <String, dynamic>{
+              'type': 'boolean',
+              'description': 'Enable Dart Development Service (default false).',
+            },
+            'profile-static': <String, dynamic>{
+              'type': 'boolean',
+              'description': 'Use the static profile binary (default false).',
             },
           },
         };
       case 'logs':
+        // Mirrors `LogsCommand.configure`: only the --follow flag exists.
         return <String, dynamic>{
           'type': 'object',
           'properties': <String, dynamic>{
-            'tail': <String, dynamic>{
-              'type': 'integer',
-              'description': 'How many recent log lines to return',
+            'follow': <String, dynamic>{
+              'type': 'boolean',
+              'description': 'Tail the captured flutter run log (-f short).',
             },
           },
         };
@@ -370,6 +411,11 @@ final class McpServer extends MCPServer with ToolsSupport {
           'properties': <String, dynamic>{},
         };
       default:
+        // Defensive empty schema: catches any future allowlist addition
+        // that lands without an explicit per-command schema. The
+        // accompanying test asserts every allowlisted name has a non-default
+        // entry so adding to `_safeArtisanCommandNames` without updating
+        // this switch fails CI before it ships.
         return <String, dynamic>{
           'type': 'object',
           'properties': <String, dynamic>{},

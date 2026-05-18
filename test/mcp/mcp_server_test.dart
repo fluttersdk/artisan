@@ -31,11 +31,20 @@ class _StubVmServiceClient extends VmServiceClient {
   /// Set to true after [connect] is called at least once.
   bool didConnect = false;
 
+  /// Connection-attempt count. The lazy-reconnect race guard test asserts
+  /// this stays at 1 even under N concurrent dispatches starting from a
+  /// null `_vmClient`.
+  int connectCount = 0;
+
   @override
   Future<void> connect() async {
+    connectCount++;
     if (failOnConnect) {
       throw StateError('stub connect failure');
     }
+    // Yield once so concurrent waiters get a chance to interleave; without
+    // this the test cannot exercise the race window.
+    await Future<void>.delayed(Duration.zero);
     didConnect = true;
   }
 
@@ -112,6 +121,7 @@ class _TestHarness {
     Map<String, Object?>? stubResponses,
     bool stubFailOnConnect = false,
     Map<String, dynamic>? stateOverride,
+    Future<Map<String, dynamic>?> Function()? stateReader,
   }) async {
     // 1. Two paired channels: one for the server (super.fromStreamChannel),
     //    one for the client (connectServer).
@@ -132,7 +142,7 @@ class _TestHarness {
       registry: registry,
       filter: filter,
       vmClientFactory: (_) => stub,
-      stateReader: () async => stateOverride ?? defaultState,
+      stateReader: stateReader ?? () async => stateOverride ?? defaultState,
     );
 
     // 3. Drive the server with a real client over the foreign side.
@@ -240,6 +250,68 @@ void main() {
       addTearDown(harness.dispose);
 
       expect(harness.stub.didConnect, isTrue);
+    });
+
+    test(
+        'lazy-reconnect serializes via memoized future under concurrent dispatch',
+        () async {
+      // Race scenario: init runs with state.json absent (_vmClient stays
+      // null + server stays online). state.json appears (user runs
+      // `artisan start`). Two MCP tool calls arrive concurrently. Both see
+      // _vmClient == null and trigger the lazy-reconnect branch in _dispatch.
+      // The race guard MUST ensure the VmServiceClient factory runs exactly
+      // once across the two concurrent dispatches (no leak).
+      var stateRevealed = false;
+      final registry = ArtisanRegistry()
+        ..registerMcpToolsFor(
+          _FakeMcpProvider(
+            providerName: 'fluttersdk_dusk',
+            tools: [_tool('dusk_snap', extensionMethod: 'ext.dusk.snap')],
+          ),
+        );
+
+      final harness = await _TestHarness.build(
+        registry: registry,
+        filter: McpFilterConfig.empty(),
+        stubResponses: <String, Object?>{
+          'ext.dusk.snap': <String, dynamic>{'ok': true},
+        },
+        stateReader: () async {
+          // Return absent state during initialize; valid state on every
+          // subsequent call (which is the lazy-reconnect path).
+          if (!stateRevealed) {
+            stateRevealed = true;
+            return null;
+          }
+          return <String, dynamic>{
+            'vmServiceUri': 'ws://stub-only/',
+            'pid': 12345,
+          };
+        },
+      );
+      addTearDown(harness.dispose);
+
+      // Sanity: initialize ran without connecting (state was absent).
+      expect(harness.stub.connectCount, 0);
+
+      // Fire two concurrent tool calls; both should hit the lazy-reconnect
+      // branch with a null _vmClient.
+      final results = await Future.wait([
+        harness.connection.callTool(
+          CallToolRequest(name: 'dusk_snap', arguments: const {}),
+        ),
+        harness.connection.callTool(
+          CallToolRequest(name: 'dusk_snap', arguments: const {}),
+        ),
+      ]);
+
+      // Both calls succeeded.
+      expect(results.every((r) => r.isError != true), isTrue);
+      // The race guard ran the factory exactly once even though both
+      // dispatches needed the connection.
+      expect(harness.stub.connectCount, 1);
+      // Both dispatches reached the stub extension call.
+      expect(harness.stub.calls, hasLength(2));
     });
 
     test('substrate commands surface as artisan_* MCP tools', () async {
