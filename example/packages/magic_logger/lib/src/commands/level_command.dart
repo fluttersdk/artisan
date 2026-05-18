@@ -6,8 +6,7 @@ import '../runtime/magic_logger.dart';
 /// at runtime. Without an argument, prints the current level.
 class LoggerLevelCommand extends ArtisanCommand {
   @override
-  String get signature =>
-      'logger:level '
+  String get signature => 'logger:level '
       '{level? : New minimum level (debug|info|warn|error). Omit to read the current level}';
 
   @override

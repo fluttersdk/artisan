@@ -9,8 +9,7 @@ import 'package:fluttersdk_artisan/artisan.dart';
 /// works whether the app is running or not.
 class LoggerTailCommand extends ArtisanCommand {
   @override
-  String get signature =>
-      'logger:tail '
+  String get signature => 'logger:tail '
       '{--file= : Path to the log file (default: \$HOME/.magic_logger.log)} '
       '{--lines=20 : Number of trailing lines to print} '
       '{--follow : Keep streaming new lines (Ctrl+C to stop)}';
@@ -23,8 +22,7 @@ class LoggerTailCommand extends ArtisanCommand {
 
   @override
   Future<int> handle(ArtisanContext ctx) async {
-    final path =
-        (ctx.input.option('file') as String?) ??
+    final path = (ctx.input.option('file') as String?) ??
         '${Platform.environment['HOME'] ?? '/tmp'}/.magic_logger.log';
     final lines = int.tryParse(ctx.input.option('lines') as String) ?? 20;
     final follow = ctx.input.option('follow') as bool;

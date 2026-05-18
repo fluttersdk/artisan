@@ -1,0 +1,46 @@
+# magic_logger install manifest (PluginInstaller DSL schema v1).
+#
+# Demonstrates the canonical optional-section pattern: magic_logger ships a
+# free-function runtime (configureMagicLogger()) rather than a Magic
+# ServiceProvider, so no `magic:` section is declared. The publish + prompts
+# + placeholders sections render lib/config/logger.dart from the bundled
+# install/logger_config.dart.stub asset.
+#
+# See doc/install_yaml_schema.md (in fluttersdk_artisan) for the full schema.
+
+plugin_name: magic_logger
+
+publish:
+  install/logger_config.dart.stub: lib/config/logger.dart
+
+prompts:
+  - key: logPath
+    type: string
+    default: "~/.magic_logger.log"
+    question: "Log file path?"
+  - key: level
+    type: choice
+    options:
+      - debug
+      - info
+      - warn
+      - error
+    default: info
+    question: "Minimum log level?"
+
+placeholders:
+  logFilePath: "{{ prompts.logPath }}"
+  minLevel: "{{ prompts.level }}"
+
+post_install:
+  message: |
+    magic_logger installed.
+
+    Add to lib/main.dart (top of `main()`):
+      import 'config/logger.dart';
+      configureMagicLogger();
+
+    Then call MagicLogger.info(...), .warn(...), .error(...) anywhere.
+    Tail the live log with: artisan logger:tail
+
+bootstrap_command: logger:install

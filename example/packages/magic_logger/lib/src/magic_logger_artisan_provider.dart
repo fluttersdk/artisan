@@ -20,9 +20,9 @@ class MagicLoggerArtisanProvider extends ArtisanServiceProvider {
 
   @override
   List<ArtisanCommand> commands() => <ArtisanCommand>[
-    LoggerInstallCommand(),
-    LoggerUninstallCommand(),
-    LoggerTailCommand(),
-    LoggerLevelCommand(),
-  ];
+        LoggerInstallCommand(),
+        LoggerUninstallCommand(),
+        LoggerTailCommand(),
+        LoggerLevelCommand(),
+      ];
 }

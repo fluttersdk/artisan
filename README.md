@@ -332,6 +332,27 @@ Updates your `.env` file with:
 APP_KEY=base64:randomGeneratedKey...
 ```
 
+## Authoring a Plugin
+
+Run `dart run fluttersdk_artisan make:plugin foo_bar` (where `foo_bar` is your
+snake_case package name) to scaffold a complete 11-file plugin skeleton under
+`packages/foo_bar/`. The skeleton includes a `pubspec.yaml`, CLI barrel, runtime
+barrel, `ArtisanServiceProvider`, install and uninstall commands, an
+`install.yaml` manifest, a sample config stub, and two seed test files. It
+compiles and `dart test` passes without manual edits.
+
+Write your install logic declaratively in `install.yaml` (YAML-first, no Dart
+required for common cases) OR imperatively in
+`lib/src/commands/install_command.dart` using the `PluginInstaller` fluent
+builder. The fluent builder chains pubspec mutations, file writes, code injections,
+native-platform wiring, env-var declarations, interactive prompts, and shell hooks
+in a single expression that commits atomically with conflict detection and an
+install-record your `plugin:uninstall` command can reverse.
+
+For the full schema, method catalog, testing patterns, conflict-handling rules,
+and common recipes, see the
+[Plugin Authoring Guide](doc/plugin_authoring_guide.md).
+
 ## Plugin Integration
 
 Magic CLI exports its infrastructure for other plugins to build on — custom commands, stub loaders, file helpers, and console styling.

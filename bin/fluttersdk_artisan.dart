@@ -76,7 +76,9 @@ List<ArtisanCommand> _builtinCommands(ArtisanRegistry registry) =>
       ListCommand(registry),
       HelpCommand(registry),
       MakeCommandCommand(),
+      MakePluginCommand(),
       CommandsRefreshCommand(),
       PluginInstallCommand(),
+      PluginUninstallCommand(),
       TinkerCommand(),
     ];
