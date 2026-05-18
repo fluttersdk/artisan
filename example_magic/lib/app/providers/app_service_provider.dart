@@ -1,0 +1,24 @@
+import 'package:magic/magic.dart';
+
+/// Application Service Provider.
+///
+/// Use this provider to bind your own services to the IoC container and
+/// to perform any bootstrap logic that requires other services to be ready.
+class AppServiceProvider extends ServiceProvider {
+  AppServiceProvider(super.app);
+
+  @override
+  void register() {
+    // Bind your services here (sync only — do not resolve other services).
+    // Example:
+    //   app.singleton('my_service', () => MyService());
+  }
+
+  @override
+  Future<void> boot() async {
+    // Perform async bootstrap logic here.
+    //
+    // IMPORTANT: Call setUserFactory() so Auth.user<T>() returns your model:
+    //   Auth.manager.setUserFactory((data) => User.fromMap(data));
+  }
+}

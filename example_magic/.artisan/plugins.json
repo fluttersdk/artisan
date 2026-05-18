@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "name": "my_plugin",
+      "providerImport": "package:my_plugin/cli.dart",
+      "providerClass": "MyPluginArtisanProvider",
+      "registeredAt": "2026-05-18T13:00:57.148058Z"
+    }
+  ]
+}

@@ -1,25 +1,23 @@
 name: example_magic
-description: "E2E test: Magic framework + fluttersdk_artisan via plugin:install."
-publish_to: 'none'
+description: "A new Flutter project."
+publish_to: "none"
+
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.4.0
+  sdk: ^3.11.4
 
 dependencies:
   flutter:
     sdk: flutter
 
+  cupertino_icons: ^1.0.8
+
   magic:
     path: ../../magic
 
-  magic_logger:
-    path: ../example/packages/magic_logger
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^6.0.0
+  my_plugin:
+    path: ./packages/my_plugin
 
 dependency_overrides:
   fluttersdk_artisan:
@@ -31,5 +29,13 @@ dependency_overrides:
   fluttersdk_wind:
     path: ../../wind
 
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
 flutter:
   uses-material-design: true
+workspace:
+  - packages/my_plugin
