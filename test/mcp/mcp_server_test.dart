@@ -242,30 +242,41 @@ void main() {
       expect(harness.stub.didConnect, isTrue);
     });
 
-    test('initialize fails when state.json has no vmServiceUri', () async {
-      // VM Service URI unknown -> we cannot dispatch tool calls. Surface a
-      // clear error during initialize rather than registering tools that
-      // would later fail with "stub connect failure".
-      //
-      // Across the JSON-RPC boundary the `StateError` arrives at the client
-      // as an `RpcException` whose message embeds the original `toString()`,
-      // so we assert on the message text (the contract guarantee) rather
-      // than the exception type (which dart_mcp owns).
-      final registry = ArtisanRegistry();
-
-      await expectLater(
-        _TestHarness.build(
-          registry: registry,
-          filter: McpFilterConfig.empty(),
-          stateOverride: const <String, dynamic>{},
-        ),
-        throwsA(
-          predicate<Object>(
-            (e) => e.toString().contains('vmServiceUri'),
-            'error message mentions vmServiceUri',
+    test('initialize stays online when state.json has no vmServiceUri',
+        () async {
+      // V1 soft-fail policy: the MCP server stays connected even when no
+      // Flutter app is running. Individual tool calls return an actionable
+      // error at dispatch time so MCP clients (Claude Code, Cursor) can
+      // survive the natural dev cycle of starting/stopping the app without
+      // having to reconnect the server every time.
+      final registry = ArtisanRegistry()
+        ..registerMcpToolsFor(
+          _FakeMcpProvider(
+            providerName: 'fluttersdk_dusk',
+            tools: [_tool('dusk_snap')],
           ),
-        ),
+        );
+
+      final harness = await _TestHarness.build(
+        registry: registry,
+        filter: McpFilterConfig.empty(),
+        stateOverride: const <String, dynamic>{},
       );
+      addTearDown(harness.dispose);
+
+      // Server initialized cleanly; tools registered.
+      expect(harness.stub.didConnect, isFalse);
+      final tools = await harness.connection.listTools();
+      expect(tools.tools.map((t) => t.name), contains('dusk_snap'));
+
+      // Tool call surfaces the actionable error at dispatch time.
+      final result = await harness.connection.callTool(
+        CallToolRequest(name: 'dusk_snap', arguments: const {}),
+      );
+      expect(result.isError, isTrue);
+      final text = (result.content.first as TextContent).text;
+      expect(text, contains('artisan start'));
+      expect(text, contains('No Flutter app detected'));
     });
   });
 

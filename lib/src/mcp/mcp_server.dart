@@ -119,23 +119,35 @@ final class McpServer extends MCPServer with ToolsSupport {
     final result = await super.initialize(request);
 
     // 2. Discover the running Flutter app via the state file written by
-    //    `artisan start`. Without a vmServiceUri there is nothing for any
-    //    registered tool to dispatch to, so surface the error early instead
-    //    of registering tools that will all fail at call time.
+    //    `artisan start`. State file absence is NOT fatal: the MCP server
+    //    stays online, registers every tool, and individual tool calls
+    //    soft-fail at dispatch time with an actionable "run artisan start"
+    //    message. This lets MCP clients (Claude Code, Cursor, Windsurf) stay
+    //    connected across the natural dev cycle of starting / stopping the
+    //    Flutter app without having to reconnect the server every time.
     final state = await _stateReader();
     final wsUri = state?['vmServiceUri'] as String?;
-    if (wsUri == null || wsUri.isEmpty) {
-      throw StateError(
-        'McpServer: ~/.artisan/state.json is missing or has no '
-        'vmServiceUri. Run `artisan start` before connecting the MCP client.',
+    if (wsUri != null && wsUri.isNotEmpty) {
+      try {
+        final vmClient = _vmClientFactory(wsUri);
+        await vmClient.connect();
+        final isolateId = await vmClient.getMainIsolateId();
+        _vmClient = vmClient;
+        _isolateId = isolateId;
+      } catch (e) {
+        stderr.writeln(
+          '[fluttersdk_artisan_mcp] VM Service connect failed: $e. '
+          'Tool calls requiring VM connection will return an error; '
+          'restart the Flutter app and the next call will reconnect.',
+        );
+      }
+    } else {
+      stderr.writeln(
+        '[fluttersdk_artisan_mcp] no running Flutter app detected '
+        '(~/.artisan/state.json missing or empty). Tools register but VM '
+        'Service calls will fail until you run `artisan start`.',
       );
     }
-
-    final vmClient = _vmClientFactory(wsUri);
-    await vmClient.connect();
-    final isolateId = await vmClient.getMainIsolateId();
-    _vmClient = vmClient;
-    _isolateId = isolateId;
 
     // 3. Apply the filter once; survivors get registered, denied tools never
     //    reach `registerTool` so dart_mcp's native "no tool" error covers
@@ -179,6 +191,40 @@ final class McpServer extends MCPServer with ToolsSupport {
     CallToolRequest request,
     String extensionMethod,
   ) async {
+    // Lazy-reconnect: when initialize ran without a Flutter app present
+    // (state.json absent) the VM Service client is null. Retry connect on
+    // every dispatch so users can `artisan start` AFTER the MCP server is
+    // already serving and the very next tool call picks up the new app
+    // without a reconnect cycle.
+    if (_vmClient == null) {
+      final state = await _stateReader();
+      final wsUri = state?['vmServiceUri'] as String?;
+      if (wsUri != null && wsUri.isNotEmpty) {
+        try {
+          final vmClient = _vmClientFactory(wsUri);
+          await vmClient.connect();
+          final isolateId = await vmClient.getMainIsolateId();
+          _vmClient = vmClient;
+          _isolateId = isolateId;
+          stderr.writeln(
+            '[fluttersdk_artisan_mcp] lazy-connected to VM Service at '
+            '$wsUri',
+          );
+        } catch (e) {
+          return CallToolResult(
+            isError: true,
+            content: [
+              TextContent(
+                text: '### Error\nVM Service connect failed: $e\n\n'
+                    'Run `artisan start` to launch the Flutter app, then '
+                    'retry the tool call.',
+              ),
+            ],
+          );
+        }
+      }
+    }
+
     final vmClient = _vmClient;
     final isolateId = _isolateId;
     if (vmClient == null || isolateId == null) {
@@ -186,8 +232,11 @@ final class McpServer extends MCPServer with ToolsSupport {
         isError: true,
         content: [
           TextContent(
-            text: '### Error\nMcpServer not initialized; '
-                'no VM Service connection.',
+            text: '### Error\nNo Flutter app detected '
+                '(~/.artisan/state.json missing or has no vmServiceUri).\n\n'
+                'Run `artisan start` to launch the Flutter app, then retry '
+                'the tool call. The MCP server will lazy-connect on the '
+                'next invocation.',
           ),
         ],
       );
