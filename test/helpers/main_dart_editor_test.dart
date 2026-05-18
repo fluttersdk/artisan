@@ -397,5 +397,69 @@ void main() {
       expect(snippetIndex, greaterThan(closeInitIndex));
       expect(snippetIndex, lessThan(runAppIndex));
     });
+
+    // 22. wrapRunAppInSource happy path: wraps runApp with the given wrapper name.
+    test('wrapRunAppInSource wraps runApp with the given wrapper name', () {
+      const source = 'void main() async {\n'
+          '  await Magic.init();\n'
+          '  runApp(MyApp());\n'
+          '}\n';
+
+      final result =
+          MainDartEditor.wrapRunAppInSource(source, 'MagicApplication');
+
+      expect(result, contains('runApp(MagicApplication(MyApp()))'));
+    });
+
+    // 23. wrapRunAppInSource with custom appCall wraps the named entry point.
+    test(
+        'wrapRunAppInSource wraps a custom entry point when appCall is specified',
+        () {
+      const source = 'void main() {\n'
+          '  runWidget(MyApp());\n'
+          '}\n';
+
+      final result = MainDartEditor.wrapRunAppInSource(
+        source,
+        'SentryWidget',
+        appCall: 'runWidget',
+      );
+
+      expect(result, contains('runWidget(SentryWidget(MyApp()))'));
+      expect(result, isNot(contains('runApp(')));
+    });
+
+    // 24. wrapRunAppInSource idempotent: re-wrapping the same source is a no-op.
+    test('wrapRunAppInSource is idempotent when runApp is already wrapped', () {
+      const source = 'void main() async {\n'
+          '  await Magic.init();\n'
+          '  runApp(MyApp());\n'
+          '}\n';
+
+      final once =
+          MainDartEditor.wrapRunAppInSource(source, 'MagicApplication');
+      final twice = MainDartEditor.wrapRunAppInSource(once, 'MagicApplication');
+
+      expect(twice, equals(once));
+      expect('MagicApplication('.allMatches(twice).length, 1);
+    });
+
+    // 25. wrapRunAppInSource throws StateError when the entry point is absent.
+    test('wrapRunAppInSource throws StateError when no runApp is found', () {
+      const source = 'void main() async {\n'
+          '  await Magic.init();\n'
+          '}\n';
+
+      expect(
+        () => MainDartEditor.wrapRunAppInSource(source, 'MagicApplication'),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('runApp('),
+          ),
+        ),
+      );
+    });
   });
 }

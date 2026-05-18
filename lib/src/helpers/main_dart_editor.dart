@@ -268,27 +268,64 @@ class MainDartEditor {
   }) {
     // 1. Read content and locate the named entry-point call.
     final content = FileHelper.readFile(mainDartPath);
+
+    // 2. Delegate pure transform to wrapRunAppInSource, then persist.
+    final updated = wrapRunAppInSource(
+      content,
+      wrapperName,
+      appCall: appCall,
+      sourceName: mainDartPath,
+    );
+    if (updated == content) return; // already wrapped — nothing to write.
+    FileHelper.writeFile(mainDartPath, updated);
+  }
+
+  /// Pure-functional sibling of [wrapRunApp].
+  ///
+  /// Replace `<appCall>(<expr>)` with `<appCall>(<wrapperName>(<expr>))` in
+  /// [source] and return the modified string. No file I/O is performed.
+  ///
+  /// Idempotent: when `<wrapperName>(` already appears as the direct argument
+  /// to `<appCall>`, [source] is returned unchanged.
+  ///
+  /// Throws [StateError] when no `<appCall>(` call can be found in [source].
+  ///
+  /// @param source      The full source text to transform.
+  /// @param wrapperName The widget constructor name to wrap around the inner
+  ///                    expression (e.g. `'MagicApplication'`).
+  /// @param appCall     The Flutter entry-point function name to match
+  ///                    (defaults to `'runApp'`). Pass a custom value (e.g.
+  ///                    `'runWidget'`) for non-standard entry points.
+  /// @param sourceName  Optional label used in [StateError] messages to help
+  ///                    the caller identify which source triggered the error.
+  /// @return            The transformed source, or [source] unchanged when the
+  ///                    wrapper is already present.
+  static String wrapRunAppInSource(
+    String source,
+    String wrapperName, {
+    String appCall = 'runApp',
+    String sourceName = '<source>',
+  }) {
+    // 1. Locate the named entry-point call; throw when absent.
     final entryAnchor = RegExp('${RegExp.escape(appCall)}\\(', multiLine: true);
-    final match = entryAnchor.firstMatch(content);
+    final match = entryAnchor.firstMatch(source);
     if (match == null) {
       throw StateError(
-        'MainDartEditor.wrapRunApp: no "$appCall(" found in $mainDartPath',
+        'MainDartEditor.wrapRunAppInSource: no "$appCall(" found in $sourceName',
       );
     }
 
     // 2. Skip when already wrapped (idempotency).
-    if (content.contains('$appCall($wrapperName(')) {
-      return;
+    if (source.contains('$appCall($wrapperName(')) {
+      return source;
     }
 
     // 3. Locate the matching `)` of the entry-point call and reconstruct it
     //    with the wrapper injected around the inner expression.
     final openParen = match.end - 1; // position of `(`
-    final closeParen = _findMatchingParen(content, openParen);
-    final innerExpr = content.substring(openParen + 1, closeParen);
-    final updated =
-        '${content.substring(0, openParen + 1)}$wrapperName($innerExpr)${content.substring(closeParen)}';
-    FileHelper.writeFile(mainDartPath, updated);
+    final closeParen = _findMatchingParen(source, openParen);
+    final innerExpr = source.substring(openParen + 1, closeParen);
+    return '${source.substring(0, openParen + 1)}$wrapperName($innerExpr)${source.substring(closeParen)}';
   }
 
   // ---------------------------------------------------------------------------
