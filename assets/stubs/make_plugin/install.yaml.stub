@@ -1,0 +1,18 @@
+plugin_name: {{ name }}
+
+publish:
+  install/{{ name }}_config.dart.stub: lib/config/{{ name }}.dart
+
+magic:
+  provider: {{ pascalName }}ServiceProvider
+
+prompts:
+  - key: configPath
+    type: string
+    default: "~/.{{ name }}.conf"
+    question: "Configuration path?"
+
+placeholders:
+  configFilePath: "{{ prompts.configPath }}"
+
+bootstrap_command: {{ bootstrapCommand }}

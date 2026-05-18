@@ -1,0 +1,95 @@
+# Full install.yaml reference. Every section is populated with GENERIC
+# placeholder identifiers so the file can be copied as a starting point for
+# new plugins without leaking any one plugin's identity.
+
+plugin_name: example_plugin
+
+dependencies:
+  pubspec:
+    intl: ^0.20.0
+    crypto: ^3.0.0
+  dev_pubspec:
+    mocktail: ^1.0.0
+  pubspec_assets:
+    - assets/example/
+    - assets/lang/en.json
+
+publish:
+  install/example_config.dart.stub: lib/config/example.dart
+  install/example_routes.dart.stub: lib/routes/example.dart
+
+json_merge:
+  assets/lang/en.json:
+    source: install/lang/en.json
+    additive: true
+
+magic:
+  provider: ExampleServiceProvider
+  config_factory: exampleConfig
+  routes: registerExampleRoutes
+
+native:
+  android:
+    permissions:
+      - android.permission.INTERNET
+    meta_data:
+      io.flutter.embedded_views_preview: "true"
+    gradle:
+      plugins:
+        - id: com.example.gradle.plugin
+          version: "1.0.0"
+      dependencies:
+        - scope: implementation
+          notation: "com.example:lib:1.0.0"
+  ios:
+    info_plist:
+      NSExampleUsageDescription: "Reason shown in iOS permission dialog"
+      UIBackgroundModes: ["fetch"]
+    entitlements:
+      com.apple.security.keychain: true
+    podfile:
+      platform_version: "13.0"
+      pods:
+        - "ExamplePod"
+  macos:
+    info_plist:
+      NSExampleUsageDescription: "Reason shown in macOS permission dialog"
+    entitlements:
+      com.apple.security.network.client: true
+    podfile:
+      platform_version: "11.0"
+      pods:
+        - "ExamplePod"
+  web:
+    head_scripts:
+      - '<script src="example.js"></script>'
+    meta_tags:
+      - {name: "description", content: "Example plugin metadata"}
+
+env:
+  EXAMPLE_KEY:
+    default: example_value
+    comment: "Example plugin runtime config"
+
+prompts:
+  - {key: configPath, type: string, default: "~/.example.conf", question: "Config file path?"}
+  - {key: mode, type: choice, options: [dev, staging, prod], default: dev, question: "Deployment mode?"}
+  - {key: enableFeature, type: bool, default: false, question: "Enable optional feature?"}
+
+placeholders:
+  configFilePath: "{{ prompts.configPath }}"
+  runtimeMode: "{{ prompts.mode }}"
+
+post_install:
+  run:
+    - cmd: dart
+      args: [format, lib/config/example.dart]
+  ask_to_run:
+    - prompt: "Run pub get now?"
+      cmd: flutter
+      args: [pub, get]
+  message: |
+    example_plugin installed.
+    Next steps: see the plugin's own README.
+
+bootstrap_command: example:install

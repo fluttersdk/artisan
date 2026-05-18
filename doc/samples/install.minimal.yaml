@@ -1,0 +1,10 @@
+# Minimal valid install.yaml. Demonstrates the smallest possible manifest:
+# plugin_name + one publish entry + one magic.provider entry.
+
+plugin_name: example_plugin
+
+publish:
+  install/example_config.dart.stub: lib/config/example.dart
+
+magic:
+  provider: ExampleServiceProvider

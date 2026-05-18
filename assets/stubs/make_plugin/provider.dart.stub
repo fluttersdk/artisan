@@ -1,0 +1,18 @@
+import 'package:fluttersdk_artisan/artisan.dart';
+
+import 'commands/install_command.dart';
+import 'commands/uninstall_command.dart';
+
+/// ArtisanServiceProvider for {{ name }}.
+///
+/// Plugin authors register this in their consumer's `bin/artisan.dart` via
+/// `artisan plugin:install {{ name }}`. The auto-registration writes both the
+/// import line and the `registry.registerProvider({{ pascalName }}ArtisanProvider())`
+/// call into the consumer wrapper, so no manual wiring is required.
+class {{ pascalName }}ArtisanProvider extends ArtisanServiceProvider {
+  @override
+  List<ArtisanCommand> commands() => <ArtisanCommand>[
+        InstallCommand(),
+        UninstallCommand(),
+      ];
+}

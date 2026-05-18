@@ -1,0 +1,35 @@
+import 'package:fluttersdk_artisan/artisan.dart';
+
+/// `{{ commandPrefix }}:uninstall` — reverses the {{ name }} install pass.
+///
+/// Reads the same `install.yaml` manifest the install command consumed, then
+/// asks [ManifestInstaller] to dispatch every previously applied operation in
+/// reverse order against the recorded install file. Plugins that override
+/// [InstallCommand.handle] with procedural logic SHOULD still keep the
+/// declarative manifest in sync so this uninstall path stays accurate.
+class UninstallCommand extends ArtisanInstallCommand {
+  @override
+  String get signature => '{{ commandPrefix }}:uninstall $baseFlags';
+
+  @override
+  String get description => 'Uninstall {{ name }} from the host project.';
+
+  @override
+  String pluginName(ArtisanContext ctx) => '{{ name }}';
+
+  @override
+  Future<int> handle(ArtisanContext ctx) async {
+    final installCtx = buildContext(ctx);
+    final manifestPath = '${installCtx.projectRoot}/install.yaml';
+    final manifest = ManifestParser.parseFile(manifestPath);
+    final result =
+        await ManifestInstaller(installCtx, manifest).uninstall(force: isForce(ctx));
+
+    return switch (result) {
+      Success() => 0,
+      DryRun() => 0,
+      Conflict() => 1,
+      Error() => 2,
+    };
+  }
+}
