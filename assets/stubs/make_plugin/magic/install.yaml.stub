@@ -1,7 +1,7 @@
 plugin_name: {{ name }}
 
 publish:
-  install/{{ name }}_config.dart.stub: lib/config/{{ name }}.dart
+  install/{{ name }}_config.dart: lib/config/{{ name }}.dart
 
 magic:
   provider: {{ pascalName }}ServiceProvider

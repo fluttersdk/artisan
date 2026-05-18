@@ -24,7 +24,7 @@ class InstallCommand extends ArtisanInstallCommand {
       buildContext(ctx),
       pluginName: pluginName(ctx),
     ).publishConfig(
-      stubName: 'install/{{ name }}_config.dart.stub',
+      stubName: 'install/{{ name }}_config.dart',
       targetPath:
           '${buildContext(ctx).projectRoot}/lib/config/{{ name }}.dart',
     );

@@ -105,7 +105,7 @@ class MakePluginCommand extends ArtisanCommand {
   /// magic-flavored variant from the `magic/` stub subdirectory.
   static const List<({String stub, String target})> _genericScaffoldPlan = [
     (stub: 'pubspec.yaml', target: 'pubspec.yaml'),
-    (stub: 'bin_artisan.dart', target: 'bin/artisan.dart'),
+    (stub: 'bin_artisan.dart', target: 'bin/{{ name }}.dart'),
     (stub: 'cli.dart', target: 'lib/cli.dart'),
     (stub: 'runtime.dart', target: 'lib/{{ name }}.dart'),
     (
@@ -120,8 +120,12 @@ class MakePluginCommand extends ArtisanCommand {
   ];
 
   /// Magic-mode-only add-on stubs: install command DSL, manifest, config
-  /// template, and the install command's test scaffold. Rendered from
-  /// `assets/stubs/make_plugin/magic/` on top of the generic scaffold.
+  /// template, the install command's test scaffold, and the Magic
+  /// ServiceProvider that install.yaml's `magic.provider:` field points to.
+  /// Rendered from `assets/stubs/make_plugin/magic/` on top of the generic
+  /// scaffold. The magic mode also overrides generic/runtime.dart (via
+  /// `stubOverrides` in handle()) so the runtime barrel re-exports the
+  /// ServiceProvider for ManifestInstaller's `InjectImport` op to resolve.
   static const List<({String stub, String target})> _magicScaffoldPlan = [
     (
       stub: 'install_command.dart',
@@ -139,6 +143,10 @@ class MakePluginCommand extends ArtisanCommand {
     (
       stub: 'install_command_test.dart',
       target: 'test/cli/install_command_test.dart',
+    ),
+    (
+      stub: 'service_provider.dart',
+      target: 'lib/src/{{ name }}_service_provider.dart',
     ),
   ];
 
@@ -308,6 +316,16 @@ class MakePluginCommand extends ArtisanCommand {
       return 1;
     }
 
+    // 5b. Delete flutter create's default `test/<name>_test.dart`. It references
+    //     a `Calculator()` function that lives in flutter create's default
+    //     `lib/<name>.dart` (which our runtime.dart stub overwrites). Leaving
+    //     it behind produces a compile error on the first `flutter analyze`.
+    //     Our provider_test.dart stub renders to a different path
+    //     (test/<name>_artisan_provider_test.dart) so there is no conflict.
+    final defaultTestFile =
+        File(p.join(targetRoot, 'test', '${name}_test.dart'));
+    if (defaultTestFile.existsSync()) defaultTestFile.deleteSync();
+
     // 6. Render the generic scaffold over `flutter create`'s defaults. In
     //    magic mode the pubspec stub is sourced from `magic/` (with the
     //    magic dep); the cli.dart stub is also sourced from `magic/` to
@@ -320,13 +338,14 @@ class MakePluginCommand extends ArtisanCommand {
       replacements: replacements,
       targetRoot: targetRoot,
       ctx: ctx,
-      // In magic mode, override both pubspec.yaml and cli.dart to the magic/
-      // subdir so the generated pubspec includes the magic dep and the
-      // cli.dart barrel exports install_command + uninstall_command.
+      // In magic mode, override pubspec.yaml (magic dep), cli.dart (exports
+      // install/uninstall commands), and runtime.dart (exports the
+      // ServiceProvider) to the magic/ subdir.
       stubOverrides: magicMode
           ? const <String, String>{
               'pubspec.yaml': 'magic',
               'cli.dart': 'magic',
+              'runtime.dart': 'magic',
             }
           : const <String, String>{},
     );
