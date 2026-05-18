@@ -482,10 +482,16 @@ class PluginInstaller {
       targetFile: 'lib/config/app.dart',
       importStatement: "import '$importTarget';",
     ));
+    // Append to the END of the providers list (just after the last entry's
+    // trailing comma) using a lookahead-anchored regex that only matches the
+    // last `(app) => XxxServiceProvider(app),` line before the closing `]`.
+    // Falls back to inserting after `'providers': [` (i.e. at the top of the
+    // list) when the host's providers list is empty.
     _ops.add(InjectAfterPattern(
       targetFile: 'lib/config/app.dart',
-      pattern: RegExp(r'''['"]providers['"]\s*:\s*\['''),
-      code: '\n    (app) => $providerClassName(app),',
+      pattern:
+          RegExp(r'\(app\)\s*=>\s*\w+ServiceProvider\(app\),(?=\s*\n\s*\])'),
+      code: '\n      (app) => $providerClassName(app),',
     ));
     return this;
   }
@@ -508,9 +514,12 @@ class PluginInstaller {
     _ops.add(InjectMainDartImport(
       importStatement: "import '$importTarget';",
     ));
+    // Append to the END of the configFactories list (just after the last
+    // entry's trailing comma) using a lookahead-anchored regex that only
+    // matches the last `() => xxxConfig,` line before the closing `]`.
     _ops.add(InjectAfterPattern(
       targetFile: 'lib/main.dart',
-      pattern: RegExp(r'configFactories\s*:\s*\['),
+      pattern: RegExp(r'\(\)\s*=>\s*\w+Config,(?=\s*\n\s*\])'),
       code: '\n      () => $factoryName,',
     ));
     return this;

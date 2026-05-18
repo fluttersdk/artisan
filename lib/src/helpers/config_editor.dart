@@ -286,12 +286,16 @@ class ConfigEditor {
   /// Insert code before the first occurrence of a pattern in a file.
   ///
   /// Does nothing if the pattern is not found.
+  ///
+  /// Idempotent: skips the write when `code.trim()` is already a substring of
+  /// the file contents (mirrors [insertCodeAfterPattern]).
   static void insertCodeBeforePattern({
     required String filePath,
     required Pattern pattern,
     required String code,
   }) {
     final content = FileHelper.readFile(filePath);
+    if (code.trim().isNotEmpty && content.contains(code.trim())) return;
     final RegExp regex =
         pattern is RegExp ? pattern : RegExp(RegExp.escape(pattern.toString()));
     final match = regex.firstMatch(content);
@@ -307,12 +311,17 @@ class ConfigEditor {
   /// Insert code after the first occurrence of a pattern in a file.
   ///
   /// Does nothing if the pattern is not found.
+  ///
+  /// Idempotent: skips the write when `code.trim()` is already a substring of
+  /// the file contents. This protects re-runs of `plugin:install <name>` (and
+  /// any other repeat install path) from accumulating duplicate injections.
   static void insertCodeAfterPattern({
     required String filePath,
     required Pattern pattern,
     required String code,
   }) {
     final content = FileHelper.readFile(filePath);
+    if (code.trim().isNotEmpty && content.contains(code.trim())) return;
     final RegExp regex =
         pattern is RegExp ? pattern : RegExp(RegExp.escape(pattern.toString()));
     final match = regex.firstMatch(content);
