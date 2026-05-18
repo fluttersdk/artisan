@@ -1,0 +1,22 @@
+import 'package:fluttersdk_artisan/artisan.dart';
+
+import 'commands/install_command.dart';
+import 'commands/uninstall_command.dart';
+
+/// ArtisanServiceProvider for {{ name }} (magic mode).
+///
+/// Ships with install + uninstall commands that drive `ManifestInstaller`
+/// from the bundled `install.yaml` manifest. Additional commands added via
+/// `dart run magic:artisan make:command Name` from inside the plugin
+/// directory land in the [commands] list automatically (idempotent),
+/// alongside install/uninstall.
+class {{ pascalName }}ArtisanProvider extends ArtisanServiceProvider {
+  @override
+  List<ArtisanCommand> commands() => <ArtisanCommand>[
+        InstallCommand(),
+        UninstallCommand(),
+      ];
+
+  @override
+  List<McpToolDescriptor> mcpTools() => const <McpToolDescriptor>[];
+}

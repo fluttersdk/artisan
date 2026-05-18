@@ -1,18 +1,16 @@
 import 'package:fluttersdk_artisan/artisan.dart';
 
-import 'commands/install_command.dart';
-import 'commands/uninstall_command.dart';
-
 /// ArtisanServiceProvider for {{ name }}.
 ///
-/// Plugin authors register this in their consumer's `bin/artisan.dart` via
-/// `artisan plugin:install {{ name }}`. The auto-registration writes both the
-/// import line and the `registry.registerProvider({{ pascalName }}ArtisanProvider())`
-/// call into the consumer wrapper, so no manual wiring is required.
+/// Plugin commands live in `lib/src/commands/`. Use `dart run magic:artisan
+/// make:command Name` from inside the plugin directory to scaffold a new
+/// command. The generator writes the command file under `lib/src/commands/`
+/// AND auto-registers it in the [commands] list below (idempotent), so the
+/// command surfaces immediately when the host runs `plugin:install {{ name }}`.
 class {{ pascalName }}ArtisanProvider extends ArtisanServiceProvider {
   @override
   List<ArtisanCommand> commands() => <ArtisanCommand>[
-        InstallCommand(),
-        UninstallCommand(),
+        // Commands added via `make:command` land here automatically.
       ];
+  // To expose MCP tools, override mcpTools() returning your descriptor list.
 }

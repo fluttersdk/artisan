@@ -52,14 +52,16 @@ const List<String> _genericStubNames = <String>[
   'readme.md',
 ];
 
-/// The 9 stub file names that live under `magic/`. The `cli.dart`,
-/// `pubspec.yaml`, and `runtime.dart` entries are magic-specific overrides
-/// (magic: dep, magic command exports, ServiceProvider re-export); they are
-/// distinct files from their generic counterparts.
+/// The 10 stub file names that live under `magic/`. The `cli.dart`,
+/// `pubspec.yaml`, `runtime.dart`, and `provider.dart` entries are
+/// magic-specific overrides (magic: dep, magic command exports,
+/// ServiceProvider re-export, magic-flavoured ArtisanServiceProvider); they
+/// are distinct files from their generic counterparts.
 const List<String> _magicStubNames = <String>[
   'pubspec.yaml',
   'cli.dart',
   'runtime.dart',
+  'provider.dart',
   'install.yaml',
   'install_command.dart',
   'uninstall_command.dart',
@@ -141,7 +143,7 @@ void main() {
       }
     });
 
-    test('magic/ contains exactly the 9 expected stubs — no extras, no gaps',
+    test('magic/ contains exactly the 10 expected stubs — no extras, no gaps',
         () {
       final actualNames = Directory(magicDir)
           .listSync(recursive: false)
@@ -157,10 +159,10 @@ void main() {
   });
 
   group('make_plugin stub bundle — combined layout', () {
-    test('total distinct stub file count is 16 (7 generic + 9 magic)', () {
+    test('total distinct stub file count is 17 (7 generic + 10 magic)', () {
       // generic/ + magic/ each contribute their full roster. cli.dart,
-      // pubspec.yaml, and runtime.dart appear in both subdirs as distinct,
-      // mode-specific files.
+      // pubspec.yaml, runtime.dart, and provider.dart appear in both subdirs
+      // as distinct, mode-specific files.
       final genericCount = Directory(genericDir)
           .listSync(recursive: false)
           .whereType<File>()
@@ -173,8 +175,8 @@ void main() {
           .length;
 
       expect(genericCount, 7, reason: 'generic/ stub count mismatch');
-      expect(magicCount, 9, reason: 'magic/ stub count mismatch');
-      expect(genericCount + magicCount, 16);
+      expect(magicCount, 10, reason: 'magic/ stub count mismatch');
+      expect(genericCount + magicCount, 17);
     });
   });
 
@@ -411,6 +413,61 @@ void main() {
         contains("export 'src/magic_logger_service_provider.dart';"),
         reason: 'magic/runtime.dart.stub must re-export the ServiceProvider so '
             'ManifestInstaller can resolve it via the package barrel',
+      );
+    });
+
+    test(
+        'magic provider.dart.stub renders with pre-implemented empty mcpTools() override',
+        () {
+      // Step 24: the magic stub ships a ready-to-override mcpTools() so plugin
+      // authors see the extension point without needing to look up the base
+      // class API. The override must use the correct return type and an empty
+      // const list so generated plugins compile without additional imports
+      // (McpToolDescriptor is already in the artisan barrel).
+      final raw =
+          StubLoader.load('provider.dart', searchPaths: <String>[magicDir]);
+      final rendered = StubLoader.replace(raw, _sampleReplacements());
+
+      expect(
+        rendered,
+        contains('mcpTools()'),
+        reason:
+            'magic/provider.dart.stub must contain an mcpTools() override after rendering',
+      );
+      expect(
+        rendered,
+        contains('List<McpToolDescriptor>'),
+        reason:
+            'magic/provider.dart.stub mcpTools() must declare the correct return type',
+      );
+      expect(
+        rendered,
+        contains('const <McpToolDescriptor>[]'),
+        reason:
+            'magic/provider.dart.stub mcpTools() must return an empty const list',
+      );
+    });
+  });
+
+  group('make_plugin stub bundle — generic mcpTools hint', () {
+    test(
+        'generic provider.dart.stub renders with MCP tools hint comment after commands()',
+        () {
+      // Step 24: generic mode gets a discoverable hint comment so authors know
+      // the extension point exists. It is intentionally lighter than the magic
+      // stub (no pre-implemented override) because generic plugins may not
+      // depend on the artisan barrel's McpToolDescriptor type at scaffold time.
+      final raw =
+          StubLoader.load('provider.dart', searchPaths: <String>[genericDir]);
+      final rendered = StubLoader.replace(raw, _sampleReplacements());
+
+      expect(
+        rendered,
+        contains(
+          '// To expose MCP tools, override mcpTools() returning your descriptor list.',
+        ),
+        reason:
+            'generic/provider.dart.stub must contain the MCP tools hint comment after rendering',
       );
     });
   });
