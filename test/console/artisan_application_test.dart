@@ -105,6 +105,17 @@ void main() {
 
       expect(app.version, '9.9.9');
     });
+
+    test('dispatch threads its registry into the context', () async {
+      final registry = ArtisanRegistry();
+      final capturingCommand = _RegistryCapturingCommand();
+      registry.register(capturingCommand);
+      final app = ArtisanApplication(registry: registry);
+
+      await app.dispatch(<String>['capture-registry']);
+
+      expect(capturingCommand.capturedRegistry, same(registry));
+    });
   });
 }
 
@@ -185,4 +196,23 @@ class _ConnectedCommand extends ArtisanCommand {
 
   @override
   Future<int> handle(ArtisanContext ctx) async => 0;
+}
+
+class _RegistryCapturingCommand extends ArtisanCommand {
+  ArtisanRegistry? capturedRegistry;
+
+  @override
+  String get name => 'capture-registry';
+
+  @override
+  String get description => 'captures ctx.registry for assertion';
+
+  @override
+  CommandBoot get boot => CommandBoot.none;
+
+  @override
+  Future<int> handle(ArtisanContext ctx) async {
+    capturedRegistry = ctx.registry;
+    return 0;
+  }
 }

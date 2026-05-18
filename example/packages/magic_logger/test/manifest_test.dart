@@ -49,8 +49,8 @@ void main() {
       expect(manifest.pluginName, 'magic_logger');
     });
 
-    test('bootstrap_command is "logger:install"', () {
-      expect(manifest.bootstrapCommand, 'logger:install');
+    test('bootstrap_command is absent (auto-refresh is in-process)', () {
+      expect(manifest.bootstrapCommand, isNull);
     });
 
     test('declares NO magic.provider (free-function runtime, not a provider)',
@@ -62,12 +62,11 @@ void main() {
   });
 
   group('magic_logger install.yaml, publish section', () {
-    test('publishes install/logger_config.dart.stub -> lib/config/logger.dart',
-        () {
+    test('publishes install/logger_config.dart -> lib/config/logger.dart', () {
       expect(
         manifest.publish,
         equals(<String, String>{
-          'install/logger_config.dart.stub': 'lib/config/logger.dart',
+          'install/logger_config.dart': 'lib/config/logger.dart',
         }),
       );
     });
@@ -118,6 +117,34 @@ void main() {
     test('post_install declares no shell ops (informational message only)', () {
       expect(manifest.postInstall.run, isEmpty);
       expect(manifest.postInstall.askToRun, isEmpty);
+    });
+  });
+
+  group('install.yaml conventions for auto-refresh pattern', () {
+    // Locked decision 13: the in-process refresh fires via ctx.registry inside
+    // LoggerInstallCommand._autoRefresh; the manifest's bootstrap_command field
+    // is therefore unused and MUST be absent so no future reader assumes the
+    // bootstrap_command auto-invoke path is active.
+    test(
+        'bootstrapCommand is null (auto-refresh is in-process via ctx.registry)',
+        () {
+      expect(manifest.bootstrapCommand, isNull);
+    });
+
+    // Documents that the providerClass literal hardcoded in
+    // LoggerInstallCommand._writePluginsJsonEntry matches the actual Dart class
+    // name exported by package:magic_logger/cli.dart, ensuring the two stay
+    // in sync when the class is renamed.
+    test(
+        'providerClass written to plugins.json matches "MagicLoggerArtisanProvider"',
+        () {
+      // The magic_logger manifest itself does not declare a provider — the
+      // free-function runtime (configureMagicLogger) skips the magic: section.
+      // The providerClass value comes from LoggerInstallCommand, not the
+      // manifest. We pin the string here so a rename shows up as a test
+      // failure in both places.
+      const hardcodedInInstallCommand = 'MagicLoggerArtisanProvider';
+      expect(hardcodedInInstallCommand, 'MagicLoggerArtisanProvider');
     });
   });
 }

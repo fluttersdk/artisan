@@ -162,5 +162,240 @@ void main() {
       final content = File(singleLinePath).readAsStringSync();
       expect('SentryWidget('.allMatches(content).length, 1);
     });
+
+    // 10. injectBeforeAnchor happy path: snippet appears before the anchor line.
+    test('injectBeforeAnchor inserts snippet before the anchor line', () {
+      const source = 'void main() async {\n'
+          '  await Magic.init();\n'
+          '  runApp(MyApp());\n'
+          '}\n';
+
+      final result = MainDartEditor.injectBeforeAnchor(
+        source: source,
+        anchor: 'await Magic.init()',
+        snippet: '  SomeSetup.call();\n',
+      );
+
+      final initIndex = result.indexOf('await Magic.init()');
+      final snippetIndex = result.indexOf('SomeSetup.call()');
+      expect(snippetIndex, isNonNegative);
+      expect(snippetIndex, lessThan(initIndex));
+    });
+
+    // 11. injectBeforeAnchor idempotence: second call returns source unchanged.
+    test('injectBeforeAnchor does not re-insert when snippet already present',
+        () {
+      const source = 'void main() async {\n'
+          '  SomeSetup.call();\n'
+          '  await Magic.init();\n'
+          '  runApp(MyApp());\n'
+          '}\n';
+
+      final result = MainDartEditor.injectBeforeAnchor(
+        source: source,
+        anchor: 'await Magic.init()',
+        snippet: '  SomeSetup.call();\n',
+      );
+
+      expect(result, equals(source));
+      expect('SomeSetup.call()'.allMatches(result).length, 1);
+    });
+
+    // 12. injectBeforeAnchor anchor-not-found: returns source unchanged.
+    test('injectBeforeAnchor returns source unchanged when anchor is not found',
+        () {
+      const source = 'void main() async {\n'
+          '  runApp(MyApp());\n'
+          '}\n';
+
+      final result = MainDartEditor.injectBeforeAnchor(
+        source: source,
+        anchor: 'await Magic.init()',
+        snippet: '  SomeSetup.call();\n',
+      );
+
+      expect(result, equals(source));
+    });
+
+    // 13. injectBeforeAnchor multi-line snippet: all lines appear before anchor.
+    test('injectBeforeAnchor inserts a multi-line snippet before anchor', () {
+      const source = 'void main() async {\n'
+          '  await Magic.init();\n'
+          '  runApp(MyApp());\n'
+          '}\n';
+      const snippet =
+          '  // phase A\n  PhaseA.init();\n  // phase B\n  PhaseB.init();\n';
+
+      final result = MainDartEditor.injectBeforeAnchor(
+        source: source,
+        anchor: 'await Magic.init()',
+        snippet: snippet,
+      );
+
+      final initIndex = result.indexOf('await Magic.init()');
+      expect(result.indexOf('PhaseA.init()'), lessThan(initIndex));
+      expect(result.indexOf('PhaseB.init()'), lessThan(initIndex));
+    });
+
+    // 14. injectBeforeAnchor with indent parameter: snippet is indented.
+    test('injectBeforeAnchor applies indent prefix to every snippet line', () {
+      const source = 'void main() async {\n'
+          '  await Magic.init();\n'
+          '  runApp(MyApp());\n'
+          '}\n';
+
+      final result = MainDartEditor.injectBeforeAnchor(
+        source: source,
+        anchor: 'await Magic.init()',
+        snippet: 'SomeSetup.call();\n',
+        indent: '  ',
+      );
+
+      expect(result, contains('  SomeSetup.call();'));
+      final initIndex = result.indexOf('await Magic.init()');
+      final snippetIndex = result.indexOf('  SomeSetup.call();');
+      expect(snippetIndex, lessThan(initIndex));
+    });
+
+    // 15. wrapRunApp with custom appCall wraps the named entry point.
+    test('wrapRunApp wraps a custom entry point when appCall is specified', () {
+      const fixture = '''
+import 'package:flutter/material.dart';
+
+void main() {
+  runWidget(MyApp());
+}
+''';
+      final customPath = p.join(tempDir.path, 'main_custom_entry.dart');
+      File(customPath).writeAsStringSync(fixture);
+
+      MainDartEditor.wrapRunApp(customPath, 'SentryWidget',
+          appCall: 'runWidget');
+
+      final content = File(customPath).readAsStringSync();
+      expect(content, contains('runWidget(SentryWidget(MyApp()))'));
+      // The standard runApp is not touched.
+      expect(content, isNot(contains('runApp(')));
+    });
+
+    // 16. wrapRunApp with custom appCall is idempotent.
+    test('wrapRunApp with custom appCall is idempotent when already wrapped',
+        () {
+      const fixture = '''
+import 'package:flutter/material.dart';
+
+void main() {
+  runWidget(MyApp());
+}
+''';
+      final customPath = p.join(tempDir.path, 'main_custom_entry_idem.dart');
+      File(customPath).writeAsStringSync(fixture);
+
+      MainDartEditor.wrapRunApp(customPath, 'SentryWidget',
+          appCall: 'runWidget');
+      MainDartEditor.wrapRunApp(customPath, 'SentryWidget',
+          appCall: 'runWidget');
+
+      final content = File(customPath).readAsStringSync();
+      expect('SentryWidget('.allMatches(content).length, 1);
+    });
+
+    // 17. wrapRunApp with custom appCall throws StateError when entry not found.
+    test('wrapRunApp with custom appCall throws when entry point is absent',
+        () {
+      expect(
+        () => MainDartEditor.wrapRunApp(singleLinePath, 'SentryWidget',
+            appCall: 'runWidget'),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('runWidget('),
+          ),
+        ),
+      );
+    });
+
+    // 18. injectAfterAnchor happy path: snippet appears after the closing `)`
+    //     of the anchored call.
+    test('injectAfterAnchor inserts snippet after the anchored call', () {
+      const source = 'void main() async {\n'
+          '  await Magic.init();\n'
+          '  runApp(MyApp());\n'
+          '}\n';
+
+      final result = MainDartEditor.injectAfterAnchor(
+        source: source,
+        anchor: 'Magic.init',
+        snippet: '  MagicDuskIntegration.install();\n',
+      );
+
+      final initIndex = result.indexOf('await Magic.init();');
+      final snippetIndex = result.indexOf('MagicDuskIntegration.install();');
+      final runAppIndex = result.indexOf('runApp(MyApp());');
+      expect(initIndex, greaterThan(-1));
+      expect(snippetIndex, greaterThan(initIndex));
+      expect(snippetIndex, lessThan(runAppIndex));
+    });
+
+    // 19. injectAfterAnchor idempotence: re-inserting the same snippet is a no-op.
+    test('injectAfterAnchor is idempotent when snippet is already present', () {
+      const source = 'void main() async {\n'
+          '  await Magic.init();\n'
+          '  MagicDuskIntegration.install();\n'
+          '  runApp(MyApp());\n'
+          '}\n';
+
+      final result = MainDartEditor.injectAfterAnchor(
+        source: source,
+        anchor: 'Magic.init',
+        snippet: '  MagicDuskIntegration.install();\n',
+      );
+
+      expect(result, equals(source));
+    });
+
+    // 20. injectAfterAnchor returns source unchanged when the anchor is absent.
+    test('injectAfterAnchor returns source unchanged when anchor not found',
+        () {
+      const source = 'void main() {\n'
+          '  runApp(MyApp());\n'
+          '}\n';
+
+      final result = MainDartEditor.injectAfterAnchor(
+        source: source,
+        anchor: 'Magic.init',
+        snippet: '  Something.call();\n',
+      );
+
+      expect(result, equals(source));
+    });
+
+    // 21. injectAfterAnchor handles multi-line calls with nested parens via
+    //     the depth counter (configFactories list spans multiple lines).
+    test('injectAfterAnchor handles multi-line anchored calls', () {
+      const source = 'void main() async {\n'
+          '  await Magic.init(\n'
+          '    configFactories: [\n'
+          '      () => appConfig,\n'
+          '    ],\n'
+          '  );\n'
+          '  runApp(MyApp());\n'
+          '}\n';
+
+      final result = MainDartEditor.injectAfterAnchor(
+        source: source,
+        anchor: 'Magic.init',
+        snippet: '  MagicDuskIntegration.install();\n',
+      );
+
+      // The snippet must land between the `);` that closes Magic.init and
+      // the runApp line, not inside the configFactories list.
+      final closeInitIndex = result.indexOf('  );\n');
+      final snippetIndex = result.indexOf('MagicDuskIntegration.install();');
+      final runAppIndex = result.indexOf('runApp(MyApp());');
+      expect(snippetIndex, greaterThan(closeInitIndex));
+      expect(snippetIndex, lessThan(runAppIndex));
+    });
   });
 }

@@ -93,7 +93,9 @@ class ArtisanApplication {
     ArtisanOutput output,
   ) async {
     try {
-      return await command.handle(ArtisanContext.bare(input, output));
+      return await command.handle(
+        ArtisanContext.bare(input, output, registry: registry),
+      );
     } catch (e, s) {
       output.error('Unexpected error in ${command.name}: $e');
       stderr.writeln(s);
@@ -123,7 +125,7 @@ class ArtisanApplication {
     try {
       await vmClient.connect();
       return await command.handle(
-        ArtisanContext.connected(input, output, vmClient),
+        ArtisanContext.connected(input, output, vmClient, registry: registry),
       );
     } catch (e, s) {
       output.error('Connected command ${command.name} failed: $e');

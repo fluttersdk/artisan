@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as path;
 
+/// Package name for fluttersdk_artisan.
+const String _pkgName = 'fluttersdk_artisan';
+
 /// Loads `.stub` template files from `assets/stubs/` and replaces placeholders.
 ///
 /// ## Usage
@@ -104,7 +107,7 @@ class StubLoader {
       final pubspec = File(path.join(current.path, 'pubspec.yaml'));
       if (pubspec.existsSync()) {
         final content = pubspec.readAsStringSync();
-        if (content.contains('name: fluttersdk_artisan')) {
+        if (content.contains('name: $_pkgName')) {
           return [path.join(current.path, 'assets', 'stubs')];
         }
       }
@@ -116,7 +119,7 @@ class StubLoader {
     // 4. Fallback: check current directory and common dev paths.
     final possibleRoots = [
       Directory.current.path,
-      path.join(Directory.current.path, 'plugins', 'fluttersdk_artisan'),
+      path.join(Directory.current.path, 'plugins', _pkgName),
     ];
 
     for (final root in possibleRoots) {
@@ -154,7 +157,7 @@ class StubLoader {
 
           for (final pkg in packages) {
             final entry = pkg as Map<String, dynamic>;
-            if (entry['name'] == 'fluttersdk_artisan') {
+            if (entry['name'] == _pkgName) {
               final rootUri = entry['rootUri'] as String;
 
               // rootUri can be absolute (file:///) or relative (../)

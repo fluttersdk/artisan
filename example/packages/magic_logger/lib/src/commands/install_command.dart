@@ -129,9 +129,68 @@ class LoggerInstallCommand extends ArtisanInstallCommand {
       nonInteractive: isNonInteractive(ctx),
     );
 
-    // 5. Translate the TransactionResult into a process exit code + the
+    // 5. On a successful (non-dry-run) install, register the plugin in
+    //    .artisan/plugins.json and trigger an in-process registry refresh so
+    //    the caller's `bin/artisan.dart` picks up the new commands immediately.
+    //    Both operations are skipped on DryRun / Conflict / Error so the
+    //    registry stays consistent with the actual disk state.
+    if (result is Success) {
+      await _writePluginsJsonEntry(ctx, installContext);
+      await _autoRefresh(ctx);
+    }
+
+    // 6. Translate the TransactionResult into a process exit code + the
     //    matching operator-facing line.
     return _renderResult(ctx, result);
+  }
+
+  /// Writes the `magic_logger` entry into `.artisan/plugins.json`.
+  ///
+  /// Uses [installContext.fs] and [installContext.projectRoot] so the
+  /// [InMemoryFs] test seam is honoured automatically. The [PluginsRegistryFile]
+  /// call is idempotent: a pre-existing entry with the same name is replaced
+  /// in-place rather than duplicated.
+  ///
+  /// @param ctx             The active [ArtisanContext] (used for output on
+  ///                        unexpected errors).
+  /// @param installContext  The wired install context carrying [VirtualFs] +
+  ///                        [projectRoot].
+  Future<void> _writePluginsJsonEntry(
+    ArtisanContext ctx,
+    InstallContext installContext,
+  ) async {
+    final pluginsFile = PluginsRegistryFile(
+      installContext.fs,
+      installContext.projectRoot,
+    );
+    await pluginsFile.addPlugin(
+      PluginEntry(
+        name: 'magic_logger',
+        providerImport: 'package:magic_logger/cli.dart',
+        providerClass: 'MagicLoggerArtisanProvider',
+        registeredAt: DateTime.now().toUtc().toIso8601String(),
+      ),
+    );
+  }
+
+  /// Triggers an in-process `plugins:refresh` when it is registered in
+  /// [ctx.registry], or emits a manual-refresh hint when it is absent.
+  ///
+  /// Using the registry (not `Process.run`) matches locked decision 13: keep
+  /// refresh in-process so there is no subprocess latency and the operator's
+  /// terminal sees a single cohesive output stream.
+  ///
+  /// @param ctx  The active [ArtisanContext] whose [registry] is consulted.
+  Future<void> _autoRefresh(ArtisanContext ctx) async {
+    final refresh = ctx.registry?.find('plugins:refresh');
+    if (refresh != null) {
+      await refresh.handle(ctx);
+    } else {
+      ctx.output.info(
+        'Run `dart run magic:artisan plugins:refresh` to register '
+        'magic_logger commands.',
+      );
+    }
   }
 
   /// Translates a [TransactionResult] into an exit code while writing the

@@ -119,5 +119,21 @@ void main() {
 
       expect(content, contains('SyncMonitorsCommand'));
     });
+
+    test(
+      'load resolves after package name const extraction (regression test)',
+      () {
+        // Verify that extracting 'fluttersdk_artisan' hardcoded strings to
+        // a const does not break stub resolution. This test exercises both
+        // package_config.json parsing (line 157) and pubspec walking (line 107)
+        // which reference the package name.
+        final content = StubLoader.load('artisan_command');
+
+        // If the const extraction broke either path, this would throw
+        // FileSystemException. Confirming it returns valid content.
+        expect(content, isNotEmpty);
+        expect(content, contains('{{ className }}'));
+      },
+    );
   });
 }

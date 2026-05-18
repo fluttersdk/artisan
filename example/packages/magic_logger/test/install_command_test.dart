@@ -93,10 +93,15 @@ class _FixtureStubDriver implements StubDriver {
 ///
 /// Mirrors the pattern used by `plugin_install_command_test.dart` in the
 /// fluttersdk_artisan package itself.
+///
+/// The optional [fakeRegistry] is forwarded into the [ArtisanContext] so the
+/// refresh-path branch (`ctx.registry?.find('plugins:refresh')`) can be
+/// exercised in tests without standing up a full [ArtisanApplication].
 class _TestableLoggerInstallCommand extends LoggerInstallCommand {
   _TestableLoggerInstallCommand({
     required this.fakeManifestPath,
     required this.fakeContext,
+    this.fakeRegistry,
   });
 
   /// Pinned manifest path. Substitutes for the production
@@ -105,6 +110,11 @@ class _TestableLoggerInstallCommand extends LoggerInstallCommand {
 
   /// Pre-wired [InstallContext.test] backed by an [InMemoryFs].
   final InstallContext fakeContext;
+
+  /// Optional registry injected into the outer [ArtisanContext] for
+  /// refresh-path assertions. When null, ctx.registry is null (hint-fallback
+  /// branch is exercised).
+  final ArtisanRegistry? fakeRegistry;
 
   @override
   Future<String?> resolveManifestPath() async => fakeManifestPath;
@@ -116,13 +126,19 @@ class _TestableLoggerInstallCommand extends LoggerInstallCommand {
 /// Builds an [ArtisanContext] backed by a [MapInput] carrying the supplied
 /// option values + a [BufferedOutput] for output assertions. Mirrors the
 /// fixture used by the framework's own command tests.
+///
+/// The optional [registry] is forwarded verbatim so refresh-path tests can
+/// inject a pre-populated [ArtisanRegistry] without standing up a full
+/// [ArtisanApplication].
 ArtisanContext _ctxWith(
   Map<String, dynamic> options, {
   CommandSignature? signature,
+  ArtisanRegistry? registry,
 }) {
   return ArtisanContext.bare(
     MapInput(options, signature: signature),
     BufferedOutput(),
+    registry: registry,
   );
 }
 
@@ -239,7 +255,7 @@ void main() {
       final fs = InMemoryFs();
       final prompt = _RecordingPromptDriver();
       final stubs = _FixtureStubDriver(<String, String>{
-        'install/logger_config.dart.stub': _loadRealStub(),
+        'install/logger_config.dart': _loadRealStub(),
       });
       final installContext = InstallContext.test(
         fs: fs,
@@ -279,7 +295,7 @@ void main() {
       final fs = InMemoryFs();
       final prompt = _RecordingPromptDriver();
       final stubs = _FixtureStubDriver(<String, String>{
-        'install/logger_config.dart.stub': _loadRealStub(),
+        'install/logger_config.dart': _loadRealStub(),
       });
       final installContext = InstallContext.test(
         fs: fs,
@@ -312,7 +328,7 @@ void main() {
       final fs = InMemoryFs();
       final prompt = _RecordingPromptDriver();
       final stubs = _FixtureStubDriver(<String, String>{
-        'install/logger_config.dart.stub': _loadRealStub(),
+        'install/logger_config.dart': _loadRealStub(),
       });
       final installContext = InstallContext.test(
         fs: fs,
@@ -346,7 +362,7 @@ void main() {
         () async {
       final fs = InMemoryFs();
       final stubs = _FixtureStubDriver(<String, String>{
-        'install/logger_config.dart.stub': _loadRealStub(),
+        'install/logger_config.dart': _loadRealStub(),
       });
       final installContext = InstallContext.test(
         fs: fs,
@@ -383,7 +399,7 @@ void main() {
         () async {
       final fs = InMemoryFs();
       final stubs = _FixtureStubDriver(<String, String>{
-        'install/logger_config.dart.stub': _loadRealStub(),
+        'install/logger_config.dart': _loadRealStub(),
       });
       final installContext = InstallContext.test(
         fs: fs,
@@ -424,7 +440,7 @@ void main() {
         '// pre-existing user content\n',
       );
       final stubs = _FixtureStubDriver(<String, String>{
-        'install/logger_config.dart.stub': _loadRealStub(),
+        'install/logger_config.dart': _loadRealStub(),
       });
       final installContext = InstallContext.test(
         fs: fs,
@@ -452,6 +468,259 @@ void main() {
       final rendered = fs.readAsString('/proj/lib/config/logger.dart');
       expect(rendered, contains('configureMagicLogger'));
       expect(rendered, isNot(contains('pre-existing user content')));
+    });
+  });
+
+  group('LoggerInstallCommand, plugins.json entry', () {
+    test(
+        'successful install writes magic_logger entry into '
+        '.artisan/plugins.json', () async {
+      final fs = InMemoryFs();
+      final stubs = _FixtureStubDriver(<String, String>{
+        'install/logger_config.dart': _loadRealStub(),
+      });
+      final installContext = InstallContext.test(
+        fs: fs,
+        prompt: _RecordingPromptDriver(),
+        stubs: stubs,
+        projectRoot: '/proj',
+        clock: () => DateTime.utc(2025, 1, 1),
+      );
+      final cmd = _TestableLoggerInstallCommand(
+        fakeManifestPath: manifestPath,
+        fakeContext: installContext,
+      );
+      final ctx = _ctxWith(
+        <String, dynamic>{
+          ..._baseOptions,
+          'non-interactive': true,
+        },
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+
+      expect(exit, 0,
+          reason: 'Output: ${(ctx.output as BufferedOutput).content}');
+
+      // 1. Registry file must exist at the canonical path.
+      const registryPath = '/proj/.artisan/plugins.json';
+      expect(
+        fs.exists(registryPath),
+        isTrue,
+        reason: 'plugins.json must be created on a successful install',
+      );
+
+      // 2. The file must contain the magic_logger entry with the correct fields.
+      final content = fs.readAsString(registryPath);
+      expect(content, contains('"magic_logger"'));
+      expect(content, contains('"package:magic_logger/cli.dart"'));
+      expect(content, contains('"MagicLoggerArtisanProvider"'));
+      expect(content, contains('"registeredAt"'));
+    });
+
+    test('dry-run does NOT write plugins.json entry', () async {
+      final fs = InMemoryFs();
+      final stubs = _FixtureStubDriver(<String, String>{
+        'install/logger_config.dart': _loadRealStub(),
+      });
+      final installContext = InstallContext.test(
+        fs: fs,
+        prompt: _RecordingPromptDriver(),
+        stubs: stubs,
+        projectRoot: '/proj',
+      );
+      final cmd = _TestableLoggerInstallCommand(
+        fakeManifestPath: manifestPath,
+        fakeContext: installContext,
+      );
+      final ctx = _ctxWith(
+        <String, dynamic>{
+          ..._baseOptions,
+          'non-interactive': true,
+          'dry-run': true,
+        },
+        signature: cmd.parsedSignature,
+      );
+
+      await cmd.handle(ctx);
+
+      expect(
+        fs.exists('/proj/.artisan/plugins.json'),
+        isFalse,
+        reason: 'dry-run must not write plugins.json',
+      );
+    });
+
+    test(
+        'running install twice is idempotent: plugins.json contains exactly '
+        'one magic_logger entry', () async {
+      final fs = InMemoryFs();
+      final stubs = _FixtureStubDriver(<String, String>{
+        'install/logger_config.dart': _loadRealStub(),
+      });
+      final installContext = InstallContext.test(
+        fs: fs,
+        prompt: _RecordingPromptDriver(),
+        stubs: stubs,
+        projectRoot: '/proj',
+      );
+      final cmd = _TestableLoggerInstallCommand(
+        fakeManifestPath: manifestPath,
+        fakeContext: installContext,
+      );
+
+      // First run.
+      await cmd.handle(
+        _ctxWith(
+          <String, dynamic>{..._baseOptions, 'non-interactive': true},
+          signature: cmd.parsedSignature,
+        ),
+      );
+      // Second run (--force to bypass conflict on the already-installed stub).
+      await cmd.handle(
+        _ctxWith(
+          <String, dynamic>{
+            ..._baseOptions,
+            'non-interactive': true,
+            'force': true,
+          },
+          signature: cmd.parsedSignature,
+        ),
+      );
+
+      final content = fs.readAsString('/proj/.artisan/plugins.json');
+      // The JSON array must contain exactly one occurrence of magic_logger.
+      final matchCount = RegExp('"magic_logger"').allMatches(content).length;
+      expect(
+        matchCount,
+        1,
+        reason: 'addPlugin is idempotent: the entry must appear exactly once',
+      );
+    });
+  });
+
+  group('LoggerInstallCommand, auto-refresh + hint fallback', () {
+    test(
+        'refresh-path: invokes plugins:refresh in-process when ctx.registry '
+        'contains it', () async {
+      final fs = InMemoryFs();
+      // plugins:refresh writes lib/app/_plugins.g.dart; pre-create the dir so
+      // the command does not throw "lib/app/ not found".
+      fs.writeAsString('/proj/lib/app/.keep', '');
+      final stubs = _FixtureStubDriver(<String, String>{
+        'install/logger_config.dart': _loadRealStub(),
+      });
+      final installContext = InstallContext.test(
+        fs: fs,
+        prompt: _RecordingPromptDriver(),
+        stubs: stubs,
+        projectRoot: '/proj',
+      );
+
+      // Build a real PluginsRefreshCommand wired to the same InMemoryFs so we
+      // can assert the generated file landed on disk.
+      final refreshCmd = PluginsRefreshCommand(
+        fs: fs,
+        projectRoot: '/proj',
+        directoryExists: (dir) =>
+            fs.exists('$dir/.keep') || dir.endsWith('/app'),
+      );
+      final registry = ArtisanRegistry()
+        ..register(refreshCmd, providerName: 'test');
+
+      final cmd = _TestableLoggerInstallCommand(
+        fakeManifestPath: manifestPath,
+        fakeContext: installContext,
+        fakeRegistry: registry,
+      );
+      final ctx = _ctxWith(
+        <String, dynamic>{..._baseOptions, 'non-interactive': true},
+        signature: cmd.parsedSignature,
+        registry: registry,
+      );
+
+      final exit = await cmd.handle(ctx);
+
+      expect(exit, 0,
+          reason: 'Output: ${(ctx.output as BufferedOutput).content}');
+      // The refresh command must have run and written _plugins.g.dart.
+      expect(
+        fs.exists('/proj/lib/app/_plugins.g.dart'),
+        isTrue,
+        reason: 'plugins:refresh must be invoked in-process on success',
+      );
+    });
+
+    test('hint-fallback: prints info message when ctx.registry is null',
+        () async {
+      final fs = InMemoryFs();
+      final stubs = _FixtureStubDriver(<String, String>{
+        'install/logger_config.dart': _loadRealStub(),
+      });
+      final installContext = InstallContext.test(
+        fs: fs,
+        prompt: _RecordingPromptDriver(),
+        stubs: stubs,
+        projectRoot: '/proj',
+      );
+      final cmd = _TestableLoggerInstallCommand(
+        fakeManifestPath: manifestPath,
+        fakeContext: installContext,
+      );
+      // No registry in ctx — hint-fallback branch.
+      final ctx = _ctxWith(
+        <String, dynamic>{..._baseOptions, 'non-interactive': true},
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+
+      expect(exit, 0,
+          reason: 'Output: ${(ctx.output as BufferedOutput).content}');
+      final output = (ctx.output as BufferedOutput).content;
+      expect(
+        output,
+        contains('plugins:refresh'),
+        reason: 'hint-fallback must suggest the manual refresh command',
+      );
+    });
+
+    test(
+        'hint-fallback: prints info message when plugins:refresh is not in '
+        'the registry', () async {
+      final fs = InMemoryFs();
+      final stubs = _FixtureStubDriver(<String, String>{
+        'install/logger_config.dart': _loadRealStub(),
+      });
+      final installContext = InstallContext.test(
+        fs: fs,
+        prompt: _RecordingPromptDriver(),
+        stubs: stubs,
+        projectRoot: '/proj',
+      );
+      final cmd = _TestableLoggerInstallCommand(
+        fakeManifestPath: manifestPath,
+        fakeContext: installContext,
+      );
+      // Registry without 'plugins:refresh' — still falls through to hint.
+      final emptyRegistry = ArtisanRegistry();
+      final ctx = _ctxWith(
+        <String, dynamic>{..._baseOptions, 'non-interactive': true},
+        signature: cmd.parsedSignature,
+        registry: emptyRegistry,
+      );
+
+      final exit = await cmd.handle(ctx);
+
+      expect(exit, 0,
+          reason: 'Output: ${(ctx.output as BufferedOutput).content}');
+      final output = (ctx.output as BufferedOutput).content;
+      expect(
+        output,
+        contains('plugins:refresh'),
+        reason: 'hint-fallback must suggest the manual refresh command',
+      );
     });
   });
 }

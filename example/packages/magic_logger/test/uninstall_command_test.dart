@@ -68,16 +68,44 @@ class _EmptyStubDriver implements StubDriver {
       throw StateError('Uninstall should not make any stub; got "$name".');
 }
 
+/// Recording stub for [PluginsRefreshCommand] that captures invocation count
+/// without performing actual codegen. Used by the refresh-path branch tests.
+class _RefreshStub extends ArtisanCommand {
+  int callCount = 0;
+
+  @override
+  String get signature => 'plugins:refresh';
+
+  @override
+  String get description => 'Stub refresh for testing.';
+
+  @override
+  CommandBoot get boot => CommandBoot.none;
+
+  @override
+  Future<int> handle(ArtisanContext ctx) async {
+    callCount++;
+    return 0;
+  }
+}
+
 /// Test subclass of [LoggerUninstallCommand] that pins the manifest path +
 /// install context, mirroring the pattern from `install_command_test.dart`.
+///
+/// An optional [registry] parameter allows test cases to inject a seeded
+/// [ArtisanRegistry] so the in-process auto-refresh path can be exercised.
 class _TestableLoggerUninstallCommand extends LoggerUninstallCommand {
   _TestableLoggerUninstallCommand({
     required this.fakeManifestPath,
     required this.fakeContext,
+    this.registry,
   });
 
   final String fakeManifestPath;
   final InstallContext fakeContext;
+
+  /// Optional registry injected for refresh-path branch tests.
+  final ArtisanRegistry? registry;
 
   @override
   Future<String?> resolveManifestPath() async => fakeManifestPath;
@@ -89,10 +117,12 @@ class _TestableLoggerUninstallCommand extends LoggerUninstallCommand {
 ArtisanContext _ctxWith(
   Map<String, dynamic> options, {
   CommandSignature? signature,
+  ArtisanRegistry? registry,
 }) {
   return ArtisanContext.bare(
     MapInput(options, signature: signature),
     BufferedOutput(),
+    registry: registry,
   );
 }
 
@@ -303,6 +333,159 @@ void main() {
       final out = (ctx.output as BufferedOutput).content;
       expect(out, contains('[ERROR]'));
       expect(out, contains('install record'));
+    });
+  });
+
+  group('LoggerUninstallCommand, plugins.json registry', () {
+    test('successful uninstall removes magic_logger entry from plugins.json',
+        () async {
+      final fs = InMemoryFs();
+      _seedInstalledState(fs);
+      // Pre-seed a plugins.json entry for magic_logger.
+      const registry = <String, dynamic>{
+        'version': 1,
+        'plugins': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'name': 'magic_logger',
+            'providerImport': 'package:magic_logger/cli.dart',
+            'providerClass': 'MagicLoggerArtisanProvider',
+            'registeredAt': '2025-01-01T00:00:00.000Z',
+          },
+        ],
+      };
+      fs.writeAsString(
+        '/proj/.artisan/plugins.json',
+        const JsonEncoder.withIndent('  ').convert(registry),
+      );
+      final installContext = InstallContext.test(
+        fs: fs,
+        prompt: _RecordingPromptDriver(),
+        stubs: const _EmptyStubDriver(),
+        projectRoot: '/proj',
+      );
+      final cmd = _TestableLoggerUninstallCommand(
+        fakeManifestPath: manifestPath,
+        fakeContext: installContext,
+      );
+      final ctx = _ctxWith(
+        <String, dynamic>{..._baseOptions, 'non-interactive': true},
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+
+      expect(exit, 0,
+          reason: 'Output: ${(ctx.output as BufferedOutput).content}');
+      // The magic_logger entry must be gone from plugins.json.
+      expect(fs.exists('/proj/.artisan/plugins.json'), isTrue,
+          reason: 'plugins.json must still exist after removePlugin (file '
+              'is written back without the entry, not deleted).');
+      final rawRegistry = fs.readAsString('/proj/.artisan/plugins.json');
+      expect(rawRegistry, isNot(contains('magic_logger')),
+          reason: 'magic_logger entry must be removed from plugins.json.');
+    });
+
+    test(
+        'removePlugin is idempotent: uninstall succeeds when magic_logger '
+        'entry is absent from plugins.json', () async {
+      final fs = InMemoryFs();
+      _seedInstalledState(fs);
+      // plugins.json exists but has NO magic_logger entry.
+      const emptyRegistry = <String, dynamic>{
+        'version': 1,
+        'plugins': <dynamic>[],
+      };
+      fs.writeAsString(
+        '/proj/.artisan/plugins.json',
+        const JsonEncoder.withIndent('  ').convert(emptyRegistry),
+      );
+      final installContext = InstallContext.test(
+        fs: fs,
+        prompt: _RecordingPromptDriver(),
+        stubs: const _EmptyStubDriver(),
+        projectRoot: '/proj',
+      );
+      final cmd = _TestableLoggerUninstallCommand(
+        fakeManifestPath: manifestPath,
+        fakeContext: installContext,
+      );
+      final ctx = _ctxWith(
+        <String, dynamic>{..._baseOptions, 'non-interactive': true},
+        signature: cmd.parsedSignature,
+      );
+
+      // Must not throw; removePlugin is idempotent.
+      final exit = await cmd.handle(ctx);
+
+      expect(exit, 0,
+          reason:
+              'Absent plugins.json entry must not cause an error on uninstall.');
+    });
+
+    test('refresh-path branch invokes registered plugins:refresh stub',
+        () async {
+      final fs = InMemoryFs();
+      _seedInstalledState(fs);
+      final installContext = InstallContext.test(
+        fs: fs,
+        prompt: _RecordingPromptDriver(),
+        stubs: const _EmptyStubDriver(),
+        projectRoot: '/proj',
+      );
+      final refreshStub = _RefreshStub();
+      final reg = ArtisanRegistry()
+        ..register(refreshStub, providerName: 'test');
+      final cmd = _TestableLoggerUninstallCommand(
+        fakeManifestPath: manifestPath,
+        fakeContext: installContext,
+        registry: reg,
+      );
+      final ctx = _ctxWith(
+        <String, dynamic>{..._baseOptions, 'non-interactive': true},
+        signature: cmd.parsedSignature,
+        registry: reg,
+      );
+
+      final exit = await cmd.handle(ctx);
+
+      expect(exit, 0,
+          reason: 'Output: ${(ctx.output as BufferedOutput).content}');
+      expect(refreshStub.callCount, 1,
+          reason:
+              'plugins:refresh must be invoked exactly once via the registry.');
+    });
+
+    test(
+        'hint-fallback: prints info message when registry is null '
+        '(no plugins:refresh registered)', () async {
+      final fs = InMemoryFs();
+      _seedInstalledState(fs);
+      final installContext = InstallContext.test(
+        fs: fs,
+        prompt: _RecordingPromptDriver(),
+        stubs: const _EmptyStubDriver(),
+        projectRoot: '/proj',
+      );
+      final cmd = _TestableLoggerUninstallCommand(
+        fakeManifestPath: manifestPath,
+        fakeContext: installContext,
+        // registry intentionally null — simulates bare context without dispatch.
+      );
+      final ctx = _ctxWith(
+        <String, dynamic>{..._baseOptions, 'non-interactive': true},
+        signature: cmd.parsedSignature,
+        // no registry → ctx.registry is null.
+      );
+
+      final exit = await cmd.handle(ctx);
+
+      expect(exit, 0);
+      final out = (ctx.output as BufferedOutput).content;
+      expect(
+        out,
+        contains('plugins:refresh'),
+        reason: 'Hint message must mention the plugins:refresh command.',
+      );
     });
   });
 }

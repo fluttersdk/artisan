@@ -52,6 +52,25 @@ void main() {
     });
   });
 
+  group('ArtisanContext.bare registry', () {
+    test('registry is null when constructed without one', () {
+      final ctx = ArtisanContext.bare(MapInput(const {}), BufferedOutput());
+
+      expect(ctx.registry, isNull);
+    });
+
+    test('registry is non-null when supplied to bare constructor', () {
+      final registry = ArtisanRegistry();
+      final ctx = ArtisanContext.bare(
+        MapInput(const {}),
+        BufferedOutput(),
+        registry: registry,
+      );
+
+      expect(ctx.registry, same(registry));
+    });
+  });
+
   group('ArtisanContext.connected', () {
     test('exposes the supplied VmServiceClient', () {
       final client = VmServiceClient('ws://example.invalid:1/ws');
@@ -73,6 +92,30 @@ void main() {
 
       expect(ctx.input, same(input));
       expect(ctx.output, same(output));
+    });
+
+    test('registry is null when not supplied to connected constructor', () {
+      final client = VmServiceClient('ws://example.invalid:1/ws');
+      final ctx = ArtisanContext.connected(
+        MapInput(const {}),
+        BufferedOutput(),
+        client,
+      );
+
+      expect(ctx.registry, isNull);
+    });
+
+    test('registry is non-null when supplied to connected constructor', () {
+      final client = VmServiceClient('ws://example.invalid:1/ws');
+      final registry = ArtisanRegistry();
+      final ctx = ArtisanContext.connected(
+        MapInput(const {}),
+        BufferedOutput(),
+        client,
+        registry: registry,
+      );
+
+      expect(ctx.registry, same(registry));
     });
   });
 }

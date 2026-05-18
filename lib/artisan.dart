@@ -26,6 +26,7 @@ export 'src/console/command_signature.dart';
 export 'src/console/pid_parser.dart';
 export 'src/console/process_alive.dart';
 export 'src/console/prompt.dart';
+export 'src/console/run_artisan.dart';
 export 'src/console/shell_quote.dart';
 export 'src/console/string_helper.dart';
 
@@ -63,6 +64,7 @@ export 'src/commands/make_command_command.dart';
 export 'src/commands/make_plugin_command.dart';
 export 'src/commands/plugin_install_command.dart';
 export 'src/commands/plugin_uninstall_command.dart';
+export 'src/commands/plugins_refresh_command.dart';
 export 'src/commands/reload_command.dart';
 export 'src/commands/restart_command.dart';
 export 'src/commands/start_command.dart';
@@ -84,6 +86,7 @@ export 'src/installer/manifest_parser.dart';
 export 'src/installer/plugin_installer.dart';
 export 'src/installer/prompt_driver.dart';
 export 'src/installer/stub_driver.dart';
+export 'src/installer/plugins_registry_file.dart';
 export 'src/installer/virtual_fs.dart';
 
 // Tinker REPL hooks. Integration packages populate

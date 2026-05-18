@@ -116,6 +116,30 @@ class LoggerUninstallCommand extends ArtisanInstallCommand {
     //    Success.
     final installer = ManifestInstaller(installContext, manifest);
     final result = await installer.uninstall(force: isForce(ctx));
+
+    // 5. On Success, remove the plugins.json registry entry and trigger an
+    //    in-process auto-refresh so the consumer's _plugins.g.dart drops the
+    //    uninstalled plugin's commands immediately. Both operations are
+    //    idempotent: removePlugin is a no-op when the name is absent, and
+    //    plugins:refresh regenerates from whatever remains in plugins.json.
+    if (result is Success) {
+      final pluginsFile = PluginsRegistryFile(
+        installContext.fs,
+        installContext.projectRoot,
+      );
+      await pluginsFile.removePlugin('magic_logger');
+
+      final refresh = ctx.registry?.find('plugins:refresh');
+      if (refresh != null) {
+        await refresh.handle(ctx);
+      } else {
+        ctx.output.info(
+          'Run `dart run magic:artisan plugins:refresh` to unregister '
+          'magic_logger commands.',
+        );
+      }
+    }
+
     return _renderResult(ctx, result);
   }
 

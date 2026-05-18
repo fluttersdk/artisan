@@ -11,7 +11,7 @@
 plugin_name: magic_logger
 
 publish:
-  install/logger_config.dart.stub: lib/config/logger.dart
+  install/logger_config.dart: lib/config/logger.dart
 
 prompts:
   - key: logPath
@@ -42,5 +42,3 @@ post_install:
 
     Then call MagicLogger.info(...), .warn(...), .error(...) anywhere.
     Tail the live log with: artisan logger:tail
-
-bootstrap_command: logger:install

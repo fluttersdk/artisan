@@ -13,6 +13,9 @@ dependencies:
   magic:
     path: ../../magic
 
+  magic_logger:
+    path: ../example/packages/magic_logger
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
