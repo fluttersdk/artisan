@@ -1,4 +1,4 @@
-/// fluttersdk_artisan — Symfony-Console-grade CLI framework for Dart + Flutter.
+/// fluttersdk_artisan: Symfony-Console-grade CLI framework for Dart + Flutter.
 ///
 /// Single barrel entry. Consumers import via `package:fluttersdk_artisan/artisan.dart`
 /// and gain access to the full public API surface (Application + Command + Input/Output
@@ -89,6 +89,12 @@ export 'src/installer/prompt_driver.dart';
 export 'src/installer/stub_driver.dart';
 export 'src/installer/plugins_registry_file.dart';
 export 'src/installer/virtual_fs.dart';
+
+// MCP subsystem:
+export 'src/mcp/mcp_tool_descriptor.dart';
+export 'src/mcp/mcp_tool_collision_exception.dart';
+export 'src/mcp/mcp_filter_config.dart';
+export 'src/mcp/mcp_server.dart';
 
 // Tinker REPL hooks. Integration packages populate
 // `Tinker.autocompleteCorpus / classAliases / casters` in their host-side

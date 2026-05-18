@@ -1,3 +1,4 @@
+import '../mcp/mcp_tool_descriptor.dart';
 import 'artisan_command.dart';
 
 /// Base for any package that contributes commands to an [ArtisanApplication].
@@ -14,4 +15,11 @@ abstract class ArtisanServiceProvider {
 
   /// Returns the commands this provider contributes to the application.
   List<ArtisanCommand> commands();
+
+  /// Returns the MCP tool descriptors this provider contributes.
+  ///
+  /// Defaults to an empty list so existing providers compile without
+  /// modification. Override to expose VM-Service-backed tools to the MCP
+  /// server (see [McpToolDescriptor] for the descriptor contract).
+  List<McpToolDescriptor> mcpTools() => const <McpToolDescriptor>[];
 }

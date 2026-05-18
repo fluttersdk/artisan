@@ -10,6 +10,7 @@ import '../commands/list_command.dart';
 import '../commands/logs_command.dart';
 import '../commands/make_command_command.dart';
 import '../commands/make_plugin_command.dart';
+import '../commands/consumer_scaffold_command.dart';
 import '../commands/plugin_install_command.dart';
 import '../commands/plugin_uninstall_command.dart';
 import '../commands/plugins_refresh_command.dart';
@@ -77,11 +78,18 @@ typedef DelegateStrategy = Future<int> Function(List<String> args);
 ///
 /// [wrapperExists] and [delegate] are seams for tests; production callers
 /// leave them at their defaults.
+///
+/// When [collectMcpTools] is `true`, each provider's MCP tool descriptors are
+/// registered via [ArtisanRegistry.registerMcpToolsFor] immediately after the
+/// provider's commands are registered. Defaults to `false` so CLI invocations
+/// (e.g. `dart run :artisan list`) pay no MCP overhead. Only the MCP server
+/// entry point (`bin/mcp.dart`) passes `collectMcpTools: true`.
 Future<int> runArtisan(
   List<String> args, {
   List<ArtisanServiceProvider> baseProviders = const <ArtisanServiceProvider>[],
   List<ArtisanServiceProvider> Function()? autoProviders,
   bool delegateToConsumer = true,
+  bool collectMcpTools = false,
   WrapperExistsCheck? wrapperExists,
   DelegateStrategy? delegate,
 }) async {
@@ -104,10 +112,12 @@ Future<int> runArtisan(
     );
     for (final provider in baseProviders) {
       registry.registerProvider(provider);
+      if (collectMcpTools) registry.registerMcpToolsFor(provider);
     }
     final auto = autoProviders?.call() ?? const <ArtisanServiceProvider>[];
     for (final provider in auto) {
       registry.registerProvider(provider);
+      if (collectMcpTools) registry.registerMcpToolsFor(provider);
     }
     final app = ArtisanApplication(registry: registry);
     return await app.dispatch(args);
@@ -164,5 +174,6 @@ List<ArtisanCommand> _builtinCommands(ArtisanRegistry registry) =>
       PluginsRefreshCommand(),
       PluginInstallCommand(),
       PluginUninstallCommand(),
+      ConsumerScaffoldCommand(),
       TinkerCommand(),
     ];

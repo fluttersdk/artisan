@@ -35,7 +35,17 @@ void main() {
 
       expect(provider.commands(), isEmpty);
     });
+
+    test('mcpTools() defaults to an empty list', () {
+      expect(_AnonymousProvider().mcpTools(), isEmpty);
+    });
   });
+}
+
+/// Minimal provider with no overrides; exercises the default implementations.
+class _AnonymousProvider extends ArtisanServiceProvider {
+  @override
+  List<ArtisanCommand> commands() => const <ArtisanCommand>[];
 }
 
 class _UnnamedProvider extends ArtisanServiceProvider {
