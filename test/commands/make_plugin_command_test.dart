@@ -1105,6 +1105,53 @@ void main() {
             'cleanup (only the flutter create default is removed)',
       );
     });
+
+    test(
+        'magic scaffold generates lib/src/<name>_service_provider.dart with '
+        'extends ServiceProvider + register() + Future<void> boot()', () async {
+      // 1. Run the magic scaffold and confirm it exits cleanly.
+      final exit = await runMagicScaffold('my_test_plugin');
+      expect(exit, 0);
+
+      // 2. The service_provider.dart plan entry must have written the file at
+      //    lib/src/<name>_service_provider.dart (removing this entry from
+      //    _magicScaffoldPlan would cause existsSync to return false).
+      final providerFile = File(
+        p.join(
+            target.path, 'lib', 'src', 'my_test_plugin_service_provider.dart'),
+      );
+      expect(
+        providerFile.existsSync(),
+        isTrue,
+        reason: 'magic scaffold must generate '
+            'lib/src/my_test_plugin_service_provider.dart '
+            '(driven by the service_provider.dart entry in _magicScaffoldPlan)',
+      );
+
+      // 3. Assert the rendered content matches the service_provider.dart.stub
+      //    shape: correct import, class hierarchy, and required lifecycle hooks.
+      final content = providerFile.readAsStringSync();
+      expect(
+        content,
+        contains("import 'package:magic/magic.dart';"),
+        reason: 'service provider must import the magic barrel',
+      );
+      expect(
+        content,
+        contains('class MyTestPluginServiceProvider extends ServiceProvider'),
+        reason: 'class name must be PascalCase + extends ServiceProvider',
+      );
+      expect(
+        content,
+        contains('void register()'),
+        reason: 'service provider must declare the register() lifecycle hook',
+      );
+      expect(
+        content,
+        contains('Future<void> boot() async'),
+        reason: 'service provider must declare the async boot() lifecycle hook',
+      );
+    });
   });
 
   group('MakePluginCommand, generated plugin passes dart pub get', () {

@@ -392,5 +392,26 @@ void main() {
       expect(rendered, contains('../fluttersdk_artisan'));
       expect(rendered, contains('../magic'));
     });
+
+    test(
+        'magic runtime.dart.stub re-exports the ServiceProvider for ManifestInstaller resolution',
+        () {
+      // Change C: magic/runtime.dart.stub must export the generated
+      // ServiceProvider so that `package:magic_logger/magic_logger.dart`
+      // surfaces `MagicLoggerServiceProvider` for `ManifestInstaller` to
+      // resolve via `installer.injectProvider(magic.provider!)`.
+      // If the export line were absent (or still using the generic template),
+      // the installer would fail to locate the symbol at runtime.
+      final raw =
+          StubLoader.load('runtime.dart', searchPaths: <String>[magicDir]);
+      final rendered = StubLoader.replace(raw, _sampleReplacements());
+
+      expect(
+        rendered,
+        contains("export 'src/magic_logger_service_provider.dart';"),
+        reason: 'magic/runtime.dart.stub must re-export the ServiceProvider so '
+            'ManifestInstaller can resolve it via the package barrel',
+      );
+    });
   });
 }
