@@ -14,6 +14,9 @@ import '../installer/install_manifest.dart';
 import '../installer/install_transaction.dart';
 import '../installer/manifest_installer.dart';
 import '../installer/manifest_parser.dart';
+import '../installer/plugins_registry_file.dart';
+import '../installer/virtual_fs.dart';
+import 'plugins_refresh_command.dart';
 
 /// `plugin:install <name>`, register a third-party artisan plugin into the
 /// consumer project.
@@ -227,7 +230,10 @@ class PluginInstallCommand extends ArtisanInstallCommand {
   // ---------------------------------------------------------------------------
 
   /// Parses the install.yaml at [manifestPath] and commits via
-  /// [ManifestInstaller].
+  /// [ManifestInstaller]. On a non-dry-run [Success], also registers the
+  /// plugin's [ArtisanServiceProvider] in `.artisan/plugins.json` and
+  /// regenerates `lib/app/_plugins.g.dart` so commands appear in
+  /// `dart run magic:artisan list` without a separate `plugins:refresh` step.
   Future<int> _runManifestFlow(
     ArtisanContext ctx, {
     required String manifestPath,
@@ -251,7 +257,44 @@ class PluginInstallCommand extends ArtisanInstallCommand {
       nonInteractive: isNonInteractive(ctx),
     );
 
-    return _renderResultAndExit(ctx, result, manifest: manifest);
+    final exit = _renderResultAndExit(ctx, result, manifest: manifest);
+    if (result is Success && !isDryRun(ctx)) {
+      await _registerArtisanProvider(ctx, name: manifest.pluginName);
+    }
+    return exit;
+  }
+
+  /// Convention-based registration of the plugin's [ArtisanServiceProvider] in
+  /// `.artisan/plugins.json`, then a synchronous regeneration of
+  /// `lib/app/_plugins.g.dart` via [PluginsRefreshCommand] so the host's
+  /// `bin/artisan.dart` picks up the plugin's commands on the next invocation.
+  ///
+  /// Naming convention: `package:<name>/cli.dart` is the import URI and
+  /// `<PascalCaseName>ArtisanProvider` is the class name. Plugins that follow
+  /// a different convention are out of scope here; they can run
+  /// `plugins:refresh` manually after editing `.artisan/plugins.json` by hand.
+  Future<void> _registerArtisanProvider(
+    ArtisanContext ctx, {
+    required String name,
+  }) async {
+    final root = getProjectRoot();
+    final pascalName = _pascalCase(name);
+    final entry = PluginEntry(
+      name: name,
+      providerImport: 'package:$name/cli.dart',
+      providerClass: '${pascalName}ArtisanProvider',
+      registeredAt: DateTime.now().toUtc().toIso8601String(),
+    );
+
+    try {
+      await PluginsRegistryFile(const RealFs(), root).addPlugin(entry);
+      await PluginsRefreshCommand(projectRoot: root).handle(ctx);
+    } catch (e) {
+      ctx.output.warning(
+        'Plugin "$name" was installed but artisan command auto-registration '
+        'failed: $e. Run `dart run magic:artisan plugins:refresh` manually.',
+      );
+    }
   }
 
   /// Maps a [TransactionResult] to the appropriate user-facing output +
