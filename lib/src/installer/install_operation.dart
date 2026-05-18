@@ -480,11 +480,20 @@ final class InjectInfoPlistKey extends InstallOperation {
   /// The plist value. Must be a [String], [bool], [List], or [Map].
   final Object value;
 
+  /// Target platform: `'ios'` (default) or `'macos'`. The dispatcher resolves
+  /// the canonical Info.plist path off this value via [PlatformHelper] so the
+  /// iOS variant never accidentally lands inside the macOS `Runner.app`.
+  final String platform;
+
   /// Creates an [InjectInfoPlistKey] operation.
-  const InjectInfoPlistKey({required this.key, required this.value});
+  const InjectInfoPlistKey({
+    required this.key,
+    required this.value,
+    this.platform = 'ios',
+  });
 
   @override
-  String describe() => '[inject-plist-key] $key = $value';
+  String describe() => '[inject-plist-key:$platform] $key = $value';
 }
 
 /// Sets a key-value pair in the `.entitlements` file for [platform].

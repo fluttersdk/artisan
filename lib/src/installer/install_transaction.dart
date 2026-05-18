@@ -1,8 +1,20 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 
+import '../helpers/config_editor.dart';
+import '../helpers/env_editor.dart';
+import '../helpers/gradle_editor.dart';
+import '../helpers/html_editor.dart';
+import '../helpers/json_editor.dart';
+import '../helpers/main_dart_editor.dart';
+import '../helpers/platform_helper.dart';
+import '../helpers/plist_writer.dart';
+import '../helpers/podfile_editor.dart';
+import '../helpers/route_registry_editor.dart';
+import '../helpers/xml_editor.dart';
 import 'conflict_detector.dart';
 import 'dry_run_renderer.dart';
 import 'install_context.dart';
@@ -183,7 +195,17 @@ class InstallTransaction {
       return Error(error: e.toString(), rolledBack: false);
     }
 
-    // 6. Persist the install record so `plugin:uninstall` can replay-reverse.
+    // 6. Run deferred shell ops (RunShell). These execute AFTER every file
+    //    mutation has landed so a hook like `flutter pub get` observes the
+    //    final on-disk state. A non-zero exit aborts the transaction and
+    //    leaves the record file unwritten; the operator can re-run the
+    //    install once the shell precondition is fixed.
+    final shellError = _runShellOps();
+    if (shellError != null) {
+      return shellError;
+    }
+
+    // 7. Persist the install record so `plugin:uninstall` can replay-reverse.
     final recordPath = p.join(
       _ctx.projectRoot,
       '.artisan',
@@ -217,59 +239,385 @@ class InstallTransaction {
     return ConflictDetector(_ctx).detect(_ops, pluginName: _pluginName);
   }
 
-  /// Computes the staged write/delete entry for a single [op]. Returns an
-  /// [Error] result when [op] belongs to an op type whose dispatcher has not
-  /// yet been implemented (Wave 3 extends this method per chain-method-batch).
+  /// Computes the staged write/delete entry for a single [op].
+  ///
+  /// Three classes of behaviour live here:
+  ///
+  /// 1. Pure file ops ([WriteFile] / [DeleteFile] / [CopyFile] / [PublishFile])
+  ///    populate [stagedWrites] and ride the atomic `.tmp` swap in
+  ///    [commit]'s phase 4.
+  /// 2. Helper-backed ops ([AddDependency] / [AddPubspecAsset] / [MergeJson] /
+  ///    every `Inject*`) call legacy helpers (`ConfigEditor`, `JsonEditor`,
+  ///    `MainDartEditor`, `XmlEditor`, `PlistWriter`, `PodfileEditor`,
+  ///    `GradleEditor`, `HtmlEditor`, `EnvEditor`) which write through
+  ///    `dart:io` directly. These commits land synchronously during stage and
+  ///    are NOT covered by the `.tmp` rollback. See `PluginInstaller`'s
+  ///    "Limitations" docblock for the V1 trade-off.
+  /// 3. [RunShell] is deferred until phase 5 (`_runShellOps`) so commands
+  ///    only fire after every file mutation succeeded.
   TransactionResult? _stageOp(
     InstallOperation op,
     Map<String, String?> stagedWrites,
   ) {
-    switch (op) {
-      case WriteFile():
-        stagedWrites[_abs(op.targetPath)] = op.content;
-        return null;
-      case DeleteFile():
-        stagedWrites[_abs(op.targetPath)] = null;
-        return null;
-      case CopyFile():
-        // Read source content NOW (stage time) so the atomic write phase only
-        // depends on the in-memory plan, never on disk state the user could
-        // change between stage and commit.
-        final sourceAbs = _abs(op.sourcePath);
-        final content = _ctx.fs.readAsString(sourceAbs);
-        stagedWrites[_abs(op.targetPath)] = content;
-        return null;
-      // The remaining 23 op types land in Wave 3 (Steps 18 through 23). Until
-      // then the dispatcher refuses them explicitly so misconfigured plugins
-      // fail fast instead of silently dropping operations.
-      case AddDependency():
-      case AddPathDependency():
-      case RemoveDependency():
-      case AddPubspecAsset():
-      case PublishFile():
-      case MergeJson():
-      case InjectImport():
-      case InjectBeforePattern():
-      case InjectAfterPattern():
-      case InjectAndroidPermission():
-      case InjectAndroidMetaData():
-      case InjectInfoPlistKey():
-      case InjectEntitlement():
-      case InjectPodfileLine():
-      case InjectGradlePlugin():
-      case InjectGradleDependency():
-      case InjectEnvVar():
-      case InjectIntoWebHead():
-      case AddWebMetaTag():
-      case InjectMainDartImport():
-      case InjectIntoMainDart():
-      case InjectRouteRegistration():
-      case RunShell():
+    try {
+      switch (op) {
+        case WriteFile():
+          stagedWrites[_abs(op.targetPath)] = op.content;
+          return null;
+        case DeleteFile():
+          stagedWrites[_abs(op.targetPath)] = null;
+          return null;
+        case CopyFile():
+          // Read source content NOW (stage time) so the atomic write phase only
+          // depends on the in-memory plan, never on disk state the user could
+          // change between stage and commit.
+          final sourceAbs = _abs(op.sourcePath);
+          final content = _ctx.fs.readAsString(sourceAbs);
+          stagedWrites[_abs(op.targetPath)] = content;
+          return null;
+        case PublishFile():
+          // Load + substitute now, ride the atomic .tmp swap during commit
+          // phase 4 alongside WriteFile/DeleteFile/CopyFile.
+          final stub = _ctx.stubs.load(op.sourceStubName);
+          final rendered = _ctx.stubs.replace(stub, op.replacements);
+          stagedWrites[_abs(op.targetPath)] = rendered;
+          return null;
+
+        // ---------- Pubspec ----------
+        case AddDependency():
+          final pubspec = _pubspecPath();
+          if (op.isDev) {
+            ConfigEditor.addDevDependencyToPubspec(
+              pubspecPath: pubspec,
+              name: op.name,
+              version: op.version,
+            );
+          } else {
+            ConfigEditor.addDependencyToPubspec(
+              pubspecPath: pubspec,
+              name: op.name,
+              version: op.version,
+            );
+          }
+          return null;
+        case AddPathDependency():
+          ConfigEditor.addPathDependencyToPubspec(
+            pubspecPath: _pubspecPath(),
+            name: op.name,
+            path: op.path,
+          );
+          return null;
+        case RemoveDependency():
+          ConfigEditor.removeDependencyFromPubspec(
+            pubspecPath: _pubspecPath(),
+            name: op.name,
+          );
+          return null;
+        case AddPubspecAsset():
+          // CRITICAL: use appendPubspecListEntry, NOT updatePubspecValue —
+          // the latter clobbers the entire `flutter.assets` list.
+          ConfigEditor.appendPubspecListEntry(
+            pubspecPath: _pubspecPath(),
+            keyPath: const <String>['flutter', 'assets'],
+            value: op.assetPath,
+          );
+          return null;
+
+        // ---------- JSON ----------
+        case MergeJson():
+          JsonEditor.mergeJsonData(
+            _abs(op.targetPath),
+            op.sourceData,
+            additive: op.additive,
+          );
+          return null;
+
+        // ---------- Generic Dart injection ----------
+        case InjectImport():
+          ConfigEditor.addImportToFile(
+            filePath: _abs(op.targetFile),
+            importStatement: op.importStatement,
+          );
+          return null;
+        case InjectBeforePattern():
+          ConfigEditor.insertCodeBeforePattern(
+            filePath: _abs(op.targetFile),
+            pattern: op.pattern,
+            code: op.code,
+          );
+          return null;
+        case InjectAfterPattern():
+          ConfigEditor.insertCodeAfterPattern(
+            filePath: _abs(op.targetFile),
+            pattern: op.pattern,
+            code: op.code,
+          );
+          return null;
+
+        // ---------- main.dart ----------
+        case InjectMainDartImport():
+          MainDartEditor.addImport(_mainDartPath(), op.importStatement);
+          return null;
+        case InjectIntoMainDart():
+          switch (op.placement) {
+            case MainDartPlacement.beforeInit:
+              MainDartEditor.injectBeforeMagicInit(_mainDartPath(), op.code);
+            case MainDartPlacement.afterInit:
+              MainDartEditor.injectAfterMagicInit(_mainDartPath(), op.code);
+            case MainDartPlacement.wrapRunApp:
+              MainDartEditor.wrapRunApp(_mainDartPath(), op.code);
+          }
+          return null;
+
+        // ---------- Route registry ----------
+        case InjectRouteRegistration():
+          RouteRegistryEditor.addRouteRegistration(
+            _routeProviderPath(),
+            op.functionName,
+          );
+          return null;
+
+        // ---------- Android native ----------
+        case InjectAndroidPermission():
+          if (!PlatformHelper.hasPlatform(_ctx.projectRoot, 'android')) {
+            _logSkip('InjectAndroidPermission', 'android');
+            return null;
+          }
+          XmlEditor.addAndroidPermission(
+            PlatformHelper.androidManifestPath(_ctx.projectRoot),
+            op.permission,
+          );
+          return null;
+        case InjectAndroidMetaData():
+          if (!PlatformHelper.hasPlatform(_ctx.projectRoot, 'android')) {
+            _logSkip('InjectAndroidMetaData', 'android');
+            return null;
+          }
+          XmlEditor.addAndroidMetaData(
+            PlatformHelper.androidManifestPath(_ctx.projectRoot),
+            name: op.name,
+            value: op.value,
+          );
+          return null;
+        case InjectGradlePlugin():
+          if (!PlatformHelper.hasPlatform(_ctx.projectRoot, 'android')) {
+            _logSkip('InjectGradlePlugin', 'android');
+            return null;
+          }
+          GradleEditor.addPlugin(
+            _appBuildGradlePath(),
+            op.pluginId,
+            version: op.version,
+          );
+          return null;
+        case InjectGradleDependency():
+          if (!PlatformHelper.hasPlatform(_ctx.projectRoot, 'android')) {
+            _logSkip('InjectGradleDependency', 'android');
+            return null;
+          }
+          GradleEditor.addDependency(
+            _appBuildGradlePath(),
+            op.scope,
+            op.notation,
+          );
+          return null;
+
+        // ---------- iOS / macOS native ----------
+        case InjectInfoPlistKey():
+          final platform = op.platform;
+          if (!PlatformHelper.hasPlatform(_ctx.projectRoot, platform)) {
+            _logSkip('InjectInfoPlistKey', platform);
+            return null;
+          }
+          final plistPath = _infoPlistPathFor(platform);
+          final value = op.value;
+          if (value is String) {
+            PlistWriter.setStringKey(plistPath, op.key, value);
+            return null;
+          }
+          if (value is bool) {
+            PlistWriter.setBoolKey(plistPath, op.key, value);
+            return null;
+          }
+          if (value is List<String>) {
+            PlistWriter.setArrayKey(plistPath, op.key, value);
+            return null;
+          }
+          return Error(
+            error:
+                'InjectInfoPlistKey: unsupported value type ${value.runtimeType} '
+                'for key ${op.key} (expected String, bool, or List<String>).',
+            rolledBack: false,
+          );
+        case InjectEntitlement():
+          final platform = op.platform;
+          if (!PlatformHelper.hasPlatform(_ctx.projectRoot, platform)) {
+            _logSkip('InjectEntitlement', platform);
+            return null;
+          }
+          final entitlementsPath = _entitlementsPathFor(platform);
+          final value = op.value;
+          if (value is bool) {
+            PlistWriter.setBoolKey(entitlementsPath, op.key, value);
+            return null;
+          }
+          if (value is String) {
+            PlistWriter.setStringKey(entitlementsPath, op.key, value);
+            return null;
+          }
+          return Error(
+            error:
+                'InjectEntitlement: unsupported value type ${value.runtimeType} '
+                'for key ${op.key} (expected String or bool).',
+            rolledBack: false,
+          );
+        case InjectPodfileLine():
+          if (!PlatformHelper.hasPlatform(_ctx.projectRoot, op.platform)) {
+            _logSkip('InjectPodfileLine', op.platform);
+            return null;
+          }
+          PodfileEditor.addPodLine(
+            _podfilePathFor(op.platform),
+            'Runner',
+            op.line,
+          );
+          return null;
+
+        // ---------- Web ----------
+        case InjectIntoWebHead():
+          if (!PlatformHelper.hasPlatform(_ctx.projectRoot, 'web')) {
+            _logSkip('InjectIntoWebHead', 'web');
+            return null;
+          }
+          HtmlEditor.injectBeforeClose(
+            PlatformHelper.webIndexPath(_ctx.projectRoot),
+            '</head>',
+            op.content,
+          );
+          return null;
+        case AddWebMetaTag():
+          if (!PlatformHelper.hasPlatform(_ctx.projectRoot, 'web')) {
+            _logSkip('AddWebMetaTag', 'web');
+            return null;
+          }
+          HtmlEditor.addMetaTag(
+            PlatformHelper.webIndexPath(_ctx.projectRoot),
+            op.attributes,
+          );
+          return null;
+
+        // ---------- Env ----------
+        case InjectEnvVar():
+          EnvEditor.setKey(
+            _envPath(),
+            op.key,
+            op.value,
+          );
+          return null;
+
+        // ---------- Shell (deferred to phase 5) ----------
+        case RunShell():
+          // Deferred: do not write or run anything here; phase 5 of `commit`
+          // iterates the op list a second time after all file writes settle.
+          return null;
+      }
+    } catch (e) {
+      // Helper-backed ops can throw (missing files, malformed YAML, missing
+      // anchors). Surface as a stage-time Error so the transaction halts
+      // before the .tmp swap touches anything.
+      return Error(
+        error: '${op.runtimeType} dispatch failed: $e',
+        rolledBack: false,
+      );
+    }
+  }
+
+  /// Resolves `<projectRoot>/pubspec.yaml`.
+  String _pubspecPath() => p.join(_ctx.projectRoot, 'pubspec.yaml');
+
+  /// Resolves `<projectRoot>/lib/main.dart`.
+  String _mainDartPath() => p.join(_ctx.projectRoot, 'lib', 'main.dart');
+
+  /// Resolves `<projectRoot>/lib/app/providers/route_service_provider.dart`.
+  String _routeProviderPath() => p.join(
+        _ctx.projectRoot,
+        'lib',
+        'app',
+        'providers',
+        'route_service_provider.dart',
+      );
+
+  /// Resolves `<projectRoot>/.env`.
+  String _envPath() => p.join(_ctx.projectRoot, '.env');
+
+  /// Resolves the Android app `build.gradle.kts` (preferred Kotlin DSL) or
+  /// falls back to the Groovy `build.gradle` when the Kotlin variant is
+  /// absent.
+  String _appBuildGradlePath() {
+    final kts = p.join(_ctx.projectRoot, 'android', 'app', 'build.gradle.kts');
+    if (File(kts).existsSync()) return kts;
+    return p.join(_ctx.projectRoot, 'android', 'app', 'build.gradle');
+  }
+
+  /// Resolves `<projectRoot>/<ios|macos>/Runner/Info.plist`. Mirrors
+  /// [PlatformHelper.infoPlistPath] for iOS and applies the same layout for
+  /// macOS so plugins can target either platform off the same op type.
+  String _infoPlistPathFor(String platform) {
+    return p.join(_ctx.projectRoot, platform, 'Runner', 'Info.plist');
+  }
+
+  /// Resolves `<projectRoot>/<ios|macos>/Runner/Runner.entitlements`.
+  String _entitlementsPathFor(String platform) {
+    return p.join(
+      _ctx.projectRoot,
+      platform,
+      'Runner',
+      'Runner.entitlements',
+    );
+  }
+
+  /// Resolves `<projectRoot>/<ios|macos>/Podfile`.
+  String _podfilePathFor(String platform) {
+    return p.join(_ctx.projectRoot, platform, 'Podfile');
+  }
+
+  /// Emits an info-level skip line to the command output when an op targeted
+  /// a platform directory that does not exist on the consumer project.
+  void _logSkip(String opName, String platform) {
+    _ctx.artisanContext.output.info(
+        'Skipping $opName: no $platform/ directory at ${_ctx.projectRoot}.');
+  }
+
+  /// Iterates [_ops] and fires every [RunShell] via [Process.runSync]. Runs
+  /// after every file mutation has landed so a shell hook (e.g.
+  /// `flutter pub get`) observes the final on-disk state.
+  ///
+  /// Returns the first failure as a non-rolled-back [Error]; subsequent shell
+  /// ops are skipped so the operator sees a single root cause.
+  TransactionResult? _runShellOps() {
+    for (final op in _ops) {
+      if (op is! RunShell) continue;
+      try {
+        final result = Process.runSync(
+          op.command,
+          op.args,
+          workingDirectory: op.workingDir ?? _ctx.projectRoot,
+        );
+        if (result.exitCode != 0) {
+          return Error(
+            error: 'RunShell failed (${op.command} ${op.args.join(' ')}, exit '
+                '${result.exitCode}): ${result.stderr}',
+            rolledBack: false,
+          );
+        }
+      } catch (e) {
         return Error(
-          error: 'Dispatcher for ${op.runtimeType} not yet implemented.',
+          error: 'RunShell threw for ${op.command}: $e',
           rolledBack: false,
         );
+      }
     }
+    return null;
   }
 
   /// Delegates dry-run rendering to [DryRunRenderer].

@@ -188,11 +188,22 @@ void main() {
   // InjectInfoPlistKey
   // ---------------------------------------------------------------------------
 
-  test('InjectInfoPlistKey.describe outputs [inject-plist-key]', () {
+  test('InjectInfoPlistKey.describe outputs [inject-plist-key:<platform>]', () {
     const op = InjectInfoPlistKey(
         key: 'NSCameraUsageDescription', value: 'Camera needed');
     expect(op.describe(),
-        '[inject-plist-key] NSCameraUsageDescription = Camera needed');
+        '[inject-plist-key:ios] NSCameraUsageDescription = Camera needed');
+  });
+
+  test('InjectInfoPlistKey.describe carries an explicit macos platform tag',
+      () {
+    const op = InjectInfoPlistKey(
+      key: 'NSCameraUsageDescription',
+      value: 'Camera needed',
+      platform: 'macos',
+    );
+    expect(op.describe(),
+        '[inject-plist-key:macos] NSCameraUsageDescription = Camera needed');
   });
 
   // ---------------------------------------------------------------------------

@@ -412,9 +412,13 @@ void main() {
     });
   });
 
-  group('dispatcher fallback', () {
-    test('unimplemented op type returns Error with descriptive message',
-        () async {
+  group('dispatcher — platform-detection no-op', () {
+    test(
+        'InjectAndroidPermission on a non-Android project is a silent skip '
+        '(returns Success, writes nothing platform-related)', () async {
+      // No android/ directory under projectRoot, so the dispatcher must
+      // emit an info-level skip line and complete the install without
+      // touching any android files.
       final fs = InMemoryFs();
       final tx = InstallTransaction(_makeCtx(fs: fs), pluginName: 'demo');
       tx.stage(
@@ -424,13 +428,12 @@ void main() {
 
       final result = await tx.commit();
 
-      expect(result, isA<Error>());
-      final err = result as Error;
-      expect(err.error, contains('InjectAndroidPermission'));
-      expect(err.error, contains('not yet implemented'));
-      expect(err.rolledBack, isFalse);
-      // Nothing written.
-      expect(fs.snapshot, isEmpty);
+      expect(result, isA<Success>());
+      // The only artefact is the install record under .artisan/installed/.
+      final manifestlike = fs.snapshot.keys
+          .where((k) => k.contains('AndroidManifest.xml'))
+          .toList();
+      expect(manifestlike, isEmpty);
     });
   });
 

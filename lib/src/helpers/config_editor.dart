@@ -105,6 +105,112 @@ class ConfigEditor {
     }
   }
 
+  /// Add a dev dependency to `pubspec.yaml` under the `dev_dependencies` map.
+  ///
+  /// If the dev dependency already exists its version is updated in place.
+  /// Creates the `dev_dependencies` section if it does not exist.
+  ///
+  /// @param pubspecPath  Absolute or relative path to `pubspec.yaml`.
+  /// @param name         Package name as published on pub.dev.
+  /// @param version      Version constraint, e.g. `^1.0.0`.
+  static void addDevDependencyToPubspec({
+    required String pubspecPath,
+    required String name,
+    required String version,
+  }) {
+    final content = FileHelper.readFile(pubspecPath);
+    final editor = YamlEditor(content);
+
+    // 1. Ensure `dev_dependencies` exists. `parseAt` throws when the key path
+    //    is missing, so catch and create a fresh map in either no-value or
+    //    no-key case.
+    try {
+      if (editor.parseAt(['dev_dependencies']).value == null) {
+        editor.update(['dev_dependencies'], {});
+      }
+    } catch (_) {
+      editor.update(['dev_dependencies'], {});
+    }
+
+    // 2. Upsert the dev dependency.
+    editor.update(['dev_dependencies', name], version);
+
+    FileHelper.writeFile(pubspecPath, editor.toString());
+  }
+
+  /// Append [value] to the YAML list living at [keyPath] inside
+  /// [pubspecPath], creating the list if it does not yet exist.
+  ///
+  /// This differs from [updatePubspecValue] which REPLACES the entire value at
+  /// [keyPath]. Append-style mutation is needed for `flutter.assets`,
+  /// `flutter.fonts`, and other list-shaped keys that callers (typically
+  /// plugin install commands) want to extend without clobbering existing
+  /// entries.
+  ///
+  /// Idempotent: when [value] is already present anywhere in the list, the
+  /// file is left unchanged.
+  ///
+  /// @param pubspecPath  Path to `pubspec.yaml`.
+  /// @param keyPath      YAML key path identifying the target list, e.g.
+  ///                     `['flutter', 'assets']`.
+  /// @param value        Scalar entry to append.
+  static void appendPubspecListEntry({
+    required String pubspecPath,
+    required List<String> keyPath,
+    required String value,
+  }) {
+    final content = FileHelper.readFile(pubspecPath);
+    final editor = YamlEditor(content);
+
+    // 1. Build intermediate map nodes when missing so `parseAt(keyPath)` does
+    //    not throw on a fresh pubspec. The leaf node itself stays untouched
+    //    until step 2 decides whether to create a list or extend one.
+    for (var i = 0; i < keyPath.length - 1; i++) {
+      final segment = keyPath.sublist(0, i + 1);
+      try {
+        if (editor.parseAt(segment).value == null) {
+          editor.update(segment, {});
+        }
+      } catch (_) {
+        editor.update(segment, {});
+      }
+    }
+
+    // 2. Read the current list. Absent or null → create a fresh single-entry
+    //    list. Wrong shape (scalar / map) is a fatal misuse: refuse to clobber.
+    dynamic existing;
+    try {
+      existing = editor.parseAt(keyPath).value;
+    } catch (_) {
+      existing = null;
+    }
+
+    if (existing == null) {
+      editor.update(keyPath, <String>[value]);
+      FileHelper.writeFile(pubspecPath, editor.toString());
+      return;
+    }
+
+    if (existing is! List) {
+      throw StateError(
+        'appendPubspecListEntry: $keyPath is not a YAML list '
+        '(found ${existing.runtimeType}); refusing to clobber.',
+      );
+    }
+
+    // 3. Dedup by string equality so the operation is idempotent across
+    //    repeated installs.
+    final merged = <dynamic>[...existing];
+    final alreadyPresent = merged.any((entry) => entry?.toString() == value);
+    if (alreadyPresent) {
+      return;
+    }
+    merged.add(value);
+    editor.update(keyPath, merged);
+
+    FileHelper.writeFile(pubspecPath, editor.toString());
+  }
+
   /// Update a nested value in pubspec.yaml.
   ///
   /// The [keyPath] is a list of keys to traverse, e.g., ['environment', 'sdk'].

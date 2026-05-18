@@ -140,5 +140,107 @@ void main() {
 
       expect(File(newPath).readAsStringSync(), '{"k":1}');
     });
+
+    test('addDevDependencyToPubspec inserts under dev_dependencies', () {
+      ConfigEditor.addDevDependencyToPubspec(
+        pubspecPath: pubspecPath,
+        name: 'build_runner',
+        version: '^2.4.0',
+      );
+
+      final content = File(pubspecPath).readAsStringSync();
+      expect(content, contains('dev_dependencies:'));
+      expect(content, contains('build_runner: ^2.4.0'));
+      // The runtime dependency stays put.
+      expect(content, contains('meta: ^1.0.0'));
+    });
+
+    test('addDevDependencyToPubspec updates existing entry', () {
+      ConfigEditor.addDevDependencyToPubspec(
+        pubspecPath: pubspecPath,
+        name: 'build_runner',
+        version: '^2.4.0',
+      );
+      ConfigEditor.addDevDependencyToPubspec(
+        pubspecPath: pubspecPath,
+        name: 'build_runner',
+        version: '^2.5.0',
+      );
+
+      final content = File(pubspecPath).readAsStringSync();
+      expect(content, contains('build_runner: ^2.5.0'));
+      expect(content, isNot(contains('build_runner: ^2.4.0')));
+    });
+
+    test('appendPubspecListEntry creates flutter.assets list when absent', () {
+      ConfigEditor.appendPubspecListEntry(
+        pubspecPath: pubspecPath,
+        keyPath: <String>['flutter', 'assets'],
+        value: 'assets/config.json',
+      );
+
+      final content = File(pubspecPath).readAsStringSync();
+      expect(content, contains('flutter:'));
+      expect(content, contains('assets:'));
+      expect(content, contains('assets/config.json'));
+    });
+
+    test('appendPubspecListEntry preserves existing assets list', () {
+      // Pre-populate flutter.assets with one entry. This is the regression
+      // test that proves the helper does NOT clobber via updatePubspecValue.
+      File(pubspecPath).writeAsStringSync(
+        'name: host_app\n'
+        'version: 1.0.0\n'
+        '\n'
+        'flutter:\n'
+        '  assets:\n'
+        '    - assets/old.json\n',
+      );
+
+      ConfigEditor.appendPubspecListEntry(
+        pubspecPath: pubspecPath,
+        keyPath: <String>['flutter', 'assets'],
+        value: 'assets/new.json',
+      );
+
+      final content = File(pubspecPath).readAsStringSync();
+      expect(content, contains('assets/old.json'));
+      expect(content, contains('assets/new.json'));
+    });
+
+    test('appendPubspecListEntry is idempotent on duplicate value', () {
+      File(pubspecPath).writeAsStringSync(
+        'name: host_app\n'
+        'flutter:\n'
+        '  assets:\n'
+        '    - assets/x.json\n',
+      );
+      final before = File(pubspecPath).readAsStringSync();
+
+      ConfigEditor.appendPubspecListEntry(
+        pubspecPath: pubspecPath,
+        keyPath: <String>['flutter', 'assets'],
+        value: 'assets/x.json',
+      );
+
+      expect(File(pubspecPath).readAsStringSync(), before);
+    });
+
+    test('appendPubspecListEntry throws when target is a non-list scalar', () {
+      File(pubspecPath).writeAsStringSync(
+        'name: host_app\n'
+        'flutter:\n'
+        '  assets: not_a_list\n',
+      );
+
+      expect(
+        () => ConfigEditor.appendPubspecListEntry(
+          pubspecPath: pubspecPath,
+          keyPath: <String>['flutter', 'assets'],
+          value: 'assets/x.json',
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
   });
 }
