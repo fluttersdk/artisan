@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:fluttersdk_artisan/artisan.dart';
@@ -444,6 +445,303 @@ void main() {
       expect(wrapper, contains("import 'package:magic_logger/cli.dart';"));
       expect(wrapper,
           contains('registry.registerProvider(MagicLoggerArtisanProvider());'));
+    });
+  });
+
+  group(
+      'PluginInstallCommand — manifest flow → plugins.json registration '
+      '(Change F)', () {
+    // -------------------------------------------------------------------------
+    // Local fixtures shared by the Change F tests below.
+    // -------------------------------------------------------------------------
+
+    /// Seeds `<root>/lib/app/.keep` so [PluginsRefreshCommand]'s
+    /// `directoryExists(lib/app)` probe (delegated to `Directory.existsSync`
+    /// in production) passes. Mirrors the in-memory helper in
+    /// `plugins_refresh_command_test.dart:_seedLibApp`.
+    void seedLibApp(Directory root) {
+      final libAppDir = Directory(p.join(root.path, 'lib', 'app'))
+        ..createSync(recursive: true);
+      File(p.join(libAppDir.path, '.keep')).writeAsStringSync('');
+    }
+
+    /// Builds the standard success-path options map for the manifest flow.
+    Map<String, dynamic> manifestOpts({bool dryRun = false}) {
+      return <String, dynamic>{
+        'force': false,
+        'no-bootstrap': true,
+        'dry-run': dryRun,
+        'non-interactive': true,
+        'use-yaml-only': false,
+        'bootstrap-command': null,
+        'provider': null,
+      };
+    }
+
+    test('successful manifest install writes plugins.json entry for the plugin',
+        () async {
+      final root = Directory.systemTemp.createTempSync('plinst_reg_success_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'magic_logger');
+      seedLibApp(root);
+
+      // Minimal manifest: no ops, commit returns Success(0), then the Change F
+      // _registerArtisanProvider step fires.
+      final manifestPath = p.join(root.path, 'install.yaml');
+      _writeInstallYaml(manifestPath, 'magic_logger');
+
+      final cmd = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+      );
+      final ctx = _ctxWith(
+        manifestOpts(),
+        positional: const ['magic_logger'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0);
+
+      // 1. Registry file landed on disk via PluginsRegistryFile.write.
+      final registryPath = p.join(root.path, '.artisan', 'plugins.json');
+      expect(File(registryPath).existsSync(), isTrue,
+          reason:
+              '_registerArtisanProvider must persist plugins.json on Success');
+
+      // 2. Entry shape matches the convention encoded in _registerArtisanProvider.
+      final registry =
+          await PluginsRegistryFile(const RealFs(), root.path).read();
+      expect(registry.plugins, hasLength(1));
+      final entry = registry.plugins.single;
+      expect(entry.name, 'magic_logger');
+      expect(entry.providerImport, 'package:magic_logger/cli.dart');
+      expect(entry.providerClass, 'MagicLoggerArtisanProvider');
+      expect(DateTime.tryParse(entry.registeredAt), isNotNull,
+          reason: 'registeredAt must be parseable ISO-8601');
+    });
+
+    test(
+        'successful manifest install regenerates lib/app/_plugins.g.dart to '
+        'include the plugin', () async {
+      final root = Directory.systemTemp.createTempSync('plinst_reg_codegen_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'magic_logger');
+      seedLibApp(root);
+
+      final manifestPath = p.join(root.path, 'install.yaml');
+      _writeInstallYaml(manifestPath, 'magic_logger');
+
+      final cmd = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+      );
+      final ctx = _ctxWith(
+        manifestOpts(),
+        positional: const ['magic_logger'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0);
+
+      final generatedPath = p.join(root.path, 'lib', 'app', '_plugins.g.dart');
+      expect(File(generatedPath).existsSync(), isTrue,
+          reason: 'PluginsRefreshCommand must regenerate _plugins.g.dart');
+
+      final generated = File(generatedPath).readAsStringSync();
+      expect(
+        generated,
+        contains(
+          "import 'package:magic_logger/cli.dart' show MagicLoggerArtisanProvider;",
+        ),
+      );
+      expect(generated, contains('MagicLoggerArtisanProvider(),'));
+      expect(generated,
+          contains('List<ArtisanServiceProvider> autoDiscoveredProviders()'));
+    });
+
+    test('dry-run skips plugin registration entirely', () async {
+      final root = Directory.systemTemp.createTempSync('plinst_reg_dryrun_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'demo_plugin');
+      // No lib/app/ seed — dry-run must short-circuit BEFORE plugins:refresh
+      // gets a chance to walk into the missing directory.
+
+      final manifestPath = p.join(root.path, 'install.yaml');
+      _writeInstallYaml(manifestPath, 'demo_plugin');
+
+      final cmd = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+      );
+      final ctx = _ctxWith(
+        manifestOpts(dryRun: true),
+        positional: const ['demo_plugin'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0);
+
+      // The dry-run guard inside _runManifestFlow short-circuits
+      // _registerArtisanProvider, so neither plugins.json nor _plugins.g.dart
+      // should appear.
+      final registryPath = p.join(root.path, '.artisan', 'plugins.json');
+      expect(File(registryPath).existsSync(), isFalse,
+          reason: '--dry-run must NOT write the plugins registry');
+      final generatedPath = p.join(root.path, 'lib', 'app', '_plugins.g.dart');
+      expect(File(generatedPath).existsSync(), isFalse,
+          reason: '--dry-run must NOT trigger plugins:refresh codegen');
+    });
+
+    test(
+        'repeated install is idempotent — single entry, single '
+        '_plugins.g.dart import', () async {
+      final root = Directory.systemTemp.createTempSync('plinst_reg_idem_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'magic_logger');
+      seedLibApp(root);
+
+      final manifestPath = p.join(root.path, 'install.yaml');
+      _writeInstallYaml(manifestPath, 'magic_logger');
+
+      // Two independent command instances share the same project root so we
+      // exercise the addPlugin replace-by-name path, not a single-instance
+      // optimisation.
+      final cmdA = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+      );
+      final cmdB = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+      );
+      final opts = manifestOpts();
+
+      final exitA = await cmdA.handle(_ctxWith(opts,
+          positional: const ['magic_logger'], signature: cmdA.parsedSignature));
+      final exitB = await cmdB.handle(_ctxWith(opts,
+          positional: const ['magic_logger'], signature: cmdB.parsedSignature));
+
+      expect(exitA, 0);
+      expect(exitB, 0);
+
+      // 1. plugins.json must hold exactly one entry for magic_logger after
+      //    two runs. PluginsRegistryFile.addPlugin replaces by name.
+      final registry =
+          await PluginsRegistryFile(const RealFs(), root.path).read();
+      expect(
+        registry.plugins.where((e) => e.name == 'magic_logger').length,
+        1,
+        reason: 'addPlugin must replace by name, not duplicate',
+      );
+
+      // 2. _plugins.g.dart must hold exactly one import line + one
+      //    constructor call for the plugin (deterministic codegen).
+      final generated = File(p.join(
+        root.path,
+        'lib',
+        'app',
+        '_plugins.g.dart',
+      )).readAsStringSync();
+      final importMatches = RegExp(
+        "import 'package:magic_logger/cli.dart' show MagicLoggerArtisanProvider;",
+      ).allMatches(generated);
+      expect(importMatches, hasLength(1),
+          reason: 'codegen must emit a single import per plugin');
+      final ctorMatches =
+          RegExp(r'MagicLoggerArtisanProvider\(\),').allMatches(generated);
+      expect(ctorMatches, hasLength(1),
+          reason: 'codegen must emit a single constructor call per plugin');
+    });
+
+    test(
+        'plugins.json write failure surfaces ctx.output.warning but does not '
+        'fail the install', () async {
+      final root = Directory.systemTemp.createTempSync('plinst_reg_warn_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'magic_logger');
+      seedLibApp(root);
+
+      // 1. Pre-create .artisan/plugins.json AS A DIRECTORY so the atomic
+      //    `_fs.rename(tmpPath, registryPath)` inside PluginsRegistryFile.write
+      //    fails with FileSystemException ("Cannot rename file ... is a
+      //    directory"). Portable across POSIX (Linux/macOS) without chmod.
+      Directory(p.join(root.path, '.artisan', 'plugins.json'))
+          .createSync(recursive: true);
+
+      final manifestPath = p.join(root.path, 'install.yaml');
+      _writeInstallYaml(manifestPath, 'magic_logger');
+
+      final cmd = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+      );
+      final ctx = _ctxWith(
+        manifestOpts(),
+        positional: const ['magic_logger'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+
+      // 2. Manifest install itself succeeded, so handle() still returns 0 —
+      //    the try-catch inside _registerArtisanProvider must swallow the
+      //    rename failure into a warning, never an error.
+      expect(exit, 0,
+          reason: 'auto-registration failure must NOT fail the install');
+      final out = (ctx.output as BufferedOutput).content;
+      expect(out, contains('auto-registration failed:'),
+          reason: 'try-catch must surface a user-facing warning');
+    });
+
+    test('PascalCase derivation handles snake_case plugin name correctly',
+        () async {
+      final root = Directory.systemTemp.createTempSync('plinst_reg_pascal_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'my_test_logger');
+      seedLibApp(root);
+
+      final manifestPath = p.join(root.path, 'install.yaml');
+      _writeInstallYaml(manifestPath, 'my_test_logger');
+
+      final cmd = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+      );
+      final ctx = _ctxWith(
+        manifestOpts(),
+        positional: const ['my_test_logger'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0);
+
+      // 1. plugins.json entry uses fully-collapsed PascalCase
+      //    (MyTestLogger, not My_test_logger).
+      final registryJson = jsonDecode(File(p.join(
+        root.path,
+        '.artisan',
+        'plugins.json',
+      )).readAsStringSync()) as Map<String, dynamic>;
+      final entries = registryJson['plugins'] as List<dynamic>;
+      expect(entries, hasLength(1));
+      expect((entries.single as Map<String, dynamic>)['providerClass'],
+          'MyTestLoggerArtisanProvider');
+
+      // 2. Generated codegen surfaces the same PascalCase identifier so the
+      //    emitted Dart file actually compiles.
+      final generated = File(p.join(
+        root.path,
+        'lib',
+        'app',
+        '_plugins.g.dart',
+      )).readAsStringSync();
+      expect(generated, contains('MyTestLoggerArtisanProvider'));
+      expect(generated, isNot(contains('My_test_loggerArtisanProvider')),
+          reason: 'PascalCase derivation must collapse all snake_case parts');
     });
   });
 }
