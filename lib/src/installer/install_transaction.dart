@@ -70,6 +70,15 @@ class InstallTransaction {
   final String _pluginName;
   final List<InstallOperation> _ops = <InstallOperation>[];
 
+  /// Absolute paths written by helper-backed dispatcher arms (ConfigEditor,
+  /// JsonEditor, MainDartEditor, XmlEditor, PlistWriter, PodfileEditor,
+  /// GradleEditor, HtmlEditor, EnvEditor, RouteRegistryEditor). These bypass
+  /// [stagedWrites] because they call `dart:io` directly during the stage
+  /// phase, but `_buildRecord` still needs to hash them so a subsequent
+  /// install pass sees a clean (managed) hash match instead of a false
+  /// "unmanaged-file" conflict from [ConflictDetector].
+  final Set<String> _helperWrittenTargets = <String>{};
+
   /// Conflict list injected by tests via [debugSetConflictsForTest]. Until
   /// Step 7's `ConflictDetector` lands, the production code path treats this
   /// as the authoritative pre-flight conflict source.
@@ -195,17 +204,12 @@ class InstallTransaction {
       return Error(error: e.toString(), rolledBack: false);
     }
 
-    // 6. Run deferred shell ops (RunShell). These execute AFTER every file
-    //    mutation has landed so a hook like `flutter pub get` observes the
-    //    final on-disk state. A non-zero exit aborts the transaction and
-    //    leaves the record file unwritten; the operator can re-run the
-    //    install once the shell precondition is fixed.
-    final shellError = _runShellOps();
-    if (shellError != null) {
-      return shellError;
-    }
-
-    // 7. Persist the install record so `plugin:uninstall` can replay-reverse.
+    // 6. Persist the install record BEFORE running shell ops. The atomic
+    //    rename boundary in phase 5 is the point of no return for filesystem
+    //    state; once renames land, the record must reflect what is on disk
+    //    so a downstream shell failure leaves an uninstallable state instead
+    //    of orphaning the changes. Subsequent shell failures are independent
+    //    of install-state durability.
     final recordPath = p.join(
       _ctx.projectRoot,
       '.artisan',
@@ -214,6 +218,17 @@ class InstallTransaction {
     );
     final record = _buildRecord(stagedWrites);
     _ctx.fs.writeAsString(recordPath, _encodeJson(record));
+
+    // 7. Run deferred shell ops (RunShell). These execute AFTER every file
+    //    mutation has landed so a hook like `flutter pub get` observes the
+    //    final on-disk state. A non-zero exit surfaces as Error; the
+    //    install record from phase 6 stays on disk so the operator can
+    //    `plugin:uninstall` to roll back if the shell precondition cannot
+    //    be satisfied.
+    final shellError = _runShellOps();
+    if (shellError != null) {
+      return shellError;
+    }
 
     return Success(opCount: _ops.length, recordPath: recordPath);
   }
@@ -299,6 +314,7 @@ class InstallTransaction {
               version: op.version,
             );
           }
+          _helperWrittenTargets.add(pubspec);
           return null;
         case AddPathDependency():
           ConfigEditor.addPathDependencyToPubspec(
@@ -306,57 +322,69 @@ class InstallTransaction {
             name: op.name,
             path: op.path,
           );
+          _helperWrittenTargets.add(_pubspecPath());
           return null;
         case RemoveDependency():
           ConfigEditor.removeDependencyFromPubspec(
             pubspecPath: _pubspecPath(),
             name: op.name,
           );
+          _helperWrittenTargets.add(_pubspecPath());
           return null;
         case AddPubspecAsset():
-          // CRITICAL: use appendPubspecListEntry, NOT updatePubspecValue —
+          // CRITICAL: use appendPubspecListEntry, NOT updatePubspecValue ,
           // the latter clobbers the entire `flutter.assets` list.
           ConfigEditor.appendPubspecListEntry(
             pubspecPath: _pubspecPath(),
             keyPath: const <String>['flutter', 'assets'],
             value: op.assetPath,
           );
+          _helperWrittenTargets.add(_pubspecPath());
           return null;
 
         // ---------- JSON ----------
         case MergeJson():
+          final target = _abs(op.targetPath);
           JsonEditor.mergeJsonData(
-            _abs(op.targetPath),
+            target,
             op.sourceData,
             additive: op.additive,
           );
+          _helperWrittenTargets.add(target);
           return null;
 
         // ---------- Generic Dart injection ----------
         case InjectImport():
+          final target = _abs(op.targetFile);
           ConfigEditor.addImportToFile(
-            filePath: _abs(op.targetFile),
+            filePath: target,
             importStatement: op.importStatement,
           );
+          _helperWrittenTargets.add(target);
           return null;
         case InjectBeforePattern():
+          final target = _abs(op.targetFile);
           ConfigEditor.insertCodeBeforePattern(
-            filePath: _abs(op.targetFile),
+            filePath: target,
             pattern: op.pattern,
             code: op.code,
           );
+          _helperWrittenTargets.add(target);
           return null;
         case InjectAfterPattern():
+          final target = _abs(op.targetFile);
           ConfigEditor.insertCodeAfterPattern(
-            filePath: _abs(op.targetFile),
+            filePath: target,
             pattern: op.pattern,
             code: op.code,
           );
+          _helperWrittenTargets.add(target);
           return null;
 
         // ---------- main.dart ----------
         case InjectMainDartImport():
           MainDartEditor.addImport(_mainDartPath(), op.importStatement);
+          _helperWrittenTargets.add(_mainDartPath());
           return null;
         case InjectIntoMainDart():
           switch (op.placement) {
@@ -367,6 +395,7 @@ class InstallTransaction {
             case MainDartPlacement.wrapRunApp:
               MainDartEditor.wrapRunApp(_mainDartPath(), op.code);
           }
+          _helperWrittenTargets.add(_mainDartPath());
           return null;
 
         // ---------- Route registry ----------
@@ -375,6 +404,7 @@ class InstallTransaction {
             _routeProviderPath(),
             op.functionName,
           );
+          _helperWrittenTargets.add(_routeProviderPath());
           return null;
 
         // ---------- Android native ----------
@@ -383,43 +413,40 @@ class InstallTransaction {
             _logSkip('InjectAndroidPermission', 'android');
             return null;
           }
-          XmlEditor.addAndroidPermission(
-            PlatformHelper.androidManifestPath(_ctx.projectRoot),
-            op.permission,
-          );
+          final manifest = PlatformHelper.androidManifestPath(_ctx.projectRoot);
+          XmlEditor.addAndroidPermission(manifest, op.permission);
+          _helperWrittenTargets.add(manifest);
           return null;
         case InjectAndroidMetaData():
           if (!PlatformHelper.hasPlatform(_ctx.projectRoot, 'android')) {
             _logSkip('InjectAndroidMetaData', 'android');
             return null;
           }
+          final manifest = PlatformHelper.androidManifestPath(_ctx.projectRoot);
           XmlEditor.addAndroidMetaData(
-            PlatformHelper.androidManifestPath(_ctx.projectRoot),
+            manifest,
             name: op.name,
             value: op.value,
           );
+          _helperWrittenTargets.add(manifest);
           return null;
         case InjectGradlePlugin():
           if (!PlatformHelper.hasPlatform(_ctx.projectRoot, 'android')) {
             _logSkip('InjectGradlePlugin', 'android');
             return null;
           }
-          GradleEditor.addPlugin(
-            _appBuildGradlePath(),
-            op.pluginId,
-            version: op.version,
-          );
+          final gradle = _appBuildGradlePath();
+          GradleEditor.addPlugin(gradle, op.pluginId, version: op.version);
+          _helperWrittenTargets.add(gradle);
           return null;
         case InjectGradleDependency():
           if (!PlatformHelper.hasPlatform(_ctx.projectRoot, 'android')) {
             _logSkip('InjectGradleDependency', 'android');
             return null;
           }
-          GradleEditor.addDependency(
-            _appBuildGradlePath(),
-            op.scope,
-            op.notation,
-          );
+          final gradle = _appBuildGradlePath();
+          GradleEditor.addDependency(gradle, op.scope, op.notation);
+          _helperWrittenTargets.add(gradle);
           return null;
 
         // ---------- iOS / macOS native ----------
@@ -433,14 +460,17 @@ class InstallTransaction {
           final value = op.value;
           if (value is String) {
             PlistWriter.setStringKey(plistPath, op.key, value);
+            _helperWrittenTargets.add(plistPath);
             return null;
           }
           if (value is bool) {
             PlistWriter.setBoolKey(plistPath, op.key, value);
+            _helperWrittenTargets.add(plistPath);
             return null;
           }
           if (value is List<String>) {
             PlistWriter.setArrayKey(plistPath, op.key, value);
+            _helperWrittenTargets.add(plistPath);
             return null;
           }
           return Error(
@@ -459,10 +489,12 @@ class InstallTransaction {
           final value = op.value;
           if (value is bool) {
             PlistWriter.setBoolKey(entitlementsPath, op.key, value);
+            _helperWrittenTargets.add(entitlementsPath);
             return null;
           }
           if (value is String) {
             PlistWriter.setStringKey(entitlementsPath, op.key, value);
+            _helperWrittenTargets.add(entitlementsPath);
             return null;
           }
           return Error(
@@ -476,11 +508,9 @@ class InstallTransaction {
             _logSkip('InjectPodfileLine', op.platform);
             return null;
           }
-          PodfileEditor.addPodLine(
-            _podfilePathFor(op.platform),
-            'Runner',
-            op.line,
-          );
+          final podfile = _podfilePathFor(op.platform);
+          PodfileEditor.addPodLine(podfile, 'Runner', op.line);
+          _helperWrittenTargets.add(podfile);
           return null;
 
         // ---------- Web ----------
@@ -489,30 +519,25 @@ class InstallTransaction {
             _logSkip('InjectIntoWebHead', 'web');
             return null;
           }
-          HtmlEditor.injectBeforeClose(
-            PlatformHelper.webIndexPath(_ctx.projectRoot),
-            '</head>',
-            op.content,
-          );
+          final indexHtml = PlatformHelper.webIndexPath(_ctx.projectRoot);
+          HtmlEditor.injectBeforeClose(indexHtml, '</head>', op.content);
+          _helperWrittenTargets.add(indexHtml);
           return null;
         case AddWebMetaTag():
           if (!PlatformHelper.hasPlatform(_ctx.projectRoot, 'web')) {
             _logSkip('AddWebMetaTag', 'web');
             return null;
           }
-          HtmlEditor.addMetaTag(
-            PlatformHelper.webIndexPath(_ctx.projectRoot),
-            op.attributes,
-          );
+          final indexHtml = PlatformHelper.webIndexPath(_ctx.projectRoot);
+          HtmlEditor.addMetaTag(indexHtml, op.attributes);
+          _helperWrittenTargets.add(indexHtml);
           return null;
 
         // ---------- Env ----------
         case InjectEnvVar():
-          EnvEditor.setKey(
-            _envPath(),
-            op.key,
-            op.value,
-          );
+          final env = _envPath();
+          EnvEditor.setKey(env, op.key, op.value, comment: op.comment);
+          _helperWrittenTargets.add(env);
           return null;
 
         // ---------- Shell (deferred to phase 5) ----------
@@ -633,6 +658,18 @@ class InstallTransaction {
   }
 
   /// Builds the `.artisan/installed/<plugin>.json` record payload.
+  ///
+  /// `stubHashes` covers two write surfaces:
+  ///
+  /// 1. Atomic-swap targets in [stagedWrites] (WriteFile / DeleteFile /
+  ///    CopyFile / PublishFile). Their final content sits on disk at the
+  ///    moment this method runs (post-rename phase).
+  /// 2. Helper-backed targets in [_helperWrittenTargets]. Those files were
+  ///    written synchronously during the stage phase by the legacy editors
+  ///    (ConfigEditor / JsonEditor / etc.) and still live on disk. Hashing
+  ///    them here is non-negotiable: without it, ConflictDetector on the
+  ///    next install pass treats the helper-touched file as `unmanaged-file`
+  ///    and aborts with a false-positive conflict.
   Map<String, dynamic> _buildRecord(Map<String, String?> stagedWrites) {
     final stubHashes = <String, String>{};
     for (final entry in stagedWrites.entries) {
@@ -641,6 +678,14 @@ class InstallTransaction {
       // content. Tracking the hash here (rather than at write time) makes
       // ConflictDetector's later compare a single read per file.
       stubHashes[entry.key] = _ctx.fs.md5(entry.key);
+    }
+    for (final path in _helperWrittenTargets) {
+      if (stubHashes.containsKey(path)) continue;
+      // The helper may have skipped (file absent or anchor missing). Skip
+      // the hash silently in that case; the conflict detector treats absent
+      // files as a clean install slot anyway.
+      if (!_ctx.fs.exists(path)) continue;
+      stubHashes[path] = _ctx.fs.md5(path);
     }
 
     return <String, dynamic>{
@@ -652,9 +697,18 @@ class InstallTransaction {
   }
 
   /// Serializes an [InstallOperation] into the JSON shape stored in the
-  /// install record. Only the three dispatched op types are emitted with
-  /// full payload data; everything else (currently unreachable since the
-  /// dispatcher rejects them) falls back to a type-only marker.
+  /// install record.
+  ///
+  /// Every sealed subclass emits its typed payload (not just `{type: ...}`)
+  /// so [ManifestInstaller.uninstall] can reconstruct a typed op and feed it
+  /// to [reverseOf]. Two intentional payload shapes:
+  ///
+  /// - [MergeJson] omits `sourceData` because the merged payload can be
+  ///   arbitrarily large; the targetPath + additive flag are enough for the
+  ///   uninstall warning surface. Reverse for [MergeJson] is V1-deferred.
+  /// - [InjectBeforePattern] / [InjectAfterPattern] coerce `Pattern` to its
+  ///   `toString()` so RegExp instances survive the JSON round-trip. The
+  ///   reverse for these is also V1-deferred.
   Map<String, dynamic> _serializeOp(InstallOperation op) {
     return switch (op) {
       WriteFile(:final targetPath, :final content) => <String, dynamic>{
@@ -671,7 +725,136 @@ class InstallTransaction {
           'sourcePath': sourcePath,
           'targetPath': targetPath,
         },
-      _ => <String, dynamic>{'type': op.runtimeType.toString()},
+      PublishFile(
+        :final sourceStubName,
+        :final targetPath,
+        :final replacements,
+      ) =>
+        <String, dynamic>{
+          'type': 'PublishFile',
+          'sourceStubName': sourceStubName,
+          'targetPath': targetPath,
+          'replacements': replacements,
+        },
+      AddDependency(:final name, :final version, :final isDev) =>
+        <String, dynamic>{
+          'type': 'AddDependency',
+          'name': name,
+          'version': version,
+          'isDev': isDev,
+        },
+      AddPathDependency(:final name, :final path) => <String, dynamic>{
+          'type': 'AddPathDependency',
+          'name': name,
+          'path': path,
+        },
+      RemoveDependency(:final name) => <String, dynamic>{
+          'type': 'RemoveDependency',
+          'name': name,
+        },
+      AddPubspecAsset(:final assetPath) => <String, dynamic>{
+          'type': 'AddPubspecAsset',
+          'assetPath': assetPath,
+        },
+      MergeJson(:final targetPath, :final additive) => <String, dynamic>{
+          'type': 'MergeJson',
+          'targetPath': targetPath,
+          'additive': additive,
+        },
+      InjectImport(:final targetFile, :final importStatement) =>
+        <String, dynamic>{
+          'type': 'InjectImport',
+          'targetFile': targetFile,
+          'importStatement': importStatement,
+        },
+      InjectBeforePattern(:final targetFile, :final pattern, :final code) =>
+        <String, dynamic>{
+          'type': 'InjectBeforePattern',
+          'targetFile': targetFile,
+          'pattern': pattern.toString(),
+          'code': code,
+        },
+      InjectAfterPattern(:final targetFile, :final pattern, :final code) =>
+        <String, dynamic>{
+          'type': 'InjectAfterPattern',
+          'targetFile': targetFile,
+          'pattern': pattern.toString(),
+          'code': code,
+        },
+      InjectAndroidPermission(:final permission) => <String, dynamic>{
+          'type': 'InjectAndroidPermission',
+          'permission': permission,
+        },
+      InjectAndroidMetaData(:final name, :final value) => <String, dynamic>{
+          'type': 'InjectAndroidMetaData',
+          'name': name,
+          'value': value,
+        },
+      InjectInfoPlistKey(:final platform, :final key, :final value) =>
+        <String, dynamic>{
+          'type': 'InjectInfoPlistKey',
+          'platform': platform,
+          'key': key,
+          'value': value.toString(),
+        },
+      InjectEntitlement(:final platform, :final key, :final value) =>
+        <String, dynamic>{
+          'type': 'InjectEntitlement',
+          'platform': platform,
+          'key': key,
+          'value': value.toString(),
+        },
+      InjectPodfileLine(:final platform, :final line) => <String, dynamic>{
+          'type': 'InjectPodfileLine',
+          'platform': platform,
+          'line': line,
+        },
+      InjectGradlePlugin(:final pluginId, :final version) => <String, dynamic>{
+          'type': 'InjectGradlePlugin',
+          'pluginId': pluginId,
+          if (version != null) 'version': version,
+        },
+      InjectGradleDependency(:final scope, :final notation) =>
+        <String, dynamic>{
+          'type': 'InjectGradleDependency',
+          'scope': scope,
+          'notation': notation,
+        },
+      InjectEnvVar(:final key, :final value, :final comment) =>
+        <String, dynamic>{
+          'type': 'InjectEnvVar',
+          'key': key,
+          'value': value,
+          if (comment != null) 'comment': comment,
+        },
+      InjectIntoWebHead(:final content) => <String, dynamic>{
+          'type': 'InjectIntoWebHead',
+          'content': content,
+        },
+      AddWebMetaTag(:final attributes) => <String, dynamic>{
+          'type': 'AddWebMetaTag',
+          'attributes': attributes,
+        },
+      InjectMainDartImport(:final importStatement) => <String, dynamic>{
+          'type': 'InjectMainDartImport',
+          'importStatement': importStatement,
+        },
+      InjectIntoMainDart(:final placement, :final code) => <String, dynamic>{
+          'type': 'InjectIntoMainDart',
+          'placement': placement.name,
+          'code': code,
+        },
+      InjectRouteRegistration(:final functionName) => <String, dynamic>{
+          'type': 'InjectRouteRegistration',
+          'functionName': functionName,
+        },
+      RunShell(:final command, :final args, :final workingDir) =>
+        <String, dynamic>{
+          'type': 'RunShell',
+          'command': command,
+          'args': args,
+          if (workingDir != null) 'workingDir': workingDir,
+        },
     };
   }
 

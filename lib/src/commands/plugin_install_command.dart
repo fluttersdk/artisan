@@ -15,7 +15,7 @@ import '../installer/install_transaction.dart';
 import '../installer/manifest_installer.dart';
 import '../installer/manifest_parser.dart';
 
-/// `plugin:install <name>` — register a third-party artisan plugin into the
+/// `plugin:install <name>`, register a third-party artisan plugin into the
 /// consumer project.
 ///
 /// Two flows live in this command:
@@ -28,7 +28,7 @@ import '../installer/manifest_parser.dart';
 ///      detection, install records, reverse on uninstall).
 ///
 ///   2. **Legacy flow** (fallback): when no `install.yaml` is found, fall
-///      back to the original behaviour — append
+///      back to the original behaviour, append
 ///      `import 'package:<name>/cli.dart';` and
 ///      `registry.registerProvider(<Provider>())` to the consumer's
 ///      `bin/artisan.dart`. Kept for backward compatibility with plugins
@@ -89,7 +89,7 @@ class PluginInstallCommand extends ArtisanInstallCommand {
   /// plugin ships no manifest.
   ///
   /// Resolution strategy (canonical Dart approach used elsewhere in this
-  /// package — see magic_logger install_command for the prior art):
+  /// package, see magic_logger install_command for the prior art):
   ///   1. Resolve `package:<pluginName>/cli.dart` via [Isolate.resolvePackageUri].
   ///   2. Walk two directories up from `lib/cli.dart` to reach the plugin
   ///      root.
@@ -182,7 +182,7 @@ class PluginInstallCommand extends ArtisanInstallCommand {
     required String name,
     required String wrapperPath,
   }) {
-    // 1. Wrapper presence — the framework injects into bin/artisan.dart and
+    // 1. Wrapper presence, the framework injects into bin/artisan.dart and
     //    expects the file to exist even on the manifest path (the file IS
     //    the conventional CLI entry point).
     if (!File(wrapperPath).existsSync()) {
@@ -193,7 +193,7 @@ class PluginInstallCommand extends ArtisanInstallCommand {
       return 1;
     }
 
-    // 2. Pubspec dep check — saves the user from a confusing import error.
+    // 2. Pubspec dep check, saves the user from a confusing import error.
     final pubspecPath = p.join(root, 'pubspec.yaml');
     if (File(pubspecPath).existsSync()) {
       final pubspec = File(pubspecPath).readAsStringSync();
@@ -325,7 +325,7 @@ class PluginInstallCommand extends ArtisanInstallCommand {
       ctx.output.info(
         '$name is already registered in bin/artisan.dart. Use --force to re-write.',
       );
-      // Still chain to bootstrap if requested — install commands are
+      // Still chain to bootstrap if requested, install commands are
       // idempotent by convention.
     } else {
       // 2a. Append the import (idempotent helper).

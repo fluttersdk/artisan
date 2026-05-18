@@ -196,7 +196,7 @@ void main() {
     manifestPath = p.join(_cachedPluginRoot!, 'install.yaml');
   });
 
-  group('LoggerInstallCommand — signature shape', () {
+  group('LoggerInstallCommand, signature shape', () {
     test('inherits the 4 base flags via ArtisanInstallCommand.baseFlags', () {
       final cmd = LoggerInstallCommand();
       final optionNames =
@@ -232,7 +232,7 @@ void main() {
     });
   });
 
-  group('LoggerInstallCommand — non-interactive install', () {
+  group('LoggerInstallCommand, non-interactive install', () {
     test(
         'non-interactive install with defaults writes lib/config/logger.dart '
         'with the stub defaults applied', () async {
@@ -341,7 +341,7 @@ void main() {
     });
   });
 
-  group('LoggerInstallCommand — dry-run + record', () {
+  group('LoggerInstallCommand, dry-run + record', () {
     test('--dry-run writes nothing to disk and reports the staged op count',
         () async {
       final fs = InMemoryFs();

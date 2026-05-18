@@ -405,12 +405,46 @@ The lower the surface area of your install, the less likely conflicts become:
 
 ### V1 limitation
 
-Only `WriteFile`, `DeleteFile`, and `CopyFile` ops carry their full payload in
-the install record. All other op types are recorded as type-only markers.
-`ManifestInstaller.uninstall` surfaces a warning for those and skips them. The
-practical consequence: dependency additions, pubspec-asset appends, and
-injection-style ops are NOT automatically reversed. Plugin authors should
-document these manually in their README under a "Manual uninstall" section.
+The install record persists the full typed payload for EVERY op subclass
+(WriteFile, CopyFile, PublishFile, AddDependency, AddPathDependency,
+RemoveDependency, AddPubspecAsset, MergeJson, InjectImport,
+InjectBeforePattern, InjectAfterPattern, InjectAndroidPermission,
+InjectAndroidMetaData, InjectInfoPlistKey, InjectEntitlement,
+InjectPodfileLine, InjectGradlePlugin, InjectGradleDependency, InjectEnvVar,
+InjectIntoWebHead, AddWebMetaTag, InjectMainDartImport, InjectIntoMainDart,
+InjectRouteRegistration, RunShell). Reconstruction is therefore lossless.
+
+The V1 trade-off lives in `reverseOf`: only file-creating ops have a typed
+reverse op available.
+
+| Recorded op | V1 reverse | Action required |
+|-------------|------------|-----------------|
+| `WriteFile` / `CopyFile` / `PublishFile` | `DeleteFile(targetPath)` | None, auto-reversed. |
+| `AddDependency` / `AddPathDependency` | `RemoveDependency(name)` | None, auto-reversed. |
+| `RemoveDependency` | none | Manual: re-add via pubspec. |
+| `DeleteFile` | none | Manual: re-create the file from VCS. |
+| `MergeJson` | none | Manual: revert via VCS or hand-edit. |
+| `AddPubspecAsset` | none | Manual: remove the entry from `flutter.assets`. |
+| `InjectImport` / `InjectBeforePattern` / `InjectAfterPattern` | none | Manual: remove the injected lines. |
+| `InjectMainDartImport` / `InjectIntoMainDart` | none | Manual: remove the injected lines from `lib/main.dart`. |
+| `InjectRouteRegistration` | none | Manual: remove the `registerXRoutes()` call from `route_service_provider.dart`. |
+| `InjectAndroidPermission` | none | Manual: remove the `<uses-permission>` line from `AndroidManifest.xml`. |
+| `InjectAndroidMetaData` | none | Manual: remove the `<meta-data>` line from `AndroidManifest.xml`. |
+| `InjectInfoPlistKey` / `InjectEntitlement` | none | Manual: remove the key+value pair from the plist / entitlements file. |
+| `InjectPodfileLine` | none | Manual: remove the `pod '...'` line from the platform Podfile. |
+| `InjectGradlePlugin` / `InjectGradleDependency` | none | Manual: remove the plugin / dependency line from `build.gradle(.kts)`. |
+| `InjectEnvVar` | none | Manual: remove the `KEY=VALUE` line (and any preceding `# comment`) from `.env`. |
+| `InjectIntoWebHead` / `AddWebMetaTag` | none | Manual: remove the markup from `web/index.html`. |
+| `RunShell` | none | Manual: side effects are unknowable. |
+
+`ManifestInstaller.uninstall` surfaces a single warning line listing every
+skipped op so the operator knows exactly which manual cleanup steps to perform.
+Auto-reverse for the non-`Delete*`/`Remove*` ops lands in V1.x once `removeX`
+helpers exist on each editor (`XmlEditor.removeAndroidPermission`,
+`MainDartEditor.removeImport`, `EnvEditor.removeKey`, etc.). Plugin authors
+should document the manual cleanup steps inside their README under a
+"Manual uninstall" section so end users have a single source of truth for
+their plugin specifically.
 
 ### The `bootstrap_command` pattern
 

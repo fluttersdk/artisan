@@ -18,7 +18,7 @@ import '../installer/manifest_installer.dart';
 import '../installer/manifest_parser.dart';
 import 'plugin_install_command.dart';
 
-/// `plugin:uninstall <name>` — reverse a manifest-driven plugin install.
+/// `plugin:uninstall <name>`, reverse a manifest-driven plugin install.
 ///
 /// Mirror image of [PluginInstallCommand]:
 ///
@@ -37,7 +37,7 @@ import 'plugin_install_command.dart';
 ///      the reverse [InstallOperation]s from the record, commits a fresh
 ///      reverse transaction, and deletes the record on Success.
 ///   6. Finally, removes the plugin's `import` line + `registerProvider`
-///      line from `bin/artisan.dart` — the inverse of the legacy injection
+///      line from `bin/artisan.dart`, the inverse of the legacy injection
 ///      [PluginInstallCommand] performs when no manifest is found.
 ///
 /// V1 limitation: only `WriteFile` / `DeleteFile` / `CopyFile` carry full

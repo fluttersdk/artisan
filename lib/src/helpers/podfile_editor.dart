@@ -114,7 +114,7 @@ class PodfileEditor {
       return;
     }
 
-    // 3. No platform line found — prepend the declaration so it precedes all
+    // 3. No platform line found, prepend the declaration so it precedes all
     //    target blocks (canonical Flutter Podfile layout).
     _write(podfilePath, "platform :$token, '$version'\n\n$content");
   }
@@ -137,7 +137,7 @@ class PodfileEditor {
   static void addPostInstallHook(String podfilePath, String hookContent) {
     var content = _read(podfilePath);
 
-    // 1. Idempotency — skip when hookContent already appears in the file.
+    // 1. Idempotency, skip when hookContent already appears in the file.
     if (content.contains(hookContent)) {
       return;
     }
@@ -165,7 +165,7 @@ class PodfileEditor {
       return;
     }
 
-    // 3. No post_install block exists — append a new one at the end of file.
+    // 3. No post_install block exists, append a new one at the end of file.
     final block = '\npost_install do |installer|\n$hookContent\nend\n';
     _write(podfilePath, '${content.trimRight()}\n$block');
   }
@@ -194,7 +194,7 @@ class PodfileEditor {
   ) {
     var content = _read(podfilePath);
 
-    // 1. Idempotency — skip when podLine already appears in the file.
+    // 1. Idempotency, skip when podLine already appears in the file.
     if (content.contains(podLine)) {
       return;
     }
@@ -228,7 +228,7 @@ class PodfileEditor {
 
   /// Return `true` if `pod '<podName>'` is declared anywhere in the Podfile.
   ///
-  /// This is a simple substring search — not a structural query. It matches
+  /// This is a simple substring search, not a structural query. It matches
   /// any line that contains `pod '<podName>'`, regardless of indentation,
   /// version constraint, or surrounding whitespace.
   ///

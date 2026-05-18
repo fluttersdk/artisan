@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../helpers/platform_helper.dart';
 import 'install_context.dart';
 import 'install_operation.dart';
 
@@ -124,7 +126,19 @@ class ConflictDetector {
       final lastKnownHash = pluginRecord?['stubHashes']?[absPath] as String?;
 
       if (lastKnownHash == null) {
-        // No record for this file: treat as unmanaged.
+        // 5a. Helper-backed edits (AddDependency, InjectAndroidPermission,
+        //     etc.) make targeted, idempotent mutations to consumer-owned
+        //     files (pubspec.yaml, AndroidManifest.xml, ...). Those files
+        //     ALWAYS pre-exist on a real project, so an "unmanaged-file"
+        //     verdict here is a false positive that forces every operator
+        //     to pass --force on first install. Skip the unmanaged branch
+        //     for these op shapes; future installs will see the recorded
+        //     post-install hash and fall into branch 6 / 7 normally.
+        if (_isHelperEdit(op)) continue;
+
+        // 5b. Whole-file writes (WriteFile / PublishFile / CopyFile) do
+        //     overwrite arbitrary content. Surface unmanaged-file so the
+        //     operator confirms with --force before clobbering.
         conflicts.add(FileConflict(
           absPath: absPath,
           reason: 'unmanaged-file',
@@ -148,6 +162,48 @@ class ConflictDetector {
     return conflicts;
   }
 
+  /// True when [op] performs a targeted mutation on an existing consumer file
+  /// (pubspec, AndroidManifest.xml, lib/main.dart, .env, ...). Helper-backed
+  /// edits are idempotent and do not overwrite arbitrary content, so a
+  /// pre-existing file without a hash record is NOT a conflict for these op
+  /// shapes, it is the expected first-install scenario.
+  ///
+  /// Whole-file writes ([WriteFile] / [PublishFile] / [CopyFile]) return
+  /// false because they DO overwrite the target.
+  bool _isHelperEdit(InstallOperation op) {
+    return switch (op) {
+      // Whole-file writes: not helper edits, return false.
+      WriteFile() => false,
+      PublishFile() => false,
+      CopyFile() => false,
+      DeleteFile() => false,
+      // Helper-backed targeted mutations.
+      AddDependency() => true,
+      AddPathDependency() => true,
+      RemoveDependency() => true,
+      AddPubspecAsset() => true,
+      MergeJson() => true,
+      InjectImport() => true,
+      InjectBeforePattern() => true,
+      InjectAfterPattern() => true,
+      InjectMainDartImport() => true,
+      InjectIntoMainDart() => true,
+      InjectRouteRegistration() => true,
+      InjectAndroidPermission() => true,
+      InjectAndroidMetaData() => true,
+      InjectInfoPlistKey() => true,
+      InjectEntitlement() => true,
+      InjectPodfileLine() => true,
+      InjectGradlePlugin() => true,
+      InjectGradleDependency() => true,
+      InjectEnvVar() => true,
+      InjectIntoWebHead() => true,
+      AddWebMetaTag() => true,
+      // RunShell never reaches here (_targetAbsPath returns null).
+      RunShell() => false,
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
@@ -161,8 +217,15 @@ class ConflictDetector {
 
   /// Returns the target absolute path for file-writing [InstallOperation]s.
   ///
-  /// Returns `null` for pure-action ops that do not write a user-owned file
-  /// (e.g. [RunShell], [AddDependency]).
+  /// Covers both the atomic-swap surface (WriteFile / DeleteFile / CopyFile /
+  /// PublishFile) and the helper-backed surface (pubspec edits, native
+  /// platform writes, env edits, web index writes, route registry). Resolution
+  /// mirrors the path helpers in [InstallTransaction]'s dispatcher so the
+  /// hash table the transaction writes and the lookup the detector performs
+  /// stay in lockstep.
+  ///
+  /// Returns `null` only for ops that genuinely do not mutate a file (today
+  /// only [RunShell]).
   String? _targetAbsPath(InstallOperation op) {
     return switch (op) {
       // File-writing operations: extract target path.
@@ -175,29 +238,62 @@ class ConflictDetector {
       InjectAfterPattern(:final targetFile) => _abs(targetFile),
       InjectMainDartImport() => _abs('lib/main.dart'),
       InjectIntoMainDart() => _abs('lib/main.dart'),
-      InjectRouteRegistration() =>
-        null, // route file resolved at execution time
-      // Native-file ops: paths are resolved by executor; skip for now.
-      InjectAndroidPermission() => null,
-      InjectAndroidMetaData() => null,
-      InjectInfoPlistKey() => null,
-      InjectEntitlement() => null,
-      InjectPodfileLine() => null,
-      InjectGradlePlugin() => null,
-      InjectGradleDependency() => null,
-      // Web ops.
-      InjectIntoWebHead() => null,
-      AddWebMetaTag() => null,
-      // Env ops.
-      InjectEnvVar() => null,
+      InjectRouteRegistration() => _abs(
+          'lib/app/providers/route_service_provider.dart',
+        ),
+      // Pubspec helper writes.
+      AddDependency() => _abs('pubspec.yaml'),
+      AddPathDependency() => _abs('pubspec.yaml'),
+      RemoveDependency() => _abs('pubspec.yaml'),
+      AddPubspecAsset() => _abs('pubspec.yaml'),
+      // Android native writes.
+      InjectAndroidPermission() =>
+        PlatformHelper.androidManifestPath(_ctx.projectRoot),
+      InjectAndroidMetaData() =>
+        PlatformHelper.androidManifestPath(_ctx.projectRoot),
+      InjectGradlePlugin() => _appBuildGradlePath(),
+      InjectGradleDependency() => _appBuildGradlePath(),
+      // iOS / macOS native writes.
+      InjectInfoPlistKey(:final platform) => _infoPlistPathFor(platform),
+      InjectEntitlement(:final platform) => _entitlementsPathFor(platform),
+      InjectPodfileLine(:final platform) => _podfilePathFor(platform),
+      // Web writes.
+      InjectIntoWebHead() => PlatformHelper.webIndexPath(_ctx.projectRoot),
+      AddWebMetaTag() => PlatformHelper.webIndexPath(_ctx.projectRoot),
+      // Env writes.
+      InjectEnvVar() => _abs('.env'),
       // Pure-action ops: no file conflict possible.
       DeleteFile() => null,
-      AddDependency() => null,
-      AddPathDependency() => null,
-      RemoveDependency() => null,
-      AddPubspecAsset() => null,
       RunShell() => null,
     };
+  }
+
+  /// Mirrors [InstallTransaction]'s gradle path resolution: prefer the Kotlin
+  /// DSL `build.gradle.kts` when present, fall back to the Groovy variant.
+  String _appBuildGradlePath() {
+    final kts = p.join(_ctx.projectRoot, 'android', 'app', 'build.gradle.kts');
+    if (File(kts).existsSync()) return kts;
+    return p.join(_ctx.projectRoot, 'android', 'app', 'build.gradle');
+  }
+
+  /// Mirrors [InstallTransaction]'s Info.plist resolution.
+  String _infoPlistPathFor(String platform) {
+    return p.join(_ctx.projectRoot, platform, 'Runner', 'Info.plist');
+  }
+
+  /// Mirrors [InstallTransaction]'s entitlements resolution.
+  String _entitlementsPathFor(String platform) {
+    return p.join(
+      _ctx.projectRoot,
+      platform,
+      'Runner',
+      'Runner.entitlements',
+    );
+  }
+
+  /// Mirrors [InstallTransaction]'s Podfile resolution.
+  String _podfilePathFor(String platform) {
+    return p.join(_ctx.projectRoot, platform, 'Podfile');
   }
 
   /// Loads and decodes the per-plugin JSON record from

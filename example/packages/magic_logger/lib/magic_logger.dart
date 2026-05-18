@@ -1,4 +1,4 @@
-/// Runtime barrel — Flutter / consumer-side API.
+/// Runtime barrel, Flutter / consumer-side API.
 ///
 /// Tiny demo logger that writes JSON-line records to a configurable file.
 /// Consumers call `MagicLogger.debug(...)`, `.info(...)`, `.warn(...)`,

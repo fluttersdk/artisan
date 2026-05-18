@@ -5,7 +5,7 @@ import 'package:fluttersdk_artisan/artisan.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 
-/// `logger:uninstall` — reverses the magic_logger install via the bundled
+/// `logger:uninstall`, reverses the magic_logger install via the bundled
 /// install.yaml manifest.
 ///
 /// Mirror image of [LoggerInstallCommand]:

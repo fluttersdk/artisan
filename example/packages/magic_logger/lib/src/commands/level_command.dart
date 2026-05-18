@@ -2,7 +2,7 @@ import 'package:fluttersdk_artisan/artisan.dart';
 
 import '../runtime/magic_logger.dart';
 
-/// `logger:level <new-level>` — show or change the minimum log level
+/// `logger:level <new-level>`, show or change the minimum log level
 /// at runtime. Without an argument, prints the current level.
 class LoggerLevelCommand extends ArtisanCommand {
   @override

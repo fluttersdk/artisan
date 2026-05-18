@@ -507,6 +507,70 @@ void main() {
       expect(result, isA<Success>(), reason: 'Got: ${result.describe()}');
     });
 
+    test(
+        'install->uninstall round-trip for PublishFile correctly deletes the '
+        'rendered file (Phase 3 Fix 2 regression)', () async {
+      // This is the critical Stage 2 spec FAIL the deep reviewer flagged:
+      // before Fix 1+2, the install record degraded a PublishFile op to
+      // `{type: 'PublishFile'}` only, so uninstall could not reconstruct the
+      // typed op and the rendered file was orphaned. Now the record carries
+      // sourceStubName + targetPath + replacements so uninstall reverses
+      // PublishFile -> DeleteFile and the file is removed.
+      final fs = InMemoryFs();
+      final stubs = _MapStubDriver({
+        'install/example_config.dart.stub': "const example = 'value';\n",
+      });
+      final ctx = _ctx(fs: fs, stubs: stubs);
+
+      // Manifest without magic.provider: that path uses dart:io-backed
+      // ConfigEditor helpers which bypass InMemoryFs (see PluginInstaller's
+      // "Limitations" docblock). Publish stays inside the VirtualFs seam so
+      // the round-trip assertion can read back the rendered file.
+      final manifest = InstallManifest(
+        pluginName: 'example_plugin',
+        pubspec: PubspecDeps.empty(),
+        publish: const {
+          'install/example_config.dart.stub': 'lib/config/example.dart',
+        },
+        jsonMerge: const {},
+        magic: MagicIntegration.empty(),
+        native: NativeConfig.empty(),
+        env: const {},
+        prompts: const [],
+        placeholders: const {},
+        postInstall: PostInstallSpec.empty(),
+      );
+
+      // Phase A: install via the real ManifestInstaller chain.
+      final installResult = await ManifestInstaller(ctx, manifest).install();
+      expect(installResult, isA<Success>(),
+          reason: 'install failed: ${installResult.describe()}');
+      expect(fs.exists('/proj/lib/config/example.dart'), isTrue);
+
+      // Phase B: read back the install record and assert PublishFile carries
+      // its typed payload (not just `{type: ...}`).
+      final record = jsonDecode(
+        fs.readAsString('/proj/.artisan/installed/example_plugin.json'),
+      ) as Map<String, dynamic>;
+      final ops = (record['ops'] as List).cast<Map<String, dynamic>>();
+      final publishEntry = ops.firstWhere((o) => o['type'] == 'PublishFile');
+      expect(
+          publishEntry['sourceStubName'], 'install/example_config.dart.stub');
+      expect(publishEntry['targetPath'], 'lib/config/example.dart');
+      expect(publishEntry['replacements'], isA<Map>());
+
+      // Phase C: uninstall and assert the rendered file is gone.
+      final uninstallResult =
+          await ManifestInstaller(ctx, manifest).uninstall();
+      expect(uninstallResult, isA<Success>(),
+          reason: 'uninstall failed: ${uninstallResult.describe()}');
+      expect(fs.exists('/proj/lib/config/example.dart'), isFalse,
+          reason: 'PublishFile must reverse to DeleteFile and remove the '
+              'rendered config file');
+      expect(fs.exists('/proj/.artisan/installed/example_plugin.json'), isFalse,
+          reason: 'install record must be deleted on successful uninstall');
+    });
+
     test('reverseOf handles every InstallOperation subclass (exhaustive)', () {
       // Exhaustiveness gate: every sealed InstallOperation subclass must be
       // covered by reverseOf — either returning a reverse op, or null with a

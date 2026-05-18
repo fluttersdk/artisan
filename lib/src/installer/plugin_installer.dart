@@ -29,7 +29,7 @@ import 'install_transaction.dart';
 ///   post-install side effects that are unsafe to run on a half-applied
 ///   install (e.g. printing a "next steps" banner).
 ///
-/// ## Method classification — IMMEDIATE vs DEFERRED
+/// ## Method classification, IMMEDIATE vs DEFERRED
 ///
 /// Chain methods fall into two distinct execution categories. Plugin authors
 /// MUST internalise the split because it determines whether a method's effect
@@ -112,7 +112,7 @@ class PluginInstaller {
 
   /// Hook fired immediately before [commit] dispatches its ops. `null` when no
   /// [startWith] call was made. First-class function fields use the explicit
-  /// `void Function(...)?` type — Dart has no `Closure` type.
+  /// `void Function(...)?` type, Dart has no `Closure` type.
   void Function(InstallContext)? _startWith;
 
   /// Hook fired only after [commit] returns [Success]. `null` when no
@@ -672,22 +672,21 @@ class PluginInstaller {
   /// Enqueues an [InjectEnvVar] writing `<key>=<value>` to `<projectRoot>/.env`.
   /// Creates `.env` when absent.
   ///
-  /// The [comment] parameter is preserved for forward-compatibility with a
-  /// future op shape extension; the current dispatcher ignores it because
-  /// [InjectEnvVar] carries only `key` and `value` fields. Callers needing
-  /// `.env` comments must invoke [EnvEditor.setKey] from inside a [runShell]
-  /// or a custom op.
+  /// When [comment] is supplied, the dispatcher routes it through to
+  /// [EnvEditor.setKey] which renders a `# <comment>` line directly above the
+  /// `KEY=VALUE` line. The comment is also persisted on the [InjectEnvVar] op
+  /// payload so uninstall + manual record inspection retain it verbatim.
   ///
   /// @param key      Environment variable name.
   /// @param value    Raw value (the dispatcher quotes when needed).
-  /// @param comment  Optional comment (currently advisory).
+  /// @param comment  Optional single-line comment text (without the leading `#`).
   /// @return This installer (chainable).
   PluginInstaller injectEnvVar({
     required String key,
     required String value,
     String? comment,
   }) {
-    _ops.add(InjectEnvVar(key: key, value: value));
+    _ops.add(InjectEnvVar(key: key, value: value, comment: comment));
     return this;
   }
 

@@ -25,7 +25,7 @@ import 'install_context.dart';
 /// - [isDryRun] / [isForce] / [isNonInteractive] / [isSkipBootstrap] read the
 ///   four standard flags from `ctx.input.option(...)`. They take an
 ///   [ArtisanContext] parameter because [ArtisanCommand] has no instance
-///   field for input — options live on the per-invocation context the
+///   field for input, options live on the per-invocation context the
 ///   dispatcher hands `handle()`.
 /// - [pluginName] is abstract: each subclass must declare which plugin record
 ///   this command writes to. Static return for fixed-plugin commands; derive
@@ -119,7 +119,7 @@ abstract class ArtisanInstallCommand extends ArtisanCommand {
   ///
   /// Threaded into [PluginInstaller] and through to the
   /// `.artisan/installed/<pluginName>.json` record path. Subclasses MUST
-  /// override — the abstract contract prevents accidental cross-plugin
+  /// override, the abstract contract prevents accidental cross-plugin
   /// record-file collisions when a copy-pasted command forgets to flip the
   /// name.
   ///

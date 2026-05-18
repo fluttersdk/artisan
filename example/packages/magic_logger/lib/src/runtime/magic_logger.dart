@@ -6,7 +6,7 @@ import 'dart:io';
 /// anywhere in their app; the `logger:tail` artisan command reads the
 /// same file.
 ///
-/// This is intentionally minimal — production loggers should use
+/// This is intentionally minimal, production loggers should use
 /// `package:logging` or similar. The plugin's purpose is to demonstrate
 /// the third-party artisan plugin pattern, not to be a real logger.
 class MagicLogger {

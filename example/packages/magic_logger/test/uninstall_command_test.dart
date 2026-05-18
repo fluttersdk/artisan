@@ -155,7 +155,7 @@ void main() {
     manifestPath = p.join(_cachedPluginRoot!, 'install.yaml');
   });
 
-  group('LoggerUninstallCommand — signature shape', () {
+  group('LoggerUninstallCommand, signature shape', () {
     test('inherits the 4 base flags via ArtisanInstallCommand.baseFlags', () {
       final cmd = LoggerUninstallCommand();
       final optionNames =
@@ -184,7 +184,7 @@ void main() {
     });
   });
 
-  group('LoggerUninstallCommand — happy path', () {
+  group('LoggerUninstallCommand, happy path', () {
     test('non-interactive uninstall removes published file + install record',
         () async {
       final fs = InMemoryFs();
@@ -245,7 +245,7 @@ void main() {
     });
   });
 
-  group('LoggerUninstallCommand — guard rails', () {
+  group('LoggerUninstallCommand, guard rails', () {
     test('interactive run with "no" confirm exits 0 and leaves state intact',
         () async {
       final fs = InMemoryFs();
@@ -279,7 +279,7 @@ void main() {
 
     test('errors when no install record exists', () async {
       final fs = InMemoryFs();
-      // Deliberately do NOT call _seedInstalledState — no record on disk.
+      // Deliberately do NOT call _seedInstalledState, no record on disk.
       final installContext = InstallContext.test(
         fs: fs,
         prompt: _RecordingPromptDriver(),

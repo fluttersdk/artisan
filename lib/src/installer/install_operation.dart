@@ -635,8 +635,18 @@ final class InjectEnvVar extends InstallOperation {
   /// The value to write.
   final String value;
 
+  /// Optional single-line comment text (without the leading `#`). When
+  /// non-null, the dispatcher writes `# <comment>` immediately above the
+  /// `KEY=VALUE` line via [EnvEditor.setKey]. Carries through to the
+  /// install record so uninstall + diagnostics retain the original intent.
+  final String? comment;
+
   /// Creates an [InjectEnvVar] operation.
-  const InjectEnvVar({required this.key, required this.value});
+  const InjectEnvVar({
+    required this.key,
+    required this.value,
+    this.comment,
+  });
 
   @override
   String describe() => '[inject-env] $key=$value';

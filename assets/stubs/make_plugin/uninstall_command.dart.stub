@@ -1,6 +1,6 @@
 import 'package:fluttersdk_artisan/artisan.dart';
 
-/// `{{ commandPrefix }}:uninstall` — reverses the {{ name }} install pass.
+/// `{{ commandPrefix }}:uninstall`, reverses the {{ name }} install pass.
 ///
 /// Reads the same `install.yaml` manifest the install command consumed, then
 /// asks [ManifestInstaller] to dispatch every previously applied operation in

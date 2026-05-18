@@ -11,7 +11,7 @@ import '../console/string_helper.dart';
 import '../helpers/file_helper.dart';
 import '../stubs/stub_loader.dart';
 
-/// `artisan make:plugin <name>` — scaffolds a new `fluttersdk_artisan` plugin
+/// `artisan make:plugin <name>`, scaffolds a new `fluttersdk_artisan` plugin
 /// skeleton under `packages/<name>/` (or a `--target` override).
 ///
 /// Generates the 11-file Plugin Authoring Guide layout in one shot: pubspec,
@@ -27,12 +27,12 @@ import '../stubs/stub_loader.dart';
 ///
 /// Every stub uses four placeholders, derived once from the [name] argument:
 ///
-/// - `name` — the snake_case package name (e.g. `magic_logger`).
-/// - `pascalName` — the PascalCase class root (e.g. `MagicLogger`).
-/// - `commandPrefix` — the package name with the `magic_` / `fluttersdk_`
+/// - `name`, the snake_case package name (e.g. `magic_logger`).
+/// - `pascalName`, the PascalCase class root (e.g. `MagicLogger`).
+/// - `commandPrefix`, the package name with the `magic_` / `fluttersdk_`
 ///   convention prefix stripped (e.g. `magic_logger` → `logger`). Drives the
 ///   default `<commandPrefix>:install` / `<commandPrefix>:uninstall` names.
-/// - `bootstrapCommand` — the value of the `--bootstrap-command` option, or
+/// - `bootstrapCommand`, the value of the `--bootstrap-command` option, or
 ///   `<commandPrefix>:install` when the option is absent. Written to the
 ///   manifest's `bootstrap_command:` key so `plugin:install` can chain into
 ///   the plugin's own setup flow.

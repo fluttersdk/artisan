@@ -2,7 +2,7 @@
 ///
 /// Plugin authors expose their public runtime surface here. Consumers import
 /// via `package:{{ name }}/{{ name }}.dart` to gain access to the runtime
-/// classes (controllers, services, models) — the CLI surface lives in
+/// classes (controllers, services, models), the CLI surface lives in
 /// `package:{{ name }}/cli.dart` and is invoked through `artisan` only.
 library;
 

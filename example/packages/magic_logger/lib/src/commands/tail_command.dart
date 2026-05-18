@@ -3,8 +3,8 @@ import 'dart:io';
 
 import 'package:fluttersdk_artisan/artisan.dart';
 
-/// `logger:tail` — prints the last N log entries, then (with --follow)
-/// streams new ones as they arrive. Reads the log file directly — no
+/// `logger:tail`, prints the last N log entries, then (with --follow)
+/// streams new ones as they arrive. Reads the log file directly, no
 /// VM Service connection needed, so this stays CommandBoot.none and
 /// works whether the app is running or not.
 class LoggerTailCommand extends ArtisanCommand {
@@ -64,7 +64,7 @@ class LoggerTailCommand extends ArtisanCommand {
         // File may rotate / vanish; ignore and keep polling.
       }
     });
-    // SIGINT handler — closes the loop cleanly.
+    // SIGINT handler, closes the loop cleanly.
     ProcessSignal.sigint.watch().listen((_) {
       timer.cancel();
       if (!completer.isCompleted) completer.complete(0);

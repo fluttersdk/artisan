@@ -1,5 +1,5 @@
 name: magic_logger
-description: "Demo artisan plugin — file-tailed logger with install + tail + level + uninstall commands. Lives under example/packages/ to demonstrate the third-party plugin pattern end-to-end."
+description: "Demo artisan plugin, file-tailed logger with install + tail + level + uninstall commands. Lives under example/packages/ to demonstrate the third-party plugin pattern end-to-end."
 version: 0.0.1-alpha.1
 publish_to: none
 

@@ -44,7 +44,7 @@ void main() {
     manifest = ManifestParser.parseFile(manifestPath);
   });
 
-  group('magic_logger install.yaml — top-level shape', () {
+  group('magic_logger install.yaml, top-level shape', () {
     test('plugin_name is "magic_logger"', () {
       expect(manifest.pluginName, 'magic_logger');
     });
@@ -61,7 +61,7 @@ void main() {
     });
   });
 
-  group('magic_logger install.yaml — publish section', () {
+  group('magic_logger install.yaml, publish section', () {
     test('publishes install/logger_config.dart.stub -> lib/config/logger.dart',
         () {
       expect(
@@ -73,7 +73,7 @@ void main() {
     });
   });
 
-  group('magic_logger install.yaml — prompts section', () {
+  group('magic_logger install.yaml, prompts section', () {
     test('declares exactly two prompts in order: logPath, level', () {
       expect(manifest.prompts.map((p) => p.key).toList(), <String>[
         'logPath',
@@ -98,7 +98,7 @@ void main() {
     });
   });
 
-  group('magic_logger install.yaml — placeholders section', () {
+  group('magic_logger install.yaml, placeholders section', () {
     test('placeholders carry the two stub keys with prompt references', () {
       expect(manifest.placeholders, <String, String>{
         'logFilePath': '{{ prompts.logPath }}',
@@ -107,7 +107,7 @@ void main() {
     });
   });
 
-  group('magic_logger install.yaml — post_install section', () {
+  group('magic_logger install.yaml, post_install section', () {
     test('post_install.message references the configureMagicLogger() call', () {
       final message = manifest.postInstall.message;
       expect(message, isNotNull);

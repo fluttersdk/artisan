@@ -1,6 +1,6 @@
 import 'package:fluttersdk_artisan/artisan.dart';
 
-/// `{{ commandPrefix }}:install` — installs {{ name }} into the host project.
+/// `{{ commandPrefix }}:install`, installs {{ name }} into the host project.
 ///
 /// Uses the [PluginInstaller] fluent DSL. For most plugins the declarative
 /// `install.yaml` manifest is sufficient and `plugin:install {{ name }}`

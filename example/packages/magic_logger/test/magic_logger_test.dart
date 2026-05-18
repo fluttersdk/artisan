@@ -31,7 +31,7 @@ void main() {
     });
   });
 
-  group('Commands — signature shape', () {
+  group('Commands, signature shape', () {
     test(
         'logger:install declares --force / --non-interactive / --level / --path',
         () {

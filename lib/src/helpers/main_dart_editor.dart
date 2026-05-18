@@ -217,7 +217,7 @@ class MainDartEditor {
       }
     }
     throw StateError(
-      'MainDartEditor: unmatched "(" at offset $openParenIndex — '
+      'MainDartEditor: unmatched "(" at offset $openParenIndex, '
       'the file may be malformed.',
     );
   }

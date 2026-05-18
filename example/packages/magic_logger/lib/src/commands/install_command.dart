@@ -5,7 +5,7 @@ import 'package:fluttersdk_artisan/artisan.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 
-/// `logger:install` — installs magic_logger via the bundled install.yaml
+/// `logger:install`, installs magic_logger via the bundled install.yaml
 /// manifest.
 ///
 /// Demonstrates the canonical third-party-plugin install pattern post the
@@ -72,7 +72,7 @@ class LoggerInstallCommand extends ArtisanInstallCommand {
 
   @override
   Future<int> handle(ArtisanContext ctx) async {
-    // 1. Resolve the manifest. A null result means the asset is missing — the
+    // 1. Resolve the manifest. A null result means the asset is missing, the
     //    plugin bundle is malformed, surface it as a hard error.
     final manifestPath = await resolveManifestPath();
     if (manifestPath == null) {

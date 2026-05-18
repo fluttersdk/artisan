@@ -23,14 +23,21 @@
 /// ## Uninstall semantics (v1 limitations)
 ///
 /// `uninstall()` reads the install record at
-/// `.artisan/installed/<pluginName>.json`, replays each recorded op through
-/// [reverseOf], and commits a fresh [InstallTransaction] carrying the
-/// reverse ops. The install record only persists full payload for
-/// `WriteFile` / `DeleteFile` / `CopyFile` (see
-/// `InstallTransaction._serializeOp`); every other op is recorded as a
-/// type-only marker. As a v1 trade-off, those type-only ops emit a warning
-/// at uninstall time and skip. The Plugin Authoring Guide (Step 40) and the
-/// `doc/install_yaml_schema.md` Uninstall section document the limitation.
+/// `.artisan/installed/<pluginName>.json`, reconstructs each recorded op
+/// from its persisted typed payload, replays through [reverseOf], and
+/// commits a fresh [InstallTransaction] carrying the reverse ops. The
+/// install record carries the full typed payload for every op subclass
+/// (see [InstallTransaction._serializeOp]) so reconstruction is lossless
+/// for `WriteFile` / `CopyFile` / `PublishFile`.
+///
+/// The current v1 trade-off lives in [reverseOf]: only file-creating ops
+/// (`AddDependency` -> `RemoveDependency`, `WriteFile` / `CopyFile` /
+/// `PublishFile` -> `DeleteFile`) have a typed reverse. Every other op
+/// (`Inject*`, `AddPubspecAsset`, `MergeJson`, `RunShell`, ...) returns
+/// null with a logged skip warning because the matching `removeX` editor
+/// helpers do not yet exist. The Plugin Authoring Guide (Step 40) and the
+/// `doc/install_yaml_schema.md` Uninstall section enumerate the limitation
+/// per op type and what manual cleanup is required.
 ///
 /// When the install record file is missing, `uninstall()` returns an `Error`
 /// so the operator does not silently believe the plugin was removed.
@@ -265,7 +272,7 @@ class ManifestInstaller {
     _manifest.jsonMerge.forEach((targetPath, spec) {
       // Load the stub data NOW (synchronously through the StubDriver) so the
       // parsed Map<String, dynamic> hits PluginInstaller.mergeJson which only
-      // accepts already-parsed data — not a raw stub key.
+      // accepts already-parsed data, not a raw stub key.
       final stubBody = _ctx.stubs.load(spec.source);
       final parsed = jsonDecode(stubBody);
       if (parsed is! Map<String, dynamic>) {
@@ -465,10 +472,16 @@ class ManifestInstaller {
         '${_manifest.pluginName}.json',
       );
 
-  /// Reconstructs a typed [InstallOperation] from a record entry. Returns
-  /// `null` for type-only entries (everything other than WriteFile /
-  /// DeleteFile / CopyFile) since the record carries no payload for them in
-  /// V1.
+  /// Reconstructs a typed [InstallOperation] from a record entry.
+  ///
+  /// Mirrors the schema produced by [InstallTransaction._serializeOp]. Pattern
+  /// fields ([InjectBeforePattern.pattern] / [InjectAfterPattern.pattern])
+  /// are rebuilt as plain `String` Patterns because the record persists them
+  /// via `toString()` and the reverse-op logic does not currently need a
+  /// RegExp roundtrip (those ops have no reverse in V1).
+  ///
+  /// Returns `null` for unknown type strings or entries that fail the typed
+  /// payload shape check; callers log a skip warning for those.
   InstallOperation? _opFromRecord(Map entry) {
     final type = entry['type'];
     switch (type) {
@@ -490,6 +503,223 @@ class ManifestInstaller {
         final target = entry['targetPath'];
         if (source is String && target is String) {
           return CopyFile(sourcePath: source, targetPath: target);
+        }
+        return null;
+      case 'PublishFile':
+        final stub = entry['sourceStubName'];
+        final target = entry['targetPath'];
+        final rawReplacements = entry['replacements'];
+        if (stub is String && target is String && rawReplacements is Map) {
+          return PublishFile(
+            sourceStubName: stub,
+            targetPath: target,
+            replacements: rawReplacements.map(
+              (k, v) => MapEntry(k.toString(), v.toString()),
+            ),
+          );
+        }
+        return null;
+      case 'AddDependency':
+        final name = entry['name'];
+        final version = entry['version'];
+        final isDev = entry['isDev'];
+        if (name is String && version is String) {
+          return AddDependency(
+            name: name,
+            version: version,
+            isDev: isDev is bool ? isDev : false,
+          );
+        }
+        return null;
+      case 'AddPathDependency':
+        final name = entry['name'];
+        final path = entry['path'];
+        if (name is String && path is String) {
+          return AddPathDependency(name: name, path: path);
+        }
+        return null;
+      case 'RemoveDependency':
+        final name = entry['name'];
+        if (name is String) {
+          return RemoveDependency(name: name);
+        }
+        return null;
+      case 'AddPubspecAsset':
+        final assetPath = entry['assetPath'];
+        if (assetPath is String) {
+          return AddPubspecAsset(assetPath: assetPath);
+        }
+        return null;
+      case 'MergeJson':
+        final target = entry['targetPath'];
+        final additive = entry['additive'];
+        if (target is String) {
+          // sourceData is intentionally omitted from the record (see
+          // _serializeOp). The reverse for MergeJson is V1-deferred, so an
+          // empty sourceData is acceptable for round-trip reconstruction.
+          return MergeJson(
+            targetPath: target,
+            sourceData: const <String, dynamic>{},
+            additive: additive is bool ? additive : true,
+          );
+        }
+        return null;
+      case 'InjectImport':
+        final targetFile = entry['targetFile'];
+        final importStatement = entry['importStatement'];
+        if (targetFile is String && importStatement is String) {
+          return InjectImport(
+            targetFile: targetFile,
+            importStatement: importStatement,
+          );
+        }
+        return null;
+      case 'InjectBeforePattern':
+        final targetFile = entry['targetFile'];
+        final pattern = entry['pattern'];
+        final code = entry['code'];
+        if (targetFile is String && pattern is String && code is String) {
+          return InjectBeforePattern(
+            targetFile: targetFile,
+            pattern: pattern,
+            code: code,
+          );
+        }
+        return null;
+      case 'InjectAfterPattern':
+        final targetFile = entry['targetFile'];
+        final pattern = entry['pattern'];
+        final code = entry['code'];
+        if (targetFile is String && pattern is String && code is String) {
+          return InjectAfterPattern(
+            targetFile: targetFile,
+            pattern: pattern,
+            code: code,
+          );
+        }
+        return null;
+      case 'InjectAndroidPermission':
+        final permission = entry['permission'];
+        if (permission is String) {
+          return InjectAndroidPermission(permission: permission);
+        }
+        return null;
+      case 'InjectAndroidMetaData':
+        final name = entry['name'];
+        final value = entry['value'];
+        if (name is String && value is String) {
+          return InjectAndroidMetaData(name: name, value: value);
+        }
+        return null;
+      case 'InjectInfoPlistKey':
+        final platform = entry['platform'];
+        final key = entry['key'];
+        final value = entry['value'];
+        if (platform is String && key is String && value is String) {
+          return InjectInfoPlistKey(
+            key: key,
+            value: value,
+            platform: platform,
+          );
+        }
+        return null;
+      case 'InjectEntitlement':
+        final platform = entry['platform'];
+        final key = entry['key'];
+        final value = entry['value'];
+        if (platform is String && key is String && value is String) {
+          return InjectEntitlement(
+            platform: platform,
+            key: key,
+            value: value,
+          );
+        }
+        return null;
+      case 'InjectPodfileLine':
+        final platform = entry['platform'];
+        final line = entry['line'];
+        if (platform is String && line is String) {
+          return InjectPodfileLine(platform: platform, line: line);
+        }
+        return null;
+      case 'InjectGradlePlugin':
+        final pluginId = entry['pluginId'];
+        final version = entry['version'];
+        if (pluginId is String) {
+          return InjectGradlePlugin(
+            pluginId: pluginId,
+            version: version is String ? version : null,
+          );
+        }
+        return null;
+      case 'InjectGradleDependency':
+        final scope = entry['scope'];
+        final notation = entry['notation'];
+        if (scope is String && notation is String) {
+          return InjectGradleDependency(scope: scope, notation: notation);
+        }
+        return null;
+      case 'InjectEnvVar':
+        final key = entry['key'];
+        final value = entry['value'];
+        final comment = entry['comment'];
+        if (key is String && value is String) {
+          return InjectEnvVar(
+            key: key,
+            value: value,
+            comment: comment is String ? comment : null,
+          );
+        }
+        return null;
+      case 'InjectIntoWebHead':
+        final content = entry['content'];
+        if (content is String) {
+          return InjectIntoWebHead(content: content);
+        }
+        return null;
+      case 'AddWebMetaTag':
+        final attributes = entry['attributes'];
+        if (attributes is Map) {
+          return AddWebMetaTag(
+            attributes: attributes.map(
+              (k, v) => MapEntry(k.toString(), v.toString()),
+            ),
+          );
+        }
+        return null;
+      case 'InjectMainDartImport':
+        final importStatement = entry['importStatement'];
+        if (importStatement is String) {
+          return InjectMainDartImport(importStatement: importStatement);
+        }
+        return null;
+      case 'InjectIntoMainDart':
+        final placement = entry['placement'];
+        final code = entry['code'];
+        if (placement is String && code is String) {
+          final parsed = MainDartPlacement.values
+              .where((e) => e.name == placement)
+              .firstOrNull;
+          if (parsed == null) return null;
+          return InjectIntoMainDart(placement: parsed, code: code);
+        }
+        return null;
+      case 'InjectRouteRegistration':
+        final functionName = entry['functionName'];
+        if (functionName is String) {
+          return InjectRouteRegistration(functionName: functionName);
+        }
+        return null;
+      case 'RunShell':
+        final command = entry['command'];
+        final args = entry['args'];
+        final workingDir = entry['workingDir'];
+        if (command is String && args is List) {
+          return RunShell(
+            command: command,
+            args: args.map((e) => e.toString()).toList(),
+            workingDir: workingDir is String ? workingDir : null,
+          );
         }
         return null;
       default:

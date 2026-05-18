@@ -12,8 +12,8 @@ dart run fluttersdk_artisan plugin:install {{ name }}
 
 ## Commands
 
-- `artisan {{ commandPrefix }}:install` — install {{ name }}
-- `artisan {{ commandPrefix }}:uninstall` — uninstall {{ name }}
+- `artisan {{ commandPrefix }}:install`, install {{ name }}
+- `artisan {{ commandPrefix }}:uninstall`, uninstall {{ name }}
 
 ## Authoring
 

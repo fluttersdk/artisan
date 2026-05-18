@@ -2,10 +2,10 @@ import 'dart:io';
 
 /// Supported Gradle build script syntaxes.
 enum _BuildGradleSyntax {
-  /// Kotlin DSL — file extension `.kts`.
+  /// Kotlin DSL, file extension `.kts`.
   kts,
 
-  /// Groovy DSL — file extension `.gradle`.
+  /// Groovy DSL, file extension `.gradle`.
   groovy,
 }
 
@@ -82,7 +82,7 @@ class GradleEditor {
     final syntax = _detectSyntax(gradlePath);
     final content = _read(gradlePath);
 
-    // 1. Idempotency — bail when the plugin ID is already referenced.
+    // 1. Idempotency, bail when the plugin ID is already referenced.
     if (content.contains(pluginId)) {
       return;
     }
@@ -132,7 +132,7 @@ class GradleEditor {
     final syntax = _detectSyntax(gradlePath);
     final content = _read(gradlePath);
 
-    // 1. Idempotency — bail when the notation is already referenced.
+    // 1. Idempotency, bail when the notation is already referenced.
     if (content.contains(notation)) {
       return;
     }
@@ -183,7 +183,7 @@ class GradleEditor {
       return;
     }
 
-    // 2. Directive absent — insert as first line in defaultConfig { ... }.
+    // 2. Directive absent, insert as first line in defaultConfig { ... }.
     final newLine = switch (syntax) {
       _BuildGradleSyntax.kts => '    minSdk = $version',
       _BuildGradleSyntax.groovy => '    minSdkVersion $version',
