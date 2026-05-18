@@ -259,13 +259,58 @@ class ManifestInstaller {
     PluginInstaller installer,
     Map<String, String> placeholders,
   ) {
+    // Resolve the plugin's own assets/stubs/ directory and render each stub
+    // through it directly. The PublishFile op's dispatcher uses _ctx.stubs.load
+    // with the substrate's default search paths (fluttersdk_artisan's
+    // assets/stubs), which would never find a plugin-shipped stub. Inlining
+    // the render + writeFile here threads the stub through the plugin's
+    // package root via Isolate.resolvePackageUri.
+    final pluginStubsDir = _resolvePluginStubsDir();
     _manifest.publish.forEach((stubName, targetPath) {
-      installer.publishConfig(
-        stubName: stubName,
-        targetPath: targetPath,
-        replacements: placeholders,
-      );
+      if (pluginStubsDir == null) {
+        // Fallback: let the dispatcher try default paths (will fail loudly).
+        installer.publishConfig(
+          stubName: stubName,
+          targetPath: targetPath,
+          replacements: placeholders,
+        );
+        return;
+      }
+      final stub = _ctx.stubs.load(stubName, searchPaths: [pluginStubsDir]);
+      final rendered = _ctx.stubs.replace(stub, placeholders);
+      installer.writeFile(targetPath: targetPath, content: rendered);
     });
+  }
+
+  /// Resolve `<plugin_root>/assets/stubs/` via `package:<pluginName>/cli.dart`.
+  ///
+  /// Returns `null` when the plugin cannot be resolved (cli.dart missing,
+  /// non-file URI scheme). Synchronous variant uses the already-resolved
+  /// package_config.json under `.dart_tool/`; `Isolate.resolvePackageUri`
+  /// would be async but parsing package_config.json is cheap + sync.
+  String? _resolvePluginStubsDir() {
+    final pkgConfigPath = p.join(
+      _ctx.projectRoot,
+      '.dart_tool',
+      'package_config.json',
+    );
+    if (!_ctx.fs.exists(pkgConfigPath)) return null;
+    final content = _ctx.fs.readAsString(pkgConfigPath);
+    final json = jsonDecode(content) as Map<String, dynamic>;
+    final packages = json['packages'] as List<dynamic>?;
+    if (packages == null) return null;
+    for (final pkg in packages) {
+      final entry = pkg as Map<String, dynamic>;
+      if (entry['name'] != _manifest.pluginName) continue;
+      final rootUri = entry['rootUri'] as String;
+      final pkgRoot = rootUri.startsWith('file://')
+          ? Uri.parse(rootUri).toFilePath()
+          : p.normalize(
+              p.join(_ctx.projectRoot, '.dart_tool', rootUri),
+            );
+      return p.join(pkgRoot, 'assets', 'stubs');
+    }
+    return null;
   }
 
   void _applyJsonMerge(PluginInstaller installer) {
