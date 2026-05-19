@@ -41,8 +41,25 @@ Single-instance optimisation (early return on the first call's cache) is NOT wha
 
 ## TDD discipline
 
-This project follows red-green-refactor for every behavioral change. New tests assert against shipped behavior; reverting the production fix that the test covers makes the test fail. Verify this mentally before submitting. Empty-list edge cases, dry-run guards, and write-failure paths each need a dedicated test.
+Red-green-refactor for every behavioral change (Golden Rule 6 in root CLAUDE.md). The cycle for this codebase:
+
+1. Add the failing test FIRST, asserting the desired post-change behavior. Run `dart test test/<path>_test.dart` and confirm it fails with a meaningful diff.
+2. Apply the minimum production change that turns the test green. No bonus refactors in the same commit.
+3. Re-run the targeted test to confirm green, then `dart test` for the full suite to confirm no regression.
+4. Refactor only after green. Each refactor keeps the suite green between commits.
+
+Reverting the production change in step 2 must turn the test back red. If reverting leaves the test green, the test is asserting the wrong thing; fix the assertion before continuing. Coverage targets at the layer where the bug lives: empty-list edge cases, dry-run guards, write-failure paths, atomic-commit rollback paths, and idempotency-on-re-run paths each need a dedicated test.
+
+## Coverage discipline
+
+Line coverage stays at or above 80% (currently 83.79%). Per behavioral change:
+
+1. Run the coverage flow from root CLAUDE.md `## Commands`: `dart test --coverage=coverage && dart pub global run coverage:format_coverage --lcov --in=coverage --out=coverage/lcov.info`.
+2. Compute the line-coverage percentage from `LF`/`LH` totals: `awk -F: '/^LF:/{lf+=$2} /^LH:/{lh+=$2} END{printf "%.2f%%\n", (lh/lf)*100}' coverage/lcov.info`.
+3. Drops below 80% block the change. Add tests covering the uncovered lines surfaced by `coverage/html/index.html` before merging.
+
+Coverage is line coverage only (Dart's `package:coverage` does not emit branch or function coverage in LCOV). When a single conditional branch contains all the new behavior, write tests for both branches even when the line-coverage metric counts only the executed one.
 
 ## Baseline
 
-`dart test` exits 0 with 965+ tests passing on the touched-files scope. Pre-existing unrelated failures are flagged in the PR description and not blocking. Wave-after commits in multi-wave plans run the full suite once per wave before the commit lands.
+`dart test` exits 0 with 1060+ tests passing on the touched-files scope. Pre-existing unrelated failures are flagged in the PR description and not blocking. Wave-after commits in multi-wave plans run the full suite once per wave before the commit lands.

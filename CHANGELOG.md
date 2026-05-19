@@ -8,13 +8,54 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **Documentation site**: subdomain `artisan.fluttersdk.com` replaced with path-style `fluttersdk.com/artisan`
+  across `pubspec.yaml` (homepage, documentation), `README.md`, `llms.txt`, the awesome_plugin example
+  README, and the generic make:plugin README stub.
+- **`pubspec.yaml` description** rewritten for pub.dev SEO without comparison-language; pub.dev topics
+  swapped from `artisan` to `mcp-server` to capture the 2026 differentiator.
+- **`README.md` rewrite**: 691 lines reduced to 383 lines, Wind-paralel structure, all internal links point
+  at `https://fluttersdk.com/artisan/X/Y` with descriptive labels (`MCP setup guide`, `commands catalog`,
+  `signature DSL reference`, `install.yaml schema`, `PluginInstaller DSL reference`, `tool reference`). Logo
+  switched to the Magic SVG via raw GitHub URL. Alpha banner removed; CHANGELOG is the canonical place for
+  version-stability communication.
+- **Project memory (`CLAUDE.md`) rewritten** for the current state. New `## Golden Rules` section codifies six
+  per-change invariants: doc sync, skill sync, 80% line-coverage floor, README sync on significant changes,
+  CHANGELOG-always under `[Unreleased]`, green-gate plus TDD. `.claude/rules/tests.md` updated with `##
+  Coverage discipline` subsection wiring the floor to the `coverage/lcov.info` flow; baseline bumped to
+  1060+ tests.
+
+### Removed
+
+- **`example_magic/` dev playground**: Magic-managed example retired (Magic ships its own example).
+- **`doc/install_yaml_schema.md` and `doc/plugin_authoring_guide.md` from the old layout**: superseded by
+  the new `doc/plugins/install-yaml.md` and `doc/plugins/authoring.md` under the URL-routable tree.
+- **Magic-style stubs in `assets/stubs/`** (18 top-level + `assets/stubs/install/`): duplicated in
+  `references/magic/assets/stubs/` and loaded by Magic's own provider. `lib/src/stubs/install_stubs.dart` +
+  `test/stubs/install_stubs_test.dart` removed (test-only public API with no command-surface caller).
+
 ### Added
 
+- **`artisan_tinker` as the 10th substrate MCP tool**: the `tinker` command is now allowlisted in
+  `lib/src/mcp/mcp_server.dart` alongside the lifecycle quartet plus status / logs / doctor / list. The
+  dispatcher detects `CommandBoot.connected`, builds `ArtisanContext.connected` with the lazy-reconnected VM
+  Service client, and surfaces the tool with an `eval` (string, required) input schema. The legacy
+  `magic_tinker` package's `tinker_eval` plugin descriptor is now obsolete; `artisan_tinker` replaces it.
+- **`doc/` documentation tree** (17 files): URL-routable Markdown tree mirroring `references/wind/doc/`'s
+  structure. Sub-folders: `getting-started/`, `commands/`, `mcp/`, `plugins/`, `reference/`. Maps to
+  `https://fluttersdk.com/artisan/X/Y` per file path. README and llms.txt link into it with descriptive
+  labels.
+- **`llms.txt`** at repo root per llmstxt.org spec: under 2 KB, links use `.md` extensions for direct
+  Markdown fetch by AI agents.
+- **`skills/fluttersdk-artisan/`**: LLM-agent skill (SKILL.md + 5 reference files: commands.md,
+  install-yaml-schema.md, installer-dsl.md, mcp-server.md, plugin-authoring.md) mirroring the
+  magic-framework pattern. The cached SKILL.md covers the 12 core laws, command surface by group, MCP
+  integration, plugin install protocol; references load on demand.
 - **`tinker --eval=<expr>`**: one-shot evaluation flag for the `tinker` command. When provided, evaluates the
   expression against the connected VM Service and prints the result to stdout (exit 0 on success, 1 on
-  `VmServiceClient` error). Mirrors `php artisan tinker --execute=` for non-interactive automation. The
-  interactive REPL still launches when `--eval` is absent. Covered by 3 new tests in
-  `test/commands/tinker_command_test.dart`.
+  `VmServiceClient` error). The interactive REPL still launches when `--eval` is absent. Covered by 3 new
+  tests in `test/commands/tinker_command_test.dart`.
 - **`consumer:scaffold` monorepo path-dep detection**: `scaffoldInto({root, force, ctx})` static entry point lets
   other commands (notably `dusk:install`) invoke the scaffolder programmatically without spawning a subprocess.
   When the consumer's `.dart_tool/package_config.json` resolves `fluttersdk_artisan` to a local sibling
