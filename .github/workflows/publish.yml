@@ -1,0 +1,40 @@
+name: Publish to pub.dev
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+*'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@v1
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed lib/ test/ bin/
+
+      - name: Analyze code
+        run: dart analyze lib/ test/ bin/
+
+      - name: Run tests
+        run: dart test
+
+      - name: Validate publish archive
+        run: dart pub publish --dry-run
+
+  publish:
+    needs: validate
+    permissions:
+      id-token: write # Required for authentication using OIDC
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
