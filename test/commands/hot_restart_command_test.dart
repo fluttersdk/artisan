@@ -64,7 +64,9 @@ void main() {
       expect(output.content, contains('Pipe missing'));
     });
 
-    test('returns 0 on real FIFO round-trip', () async {
+    // Tagged `integration`: same FIFO-writer reader race as the reload variant.
+    // Run on demand with `dart test --tags=integration`.
+    test('returns 0 on real FIFO round-trip', tags: 'integration', () async {
       if (Platform.isWindows) return;
       final fifoPath = '${tempHome.path}/hot.fifo';
       final mkfifoResult = await Process.run('mkfifo', <String>[fifoPath]);
