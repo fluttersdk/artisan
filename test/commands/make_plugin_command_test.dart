@@ -1154,7 +1154,8 @@ void main() {
     });
   });
 
-  group('MakePluginCommand, generated plugin passes dart pub get', tags: 'integration', () {
+  group('MakePluginCommand, generated plugin passes dart pub get',
+      tags: 'integration', () {
     // Integration tests: REAL flutter create (not mocked) and REAL dart pub get.
     // Catches the original pubspec path-resolution bug (hardcoded `../../` vs
     // computed relative path) because `dart pub get` would have failed with
