@@ -11,6 +11,7 @@ import '../console/artisan_context.dart';
 import '../console/artisan_input.dart';
 import '../console/artisan_output.dart';
 import '../console/artisan_registry.dart';
+import '../console/command_boot.dart';
 import '../state/state_file.dart';
 import '../vm/vm_service_client.dart';
 import 'mcp_filter_config.dart';
@@ -508,6 +509,31 @@ final class McpServer extends MCPServer with ToolsSupport {
             '- The total command count appears at the top so plugin '
             'loading can be sanity-checked at a glance.';
 
+      case 'tinker':
+        return 'Evaluate a Dart expression inside the running Flutter app '
+            'via the VM Service `evaluate` RPC.\n'
+            '\n'
+            'Compiles `eval` in the scope of the app\'s root library and '
+            'returns the result as text. Has full access to anything '
+            'imported by `lib/main.dart`: controllers, models, framework '
+            'facades, top-level functions. The expression may be a simple '
+            'lookup (`User.current.name`), a method call '
+            '(`MonitorController.instance.refresh()`), or a multi-line '
+            'statement.\n'
+            '\n'
+            'Usage:\n'
+            '- Use to INSPECT live app state without rebuilding the UI '
+            '(current user, active controllers, cache contents).\n'
+            '- Use to TRIGGER an action programmatically (call a '
+            'controller method, fire a facade event, mutate a singleton) '
+            'without going through the UI surface.\n'
+            '- Requires an artisan-managed running app: call '
+            '`artisan_start` first so `~/.artisan/state.json` records the '
+            'VM Service URI.\n'
+            '- Errors (compile, runtime, breakpoints) surface as the '
+            'evaluate RPC\'s error response; the model receives the '
+            'error text and can self-correct.';
+
       default:
         return command.description;
     }
@@ -583,6 +609,21 @@ final class McpServer extends MCPServer with ToolsSupport {
           'type': 'object',
           'properties': <String, dynamic>{},
         };
+      case 'tinker':
+        return <String, dynamic>{
+          'type': 'object',
+          'properties': <String, dynamic>{
+            'eval': <String, dynamic>{
+              'type': 'string',
+              'description': 'Dart expression to evaluate in the running '
+                  'app\'s root library (e.g. `User.current.name`, '
+                  '`MonitorController.instance.refresh()`, `1+1`). The '
+                  'expression runs synchronously in the foreground isolate '
+                  'and the formatted result returns as text. Required.',
+            },
+          },
+          'required': <String>['eval'],
+        };
       default:
         // Defensive empty schema: catches any future allowlist addition
         // that lands without an explicit per-command schema. The
@@ -617,7 +658,39 @@ final class McpServer extends MCPServer with ToolsSupport {
         request.arguments?.cast<String, dynamic>() ?? const <String, dynamic>{};
     final output = BufferedOutput();
     final input = MapInput(args);
-    final ctx = ArtisanContext.bare(input, output, registry: registry);
+
+    // Build the context per the command's boot mode. Bare for filesystem /
+    // process commands (start, stop, doctor, list, etc.); connected for
+    // commands that need a VM Service client (tinker). Connected dispatch
+    // shares the same lazy-reconnect path used by plugin VM-extension tools.
+    ArtisanContext ctx;
+    if (command.boot == CommandBoot.connected) {
+      if (_vmClient == null) {
+        _reconnecting ??= _lazyReconnect();
+        try {
+          await _reconnecting;
+        } finally {
+          _reconnecting = null;
+        }
+      }
+      final vmClient = _vmClient;
+      if (vmClient == null) {
+        return CallToolResult(
+          isError: true,
+          content: [
+            TextContent(
+              text: '### Error\nNot connected to a running Flutter app. '
+                  'Run `dart run fluttersdk_artisan start` first so '
+                  '`~/.artisan/state.json` records the VM Service URI.',
+            ),
+          ],
+        );
+      }
+      ctx = ArtisanContext.connected(input, output, vmClient,
+          registry: registry);
+    } else {
+      ctx = ArtisanContext.bare(input, output, registry: registry);
+    }
 
     try {
       final exitCode = await command.handle(ctx);
@@ -657,11 +730,17 @@ final class McpServer extends MCPServer with ToolsSupport {
 const String _artisanDispatchPrefix = 'artisan:';
 
 /// Substrate commands the MCP server exposes as tools by default. The
-/// allowlist intentionally excludes interactive (`tinker`, `help`), codegen
-/// (`make:*`, `*:refresh`), installer (`plugin:*`, `consumer:scaffold`),
-/// and MCP meta (`mcp:*`) commands because they either need a TTY, mutate
-/// source on disk in ways better served by the client's own file tools, or
-/// recurse into the MCP server itself.
+/// allowlist intentionally excludes codegen (`make:*`, `*:refresh`),
+/// installer (`plugin:*`, `consumer:scaffold`), and MCP meta (`mcp:*`)
+/// commands because they either mutate source on disk in ways better served
+/// by the client's own file tools, or recurse into the MCP server itself.
+///
+/// `tinker` is included even though it boots as [CommandBoot.connected];
+/// the dispatcher in [McpServer._dispatchArtisanCommand] detects the boot
+/// mode and constructs an [ArtisanContext.connected] using the lazily
+/// established VM Service client. From the MCP client's point of view it is
+/// an ordinary substrate tool that takes an `eval` argument and returns the
+/// evaluated Dart expression as text.
 const Set<String> _safeArtisanCommandNames = <String>{
   'start',
   'stop',
@@ -672,4 +751,5 @@ const Set<String> _safeArtisanCommandNames = <String>{
   'hot-restart',
   'doctor',
   'list',
+  'tinker',
 };
