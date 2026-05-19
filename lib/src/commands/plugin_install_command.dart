@@ -145,8 +145,9 @@ class PluginInstallCommand extends ArtisanInstallCommand {
     if (preflight != 0) return preflight;
 
     // 3. Resolve the plugin's install.yaml. When found, route to the
-    //    manifest flow; otherwise honour --use-yaml-only or fall back to
-    //    the legacy injection.
+    //    manifest flow; otherwise honour --use-yaml-only, fall through to
+    //    the direct-registration flow (canonical scaffold path), or fall
+    //    back to the legacy injection.
     final manifestPath = await resolveInstallYaml(name);
     if (manifestPath != null) {
       return _runManifestFlow(ctx, manifestPath: manifestPath);
@@ -160,6 +161,20 @@ class PluginInstallCommand extends ArtisanInstallCommand {
         'plugin (see doc/install_yaml_schema.md).',
       );
       return 1;
+    }
+
+    // 3b. Generic plugin (no install.yaml) AND canonical consumer scaffold
+    //     present (lib/app/_plugins.g.dart exists). Skip the legacy
+    //     bin/artisan.dart injection: write directly to .artisan/plugins.json
+    //     and refresh _plugins.g.dart. This is the Magic-less parallel of
+    //     the manifest-flow `_registerArtisanProvider` step, working purely
+    //     against the canonical scaffold from `consumer:scaffold`.
+    if (File(p.join(root, 'lib', 'app', '_plugins.g.dart')).existsSync()) {
+      await _registerArtisanProvider(ctx, name: name);
+      ctx.output.success(
+        'Registered "$name" via canonical scaffold (no install.yaml needed).',
+      );
+      return 0;
     }
 
     return _runLegacyFlow(ctx, name: name, wrapperPath: wrapperPath);
