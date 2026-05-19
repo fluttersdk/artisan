@@ -8,8 +8,17 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.1] - 2026-05-19
+
 ### Changed
 
+- **`pubspec.yaml` description** trimmed to 164 characters (was 202) so pana awards the full 10 / 10 in the
+  "Provide a valid pubspec.yaml" category. The shortened form keeps every SEO-load keyword: CLI framework,
+  stdio MCP server, Flutter, code generation, plugin installs, hot reload, REPL, AI agent tooling.
+- **`example/README.md`** rewritten from the boilerplate `# example\n\nA new Flutter project.` shell to a
+  walk-through of the canonical consumer scaffold: `bin/artisan.dart` wrapper, `lib/app/` codegen barrels,
+  `packages/awesome_plugin/` in-workspace plugin, run / list / doctor commands, and an explicit note on which
+  parts of the Flutter scaffold are excluded from the pub.dev archive by `.pubignore`.
 - **Sibling plugin tool catalogs link out, no inline enumeration**: dropped the
   full `dusk_*` / `telescope_*` tool-name lists and per-plugin count claims
   (17 / 9) from `doc/mcp/{tool-reference,overview,setup}.md`,
