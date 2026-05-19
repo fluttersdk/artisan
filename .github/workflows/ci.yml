@@ -14,11 +14,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Dart
-        uses: dart-lang/setup-dart@v1
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
       - name: Install dependencies
-        run: dart pub get
+        run: flutter pub get
 
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed lib/ test/ bin/
@@ -26,11 +29,8 @@ jobs:
       - name: Analyze code
         run: dart analyze lib/ test/ bin/
 
-      - name: Install coverage tool
-        run: dart pub global activate coverage
-
       - name: Run tests with coverage
-        run: dart pub global run coverage:test_with_coverage --out=coverage
+        run: flutter test --coverage
 
       - name: Enforce 80% line coverage floor
         run: |

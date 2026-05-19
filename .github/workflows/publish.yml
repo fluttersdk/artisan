@@ -15,11 +15,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Dart
-        uses: dart-lang/setup-dart@v1
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
       - name: Install dependencies
-        run: dart pub get
+        run: flutter pub get
 
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed lib/ test/ bin/
@@ -28,7 +31,7 @@ jobs:
         run: dart analyze lib/ test/ bin/
 
       - name: Run tests
-        run: dart test
+        run: flutter test
 
       - name: Validate publish archive
         run: dart pub publish --dry-run
