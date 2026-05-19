@@ -1,18 +1,9 @@
 # .pubignore: controls what `dart pub publish` ships to pub.dev.
 # Same syntax as .gitignore. When this file is present, pub uses it
-# INSTEAD of .gitignore (not in addition).
+# INSTEAD of .gitignore (not in addition), so this file repeats every
+# exclusion .gitignore enforces plus the publish-specific extras.
 #
 # Goal: keep the published archive lean (target < 500 KB compressed).
-# Without this file the example/ + example_magic/ + build/ + coverage/
-# directories balloon the archive to 3+ MB and ship platform scaffolds
-# that users have no business downloading from pub.dev.
-
-# ---------------------------------------------------------------------------
-# example_magic: Magic-based example. Lives in this repo for live e2e
-# validation against magic + the magic_logger plugin, but it does NOT
-# belong in the artisan pub.dev archive (Magic ships its own example).
-# ---------------------------------------------------------------------------
-example_magic/
 
 # ---------------------------------------------------------------------------
 # example/: keep lib/ + bin/ + pubspec.yaml + README so pub.dev's Example
@@ -52,21 +43,49 @@ example/packages/*/*.iml
 example/packages/*/pubspec.lock
 
 # ---------------------------------------------------------------------------
-# Build artifacts + test output
+# Build artifacts, generated docs, test output
 # ---------------------------------------------------------------------------
 build/
 coverage/
+.dart_tool/
+**/doc/api/
+.flutter-plugins-dependencies
 
 # ---------------------------------------------------------------------------
-# IDE + editor scratch
+# Library hygiene: pubspec.lock does not ship per Dart guidelines.
+# https://dart.dev/guides/libraries/private-files#pubspeclock
+# ---------------------------------------------------------------------------
+pubspec.lock
+
+# ---------------------------------------------------------------------------
+# IDE, editor, OS scratch
 # ---------------------------------------------------------------------------
 .idea/
 .vscode/
+.atom/
+.history
+.swiftpm/
+.svn/
+.build/
+.buildlog/
+migrate_working_dir/
 *.iml
+*.ipr
+*.iws
+*.log
+*.swp
+*.pyc
+*.class
+*.bak
+*.tmp
 .DS_Store
 
 # ---------------------------------------------------------------------------
-# Local state
+# Local state (artisan runtime + AI coding tooling)
 # ---------------------------------------------------------------------------
 .artisan/
 .ac/
+.claude/
+.mcp.json
+CLAUDE.md
+CLAUDE.local.md
