@@ -8,6 +8,14 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`tinker --eval=<expr>`**: one-shot evaluation flag for the `tinker` command. When provided, evaluates the
+  expression against the connected VM Service and prints the result to stdout (exit 0 on success, 1 on
+  `VmServiceClient` error). Mirrors `php artisan tinker --execute=` for non-interactive automation. The
+  interactive REPL still launches when `--eval` is absent. Covered by 3 new tests in
+  `test/commands/tinker_command_test.dart`.
+
 ---
 
 ## [0.0.1] - 2026-05-18
