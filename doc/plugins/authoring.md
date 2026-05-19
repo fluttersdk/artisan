@@ -157,7 +157,8 @@ automatically). Tool names must be unique; a collision throws
 `ArtisanMcpToolCollisionException` at startup.
 
 Naming convention: prefix every tool name with a short service identifier
-followed by an underscore (`dusk_tap`, `telescope_tail`, `tinker_eval`).
+followed by an underscore (for example `my_plugin_greet`). The prefix should
+match the package's `providerName` (or a recognizable abbreviation thereof).
 
 ---
 

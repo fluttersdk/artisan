@@ -81,16 +81,12 @@ The MCP server surfaces the tool when the consumer's `bin/artisan.dart` calls `r
 
 ### Sibling plugin catalog
 
-| Plugin | Tool count | Prefix | Source |
-|--------|-----------|--------|--------|
-| `fluttersdk_dusk` | 17 | `dusk_*` | `/Users/anilcan/Code/uptizmv2/uptizm-app/references/fluttersdk_dusk/lib/src/dusk_artisan_provider.dart` |
-| `fluttersdk_telescope` | 9 | `telescope_*` | `/Users/anilcan/Code/uptizmv2/uptizm-app/references/fluttersdk_telescope/lib/src/telescope_artisan_provider.dart` |
+| Plugin | Prefix | MCP tool reference |
+|--------|--------|--------------------|
+| `fluttersdk_dusk` | `dusk_*` | [fluttersdk.com/dusk/mcp/tool-reference](https://fluttersdk.com/dusk/mcp/tool-reference) |
+| `fluttersdk_telescope` | `telescope_*` | [fluttersdk.com/telescope/mcp/tool-reference](https://fluttersdk.com/telescope/mcp/tool-reference) |
 
-`fluttersdk_dusk` tools: `dusk_snap`, `dusk_tap`, `dusk_screenshot`, `dusk_hover`, `dusk_drag`, `dusk_type`, `dusk_scroll`, `dusk_wait_for`, `dusk_dismiss_modals`, `dusk_navigate`, `dusk_navigate_back`, `dusk_get_routes`, `dusk_press_key`, `dusk_select_option`, `dusk_evaluate`, `dusk_close_app`, `dusk_find`.
-
-`fluttersdk_telescope` tools: `telescope_tail`, `telescope_requests`, `telescope_clear`, `telescope_exceptions`, `telescope_events`, `telescope_gates`, `telescope_dumps`, `telescope_queries`, `telescope_caches`.
-
-A consumer with both registered exposes up to 36 MCP tools (10 substrate + 17 dusk + 9 telescope).
+These plugin packages evolve independently; the canonical, up-to-date tool catalog (per-tool input schema, parameters, return shape, examples) lives on each plugin's own reference page linked above. A consumer with both plugins registered exposes the 10 substrate tools plus every tool listed on those pages, filtered through the three-layer pipeline.
 
 ## Three-layer filter
 

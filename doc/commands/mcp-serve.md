@@ -100,7 +100,7 @@ is denied in the result; deny always wins over allow.
 ```json
 {
   "packages": { "allow": null, "deny": ["fluttersdk_telescope"] },
-  "tools":    { "allow": ["dusk_snap", "artisan_start"], "deny": [] }
+  "tools":    { "allow": ["artisan_start", "artisan_tinker"], "deny": [] }
 }
 ```
 
@@ -150,9 +150,12 @@ recurse into the server itself (source: `mcp_server.dart:744-755`).
 **Plugin tools:** contributed via `ArtisanServiceProvider.mcpTools()` on each
 registered provider. The default returns an empty list. Providers such as
 `DuskArtisanProvider` and `TelescopeArtisanProvider` override it to expose tools that
-dispatch over the VM Service extension surface and require a running Flutter app.
-Both sets flow through the same filter, so `--exclude-tool artisan_start` and
-`--exclude-tool dusk_snap` behave identically.
+dispatch over the VM Service extension surface and require a running Flutter app. Both
+sets flow through the same filter, so a `--exclude-tool` deny against a plugin tool name
+behaves identically to a deny against a substrate name. The current plugin tool catalogs
+live on each plugin's own MCP tool reference site
+([fluttersdk_dusk](https://fluttersdk.com/dusk/mcp/tool-reference),
+[fluttersdk_telescope](https://fluttersdk.com/telescope/mcp/tool-reference)).
 
 ---
 
@@ -177,11 +180,11 @@ not in the allow list.
 ### 2. Filter via env vars: deny specific tools
 
 ```bash
-export ARTISAN_MCP_TOOLS_DENY="telescope_requests,telescope_exceptions"
+export ARTISAN_MCP_PACKAGES_DENY="fluttersdk_telescope"
 dart run fluttersdk_artisan mcp:serve
 ```
 
-The two Telescope tools are excluded; all others remain available. The env deny is
+All Telescope tools are excluded; all others remain available. The env deny is
 UNIONed with any deny entries already in `.artisan/mcp.json`.
 
 ### 3. Filter via CLI flags: pin to a minimal tool set
@@ -190,7 +193,7 @@ UNIONed with any deny entries already in `.artisan/mcp.json`.
 dart run fluttersdk_artisan mcp:serve \
   --include-tool artisan_start \
   --include-tool artisan_stop \
-  --include-tool dusk_snap
+  --include-tool artisan_tinker
 ```
 
 Only the three named tools register. Any `tools.allow` in `.artisan/mcp.json` or

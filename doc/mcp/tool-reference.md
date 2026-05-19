@@ -1,9 +1,9 @@
 # MCP Tool Reference
 
-Catalog of every MCP tool surfaced by `fluttersdk_artisan` and its sibling plugin packages.
-The MCP server exposes **10 substrate tools** (always available) and up to **26 plugin tools**
-(available when the matching provider is registered in the consumer's `bin/artisan.dart`).
-Total when all plugins are active: **36 tools**.
+Catalog of every MCP tool surfaced by `fluttersdk_artisan` directly. The MCP server exposes
+**10 substrate tools** (always available) plus plugin-contributed tools when the matching
+provider is registered in the consumer's `bin/artisan.dart`. Plugin tool catalogs live on
+each plugin's own documentation site (see [Plugin Tools](#plugin-tools) below).
 
 ## Table of Contents
 
@@ -20,8 +20,6 @@ Total when all plugins are active: **36 tools**.
   - [artisan_list](#artisan_list)
   - [artisan_tinker](#artisan_tinker)
 - [Plugin Tools](#plugin-tools)
-  - [fluttersdk_dusk (17 tools)](#fluttersdk_dusk-17-tools)
-  - [fluttersdk_telescope (9 tools)](#fluttersdk_telescope-9-tools)
 - [Filter Configuration](#filter-configuration)
 - [Related](#related)
 
@@ -44,13 +42,12 @@ Examples: `start` maps to `artisan_start`; `hot-restart` maps to `artisan_hot_re
 Plugin tools are contributed via `ArtisanServiceProvider.mcpTools()`. Each plugin package
 owns a prefix that matches the package name or domain:
 
-| Plugin package | Tool prefix | Example |
+| Plugin package | Tool prefix | Reference |
 |---|---|---|
-| `fluttersdk_dusk` | `dusk_` | `dusk_snap` |
-| `fluttersdk_telescope` | `telescope_` | `telescope_tail` |
+| `fluttersdk_dusk` | `dusk_` | [fluttersdk.com/dusk/mcp/tool-reference](https://fluttersdk.com/dusk/mcp/tool-reference) |
+| `fluttersdk_telescope` | `telescope_` | [fluttersdk.com/telescope/mcp/tool-reference](https://fluttersdk.com/telescope/mcp/tool-reference) |
 
-The same `:` and `-` transformation applies inside the suffix part (e.g. `wait_for`,
-`navigate_back`, `close_app`).
+The same `:` and `-` transformation applies inside the suffix part.
 
 ### Exclusions from the allowlist
 
@@ -193,50 +190,26 @@ plugin inside the running Flutter app.
 
 ---
 
-### fluttersdk_dusk (17 tools)
+### fluttersdk_dusk
 
-E2E interaction driver. All dusk tools operate over `ext.dusk.*` VM Service extensions
-installed by `fluttersdk_dusk` inside the running app. Refs (`e<N>`) come from
-`dusk_snap`; handles (`q<N>`) come from `dusk_find`.
+E2E interaction driver. Tools operate over `ext.dusk.*` VM Service extensions installed by
+`fluttersdk_dusk` inside the running app. Tool names use the `dusk_` prefix.
 
-| Tool | Extension method | Required parameters | Description |
-|---|---|---|---|
-| `dusk_snap` | `ext.dusk.snap` | none | Capture a YAML snapshot of the Semantics tree. Returns stable `[ref=eN]` tokens used by all action tools. |
-| `dusk_tap` | `ext.dusk.tap` | `ref` | Tap a widget by ref token (Down + 50ms + Up). |
-| `dusk_screenshot` | `ext.dusk.screenshot` | none | Capture a base64-encoded JPEG or PNG of the current frame. |
-| `dusk_hover` | `ext.dusk.hover` | `ref` | Hover a mouse cursor over a widget (mouse/desktop only). |
-| `dusk_drag` | `ext.dusk.drag` | `startRef`, `endRef` | Drag from one widget center to another (Down + 5x Move + Up). |
-| `dusk_type` | `ext.dusk.type` | `ref`, `text` | Type text into a focused TextField. Replaces existing content. |
-| `dusk_scroll` | `ext.dusk.scroll` | `ref` | Scroll the nearest Scrollable ancestor of the widget. Optional: `direction` (`up`/`down`/`left`/`right`, default `down`), `pixels` (default 300). |
-| `dusk_wait_for` | `ext.dusk.wait_for` | one of `text`, `textGone`, `expression` | Poll until a UI condition is met or `timeoutMs` (default 5000) expires. |
-| `dusk_dismiss_modals` | `ext.dusk.dismiss_modals` | none | Pop every modal route (dialog, bottom sheet) above the first persistent route. Idempotent. |
-| `dusk_navigate` | `ext.dusk.navigate` | `route` | Push a named route path onto the active router. Always re-snap after navigation. |
-| `dusk_navigate_back` | `ext.dusk.navigate_back` | none | Pop the top route off the navigator stack (equivalent to system Back). |
-| `dusk_get_routes` | `ext.dusk.get_routes` | none | List route paths declared by the running app's router (`{ path, name }` records). |
-| `dusk_press_key` | `ext.dusk.press_key` | `key` | Synthesize a hardware key event. Optional: `modifiers` array (`control`, `shift`, `alt`, `meta`). |
-| `dusk_select_option` | `ext.dusk.select_option` | `ref`, `value` | Select an option in a DropdownButton by ref + value string. |
-| `dusk_evaluate` | `ext.dusk.evaluate` | `expression` | Evaluate a Dart expression via the Tinker bridge (MCP-only; no CLI equivalent). |
-| `dusk_close_app` | `ext.dusk.close_app` | none | Request a graceful shutdown via `SystemNavigator.pop()`. No-op on web. |
-| `dusk_find` | `ext.dusk.find` | at least one of `text`, `semanticsLabel`, `key` | Mint a re-resolvable `q<N>` handle backed by predicates. Survives widget rebuilds unlike `e<N>` snap refs. |
+The plugin's MCP tool catalog evolves alongside the package; the canonical reference lives
+at [fluttersdk.com/dusk/mcp/tool-reference](https://fluttersdk.com/dusk/mcp/tool-reference)
+(per-tool input schema, required parameters, return shape, example invocations).
 
 ---
 
-### fluttersdk_telescope (9 tools)
+### fluttersdk_telescope
 
-Runtime inspector. All telescope tools read ring buffers populated by `ext.telescope.*`
-VM Service extensions installed by `fluttersdk_telescope` inside the running app.
+Runtime inspector. Tools read ring buffers populated by `ext.telescope.*` VM Service
+extensions installed by `fluttersdk_telescope` inside the running app. Tool names use the
+`telescope_` prefix.
 
-| Tool | Extension method | Required parameters | Description |
-|---|---|---|---|
-| `telescope_tail` | `ext.telescope.console` | none | Return recent `package:logging` log records. Optional: `level` (minimum level filter), `limit` (max records, newest first). |
-| `telescope_requests` | `ext.telescope.requests` | none | Return recent HTTP request records (method, url, status, duration, body snippet). Optional: `limit`. |
-| `telescope_clear` | `ext.telescope.clear` | none | Clear all three ring buffers (logs, requests, exceptions) atomically. Idempotent. |
-| `telescope_exceptions` | `ext.telescope.exceptions` | none | Return recent uncaught exception records (type, message, stackTrace). Optional: `limit`. |
-| `telescope_events` | `ext.telescope.events` | none | Return recent Magic `Event.dispatch()` records (class name, payload snapshot). Optional: `limit`. |
-| `telescope_gates` | `ext.telescope.gates` | none | Return recent `Gate.allows / Gate.denies` check records (ability, result, user id). Optional: `limit`. |
-| `telescope_dumps` | `ext.telescope.dumps` | none | Return recent `debugPrint()` output records captured by the global override. Optional: `limit`. |
-| `telescope_queries` | `ext.telescope.queries` | none | Return recent Magic QueryBuilder SQL records (SQL, bindings, execution time). Optional: `limit`. |
-| `telescope_caches` | `ext.telescope.caches` | none | Return recent Magic Cache operation records (`hit`, `miss`, `put`, `forget`, `flush`). Optional: `limit`. |
+The plugin's MCP tool catalog evolves alongside the package; the canonical reference lives
+at [fluttersdk.com/telescope/mcp/tool-reference](https://fluttersdk.com/telescope/mcp/tool-reference)
+(per-tool input schema, required parameters, return shape, example invocations).
 
 ---
 
@@ -246,8 +219,7 @@ The connected REPL is no longer a plugin tool: it ships as the substrate's
 `artisan_tinker` (see above). `magic_tinker` is still consumed by the host app for the
 interactive REPL CLI (`dart run artisan tinker`), but its MCP surface has been removed
 to avoid duplicating the substrate path. Use `artisan_tinker` from any MCP client for
-live state inspection, controller calls, or facade events; for widget tree inspection
-prefer `dusk_snap`; for log output prefer `telescope_tail`.
+live state inspection, controller calls, or facade events.
 
 ---
 
@@ -293,7 +265,7 @@ Field reference:
 
 Package names match `ArtisanServiceProvider.providerName`: `fluttersdk_artisan` (substrate),
 `fluttersdk_dusk`, `fluttersdk_telescope`. Tool names match `McpToolDescriptor.name` exactly
-(e.g. `dusk_snap`, `telescope_tail`, `artisan_tinker`).
+(e.g. `artisan_tinker`, or any name listed on each plugin's tool-reference site).
 
 ### Layer 2: environment variables
 
@@ -311,8 +283,7 @@ Pass flags directly to `dart run fluttersdk_artisan:mcp`:
 ```bash
 dart run fluttersdk_artisan:mcp \
   --include-package=fluttersdk_dusk \
-  --exclude-tool=dusk_close_app \
-  --exclude-tool=dusk_evaluate
+  --exclude-tool=artisan_stop
 ```
 
 CLI flags replace the env + file allow lists and are unioned into the deny sets.
@@ -320,8 +291,8 @@ CLI flags replace the env + file allow lists and are unioned into the deny sets.
 **Example: expose dusk tools only**
 `{ "packages": { "allow": ["fluttersdk_dusk"], "deny": [] }, "tools": { "allow": null, "deny": [] } }`
 
-**Example: hide destructive tools**
-`{ "packages": { "allow": null, "deny": [] }, "tools": { "allow": null, "deny": ["dusk_close_app", "artisan_stop"] } }`
+**Example: hide destructive substrate tools**
+`{ "packages": { "allow": null, "deny": [] }, "tools": { "allow": null, "deny": ["artisan_stop"] } }`
 
 ---
 

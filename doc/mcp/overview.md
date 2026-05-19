@@ -84,7 +84,7 @@ Beyond the ten substrate tools, plugins extend the MCP catalog by overriding
 `ArtisanServiceProvider.mcpTools()`. The default implementation returns an empty list; plugins return
 a list of `McpToolDescriptor` instances that the MCP server collects at initialize time and registers
 alongside the substrate tools. The same `McpFilterConfig` allow/deny rules apply uniformly, so a
-deny rule like `tools.deny: [dusk_snap]` works identically to `tools.deny: [artisan_start]`.
+deny rule against a plugin tool name works identically to `tools.deny: [artisan_start]`.
 
 Plugin tools dispatch through the VM Service (not in-process), so they require a running Flutter app.
 The MCP server lazy-reconnects on each dispatch call, meaning the agent can call `artisan_start`
@@ -97,15 +97,16 @@ providers once in the wrapper and the MCP server inherits them from the shared r
 
 The two sibling packages that ship production plugin tools are:
 
-| Package | MCP tools contributed | Example tools |
-|---|---|---|
-| `fluttersdk_dusk` | 17 | `dusk_snap`, `dusk_tap`, `dusk_screenshot`, `dusk_type`, `dusk_hover`, `dusk_drag` |
-| `fluttersdk_telescope` | 9 | `telescope_tail`, `telescope_requests`, `telescope_clear`, `telescope_exceptions` |
+| Package | MCP tool reference |
+|---|---|
+| `fluttersdk_dusk` | [fluttersdk.com/dusk/mcp/tool-reference](https://fluttersdk.com/dusk/mcp/tool-reference) |
+| `fluttersdk_telescope` | [fluttersdk.com/telescope/mcp/tool-reference](https://fluttersdk.com/telescope/mcp/tool-reference) |
 
 Each package's provider is wired by the consumer (`DuskArtisanProvider`, `TelescopeArtisanProvider`)
 registered in the wrapper's `artisanProviders` list. See the per-package CLAUDE.md for registration
-details. `magic_tinker` remains the CLI REPL host for `dart run artisan tinker`, but its MCP surface
-is now the substrate's `artisan_tinker`.
+details and each plugin's tool reference site for the current tool catalog. `magic_tinker` remains
+the CLI REPL host for `dart run artisan tinker`, but its MCP surface is now the substrate's
+`artisan_tinker`.
 
 ---
 
@@ -196,4 +197,4 @@ Fields (from `lib/src/state/state_file.dart`):
 - [Setup guide](setup.md): install the MCP server, configure `.artisan/mcp.json`, and wire provider
   registration in `bin/artisan.dart`.
 - [Tool reference](tool-reference.md): per-tool input schema, example calls, and error codes for all
-  ten substrate tools and the two sibling plugin packages.
+  ten substrate tools, plus links to each plugin's own MCP tool reference site.

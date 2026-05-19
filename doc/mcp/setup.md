@@ -18,7 +18,7 @@ LLM agents working against a running Flutter app are blind without artisan MCP:
 The artisan MCP server bridges the agent to the running app over the VM Service:
 
 - 10 substrate command tools (`artisan_start`, `artisan_stop`, `artisan_status`, `artisan_logs`, `artisan_restart`, `artisan_reload`, `artisan_hot_restart`, `artisan_doctor`, `artisan_list`, `artisan_tinker`).
-- Plugin tools surface automatically once the consumer's `bin/artisan.dart` wrapper registers the provider (Dusk: 17 tools, Telescope: 9 tools).
+- Plugin tools surface automatically once the consumer's `bin/artisan.dart` wrapper registers the provider; see each plugin's MCP tool reference for the current catalog ([fluttersdk_dusk](https://fluttersdk.com/dusk/mcp/tool-reference), [fluttersdk_telescope](https://fluttersdk.com/telescope/mcp/tool-reference)).
 - Tool visibility filters via `.artisan/mcp.json` + env vars + CLI flags (Cargo-style replace for allow, union for deny).
 - Zero release-build impact: every artisan integration gates on `kDebugMode` at the consumer's `main.dart`.
 
@@ -362,7 +362,7 @@ Both commands work without a running Flutter app; they only edit the JSON file.
 
 ## Available Tools
 
-The artisan MCP server surfaces up to 36 tools when all sibling plugins are active (10 substrate plus 17 Dusk plus 9 Telescope = 36). See [tool-reference.md](./tool-reference.md) for the full per-tool input schema, output shape, and example invocations.
+The artisan MCP server surfaces 10 substrate tools plus plugin-contributed tools from any registered sibling plugin (`fluttersdk_dusk`, `fluttersdk_telescope`, or custom plugins). See [tool-reference.md](./tool-reference.md) for the per-tool input schema, output shape, and example invocations of the substrate tools, plus links to each plugin's MCP tool reference for the current plugin tool catalog.
 
 Tool visibility is filtered in three layers (file `.artisan/mcp.json` lowest priority, env vars middle, CLI flags highest priority; deny always wins over allow). To temporarily hide a tool surface without uninstalling the server, edit `.artisan/mcp.json`:
 

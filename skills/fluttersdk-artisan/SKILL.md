@@ -1,6 +1,6 @@
 ---
 name: fluttersdk-artisan
-description: "fluttersdk_artisan: composable Dart 3.4+ CLI framework + stdio MCP server for Flutter and Dart. 21 builtin commands across 6 groups (lifecycle, scaffolding, plugin management, MCP, introspection, codegen) including consumer:scaffold, make:plugin, plugin:install, mcp:serve, tinker. Declarative install.yaml plugin manifest + procedural PluginInstaller fluent DSL with 26 sealed InstallOperation variants. 10 substrate MCP tools (artisan_*) including artisan_tinker for VM expression eval, plus plugin-contributed tools from fluttersdk_dusk (17) and fluttersdk_telescope (9). TRIGGER when: package:fluttersdk_artisan import, fluttersdk_artisan in pubspec, dart run fluttersdk_artisan command, bin/artisan.dart present, install.yaml manifest, ArtisanCommand / ArtisanServiceProvider / McpToolDescriptor / PluginInstaller mention, .mcp.json fluttersdk entry, or user asks about artisan, plugin scaffold, MCP setup, dev loop, signature DSL. DO NOT TRIGGER when code only uses Wind UI or Magic without artisan touchpoint."
+description: "fluttersdk_artisan: composable Dart 3.4+ CLI framework + stdio MCP server for Flutter and Dart. 21 builtin commands across 6 groups (lifecycle, scaffolding, plugin management, MCP, introspection, codegen) including consumer:scaffold, make:plugin, plugin:install, mcp:serve, tinker. Declarative install.yaml plugin manifest + procedural PluginInstaller fluent DSL with 26 sealed InstallOperation variants. 10 substrate MCP tools (artisan_*) including artisan_tinker for VM expression eval, plus plugin-contributed tools from sibling plugins (fluttersdk_dusk, fluttersdk_telescope; see each plugin's MCP tool reference for the current catalog). TRIGGER when: package:fluttersdk_artisan import, fluttersdk_artisan in pubspec, dart run fluttersdk_artisan command, bin/artisan.dart present, install.yaml manifest, ArtisanCommand / ArtisanServiceProvider / McpToolDescriptor / PluginInstaller mention, .mcp.json fluttersdk entry, or user asks about artisan, plugin scaffold, MCP setup, dev loop, signature DSL. DO NOT TRIGGER when code only uses Wind UI or Magic without artisan touchpoint."
 version: 0.0.1
 when_to_use: "Any task touching fluttersdk_artisan: invoking commands, bootstrapping consumer:scaffold, authoring or installing a plugin (install.yaml or PluginInstaller DSL), configuring MCP for Claude Code / Cursor / Windsurf, evaluating Dart via artisan_tinker, reading install.yaml schema. Apply on any repo with bin/artisan.dart, lib/app/_plugins.g.dart, .artisan/state.json, install.yaml, or pubspec depending on fluttersdk_artisan."
 ---
@@ -146,12 +146,12 @@ Then reconnect the MCP client (Claude Code: `/mcp reconnect fluttersdk`). The se
 
 **Plugin-contributed tools** (when the consumer wrapper registers the plugin's provider):
 
-| Plugin | Tool count | Prefix |
-|--------|-----------|--------|
-| `fluttersdk_dusk` | 17 | `dusk_*` (snap, tap, screenshot, hover, drag, type, scroll, wait_for, dismiss_modals, navigate, navigate_back, get_routes, press_key, select_option, evaluate, close_app, find) |
-| `fluttersdk_telescope` | 9 | `telescope_*` (tail, requests, clear, exceptions, events, gates, dumps, queries, caches) |
+| Plugin | Prefix | MCP tool reference |
+|--------|--------|--------------------|
+| `fluttersdk_dusk` | `dusk_*` | [fluttersdk.com/dusk/mcp/tool-reference](https://fluttersdk.com/dusk/mcp/tool-reference) |
+| `fluttersdk_telescope` | `telescope_*` | [fluttersdk.com/telescope/mcp/tool-reference](https://fluttersdk.com/telescope/mcp/tool-reference) |
 
-A consumer with both plugins active has up to 36 MCP tools (10 substrate + 17 dusk + 9 telescope) surfacing through one MCP server.
+A consumer with both plugins active exposes the 10 substrate tools plus the current plugin tool catalog from each registered sibling (see each plugin's reference page for the up-to-date list).
 
 **Three-layer filter** (`McpFilterConfig`, Cargo-style precedence):
 
@@ -202,7 +202,7 @@ dart run artisan start --device=chrome
 # Then from the MCP client (Claude Code, Cursor):
 # call artisan_list to discover available tools
 # call artisan_tinker with eval="MonitorController.instance.refresh()"
-# call dusk_tap, dusk_snap (when fluttersdk_dusk is registered)
+# call any fluttersdk_dusk or fluttersdk_telescope tool (when the plugin provider is registered)
 # call artisan_hot_restart between code edits
 ```
 

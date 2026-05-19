@@ -103,7 +103,7 @@ Plugin commands surface automatically. After installing `fluttersdk_dusk`, `dart
 dart run fluttersdk_artisan mcp:install
 ```
 
-`mcp:install` writes (or updates) the `mcpServers.fluttersdk` entry in `.mcp.json`. After install, reconnect the MCP client once (for Claude Code: `/mcp reconnect fluttersdk`). The server boots in stdio JSON-RPC mode and exposes 9 substrate tools (`artisan_start`, `artisan_stop`, `artisan_status`, `artisan_logs`, `artisan_restart`, `artisan_reload`, `artisan_hot_restart`, `artisan_doctor`, `artisan_list`) plus any plugin-contributed tools.
+`mcp:install` writes (or updates) the `mcpServers.fluttersdk` entry in `.mcp.json`. After install, reconnect the MCP client once (for Claude Code: `/mcp reconnect fluttersdk`). The server boots in stdio JSON-RPC mode and exposes 10 substrate tools (`artisan_start`, `artisan_stop`, `artisan_status`, `artisan_logs`, `artisan_restart`, `artisan_reload`, `artisan_hot_restart`, `artisan_doctor`, `artisan_list`, `artisan_tinker`) plus any plugin-contributed tools.
 
 Read the full setup walkthrough at [MCP setup guide](https://fluttersdk.com/artisan/mcp/setup).
 
@@ -226,15 +226,14 @@ Operations are idempotent (lookahead-anchored regex skips when the target code i
 
 The same binary that runs CLI commands also serves Model Context Protocol tools over stdio JSON-RPC. No separate process, no extra package. The server is built on the official `dart_mcp` SDK and surfaces two tool layers.
 
-**Substrate tools (9 always-on).** A curated subset of the artisan CLI surfaces as MCP tools so an AI agent can bootstrap the Flutter app without leaving the chat: `artisan_start`, `artisan_stop`, `artisan_status`, `artisan_logs`, `artisan_restart`, `artisan_reload`, `artisan_hot_restart`, `artisan_doctor`, `artisan_list`. Dispatch runs in-process via the registry, no VM Service required. Per-command `inputSchema` is byte-verified against the underlying command's `configure(ArgParser)` so the wire contract cannot drift from the CLI surface.
+**Substrate tools (10 always-on).** A curated subset of the artisan CLI surfaces as MCP tools so an AI agent can bootstrap the Flutter app without leaving the chat: `artisan_start`, `artisan_stop`, `artisan_status`, `artisan_logs`, `artisan_restart`, `artisan_reload`, `artisan_hot_restart`, `artisan_doctor`, `artisan_list`, `artisan_tinker`. Dispatch runs in-process via the registry; only `artisan_tinker` requires a running VM Service. Per-command `inputSchema` is byte-verified against the underlying command's `configure(ArgParser)` so the wire contract cannot drift from the CLI surface.
 
-**Plugin tools (27 across the official plugins).** Contributed by `ArtisanServiceProvider.mcpTools()` overrides. Dispatch routes through `ext.*` VM Service extensions:
+**Plugin tools.** Contributed by `ArtisanServiceProvider.mcpTools()` overrides. Dispatch routes through `ext.*` VM Service extensions. The official sibling plugins maintain their own MCP tool catalogs on dedicated reference pages:
 
-| Plugin | Tools | Count |
-|:-------|:------|:-----:|
-| `fluttersdk_dusk` | `dusk_snap`, `dusk_tap`, `dusk_screenshot`, `dusk_hover`, `dusk_drag`, `dusk_type`, plus 11 more | 17 |
-| `fluttersdk_telescope` | `telescope_tail`, `telescope_requests`, `telescope_clear`, `telescope_exceptions`, plus 5 more | 9 |
-| `magic_tinker` | `tinker_eval` | 1 |
+| Plugin | MCP tool reference |
+|:-------|:-------------------|
+| `fluttersdk_dusk` | [fluttersdk.com/dusk/mcp/tool-reference](https://fluttersdk.com/dusk/mcp/tool-reference) |
+| `fluttersdk_telescope` | [fluttersdk.com/telescope/mcp/tool-reference](https://fluttersdk.com/telescope/mcp/tool-reference) |
 
 A three-layer filter pipeline (`.artisan/mcp.json` file, `ARTISAN_MCP_*` env vars, CLI flags on `mcp:serve`) lets operators allow or deny tools and packages with Cargo-style precedence, deny wins at every layer. Worked example:
 
@@ -247,13 +246,13 @@ A three-layer filter pipeline (`.artisan/mcp.json` file, `ARTISAN_MCP_*` env var
 
 ```bash
 # Env (process-scoped, overrides file)
-export ARTISAN_MCP_TOOLS_DENY=dusk_snap
+export ARTISAN_MCP_PACKAGES_DENY=fluttersdk_telescope
 
 # CLI (session-scoped, overrides env)
-dart run fluttersdk_artisan mcp:serve --exclude-tool tinker_eval
+dart run fluttersdk_artisan mcp:serve --exclude-tool artisan_stop
 ```
 
-Result: the Telescope package (9 tools) is removed by the file, `dusk_snap` is additionally removed by the env, `tinker_eval` is removed by the CLI flag for this session. Net surface: 9 substrate plus 16 dusk tools = 25 tools exposed.
+Result: the Telescope package is removed by the file, also denied by the env (union is idempotent), and `artisan_stop` is removed by the CLI flag for this session.
 
 After `mcp:install` writes the client config entry, every MCP-capable agent can spawn the server on demand:
 
@@ -269,7 +268,7 @@ After `mcp:install` writes the client config entry, every MCP-capable agent can 
 }
 ```
 
-When `~/.artisan/state.json` is absent at `initialize` time (no Flutter app running), the server stays online with the 9 substrate tools available and 0 plugin tools registered. On the next `tools/call` requiring VM Service, the server lazy-reconnects via a memoized in-flight future so MCP clients survive the natural dev cycle of starting and stopping the Flutter app without reconnecting.
+When `~/.artisan/state.json` is absent at `initialize` time (no Flutter app running), the server stays online with the 10 substrate tools available and 0 plugin tools registered. On the next `tools/call` requiring VM Service, the server lazy-reconnects via a memoized in-flight future so MCP clients survive the natural dev cycle of starting and stopping the Flutter app without reconnecting.
 
 Setup walkthrough at [MCP setup guide](https://fluttersdk.com/artisan/mcp/setup). Full tool reference at [tool reference](https://fluttersdk.com/artisan/mcp/tool-reference).
 
@@ -316,14 +315,17 @@ Use Artisan with AI coding assistants like Claude Code, Cursor, or GitHub Copilo
 A typical agent session looks like this:
 
 ```
-[agent] artisan_doctor                  // verify toolchain
-[agent] artisan_start { device: chrome }  // launch the app
-[agent] dusk_snap                       // capture Semantics tree
-[agent] dusk_tap { selector: "Sign in" } // drive interaction
-[agent] telescope_requests              // inspect outgoing HTTP
-[agent] tinker_eval { expr: "User.find(1)" }  // poke the running VM
-[agent] artisan_stop                    // tear down
+[agent] artisan_doctor                              // verify toolchain
+[agent] artisan_start { device: chrome }            // launch the app
+[agent] <fluttersdk_dusk tool>                      // capture Semantics tree, drive interaction
+[agent] <fluttersdk_telescope tool>                 // inspect HTTP, logs, exceptions
+[agent] artisan_tinker { eval: "User.find(1)" }     // poke the running VM
+[agent] artisan_stop                                // tear down
 ```
+
+See each plugin's MCP tool reference for the current tool catalog
+([fluttersdk_dusk](https://fluttersdk.com/dusk/mcp/tool-reference),
+[fluttersdk_telescope](https://fluttersdk.com/telescope/mcp/tool-reference)).
 
 For agents that read structured project context at attach time, the canonical entry point is [`llms.txt`](llms.txt) at the repo root (also published at `https://fluttersdk.com/artisan/llms.txt`). It enumerates the command surface, the plugin protocol, and the MCP tool catalog in agent-readable form.
 

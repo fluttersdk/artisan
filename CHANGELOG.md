@@ -10,6 +10,18 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- **Sibling plugin tool catalogs link out, no inline enumeration**: dropped the
+  full `dusk_*` / `telescope_*` tool-name lists and per-plugin count claims
+  (17 / 9) from `doc/mcp/{tool-reference,overview,setup}.md`,
+  `doc/commands/mcp-serve.md`, `doc/plugins/authoring.md`,
+  `skills/fluttersdk-artisan/SKILL.md`,
+  `skills/fluttersdk-artisan/references/{mcp-server,plugin-authoring}.md`, and
+  `README.md`. Each location now links the canonical site reference per plugin:
+  `https://fluttersdk.com/dusk/mcp/tool-reference` and
+  `https://fluttersdk.com/telescope/mcp/tool-reference`. Reason: those plugin
+  packages are in active development; the tool catalog moves and stale counts in
+  artisan docs would silently drift. The 10 artisan substrate tools stay
+  documented in full.
 - **`xml` dependency bumped to ^7.0.0** (was ^6.5.0). Major release deprecates
   the `XmlName('localname')` constructor in favor of `XmlName.parts('localname')`.
   Migrated all 8 occurrences in `lib/src/helpers/plist_writer.dart`. Tests pass;

@@ -259,7 +259,7 @@ The MCP server's dispatcher routes any `extensionMethod` without the `artisan:` 
 
 ## Naming conventions
 
-Tool name: `<plugin_prefix>_<verb>` (snake_case). Examples: `dusk_tap`, `telescope_tail`, `my_plugin_greet`. The prefix should match the package's `providerName` (or be a recognizable abbreviation thereof).
+Tool name: `<plugin_prefix>_<verb>` (snake_case). Example: `my_plugin_greet`. The prefix should match the package's `providerName` (or be a recognizable abbreviation thereof).
 
 Description: Claude Code canonical format. Imperative opening sentence (1 line), 1-2 sentence context paragraph, `Usage:` H3 or bullet list with concrete invocation guidance, parameter notes. Cap at 2 KB total (Claude Code truncates).
 
