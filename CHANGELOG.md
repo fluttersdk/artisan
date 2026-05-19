@@ -37,6 +37,27 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **GitHub Actions CI** (`.github/workflows/ci.yml`): runs on push to master + pull requests against
+  master. Steps: `dart pub get` -> `dart format --set-exit-if-changed lib/ test/ bin/` -> `dart analyze
+  lib/ test/ bin/` -> `dart pub global run coverage:test_with_coverage --out=coverage` -> awk-based 80%
+  line-coverage floor enforcement (fails the build under 80%) -> codecov upload -> `dart pub publish
+  --dry-run` archive validation. Pure Dart (uses `dart-lang/setup-dart`); no Flutter toolchain pulled in.
+- **GitHub Actions publish workflow** (`.github/workflows/publish.yml`): triggers on SemVer tag push
+  (`[0-9]+.[0-9]+.[0-9]+*`), GitHub release publication, and manual `workflow_dispatch`. Validates
+  format + analyze + tests + dry-run archive, then publishes to pub.dev via the official
+  `dart-lang/setup-dart/.github/workflows/publish.yml@v1` reusable workflow with OIDC authentication
+  (no PUB_DEV_PUBLISH_ACCESS_TOKEN secret required). Pub.dev must have "Automated publishing from
+  GitHub Actions" enabled on the package admin page with the repository pinned to `fluttersdk/artisan`.
+- **Dependabot config** (`.github/dependabot.yml`): weekly pub updates for the root package and
+  `example/`, plus weekly GitHub Actions version bumps. PR limits: 5 per pub directory, 3 for actions.
+- **Issue templates** (`.github/ISSUE_TEMPLATE/`): structured `bug_report.yml`, `feature_request.yml`,
+  `documentation.yml`, plus a `config.yml` that disables blank issues and routes the Question /
+  Discussion contact link to GitHub Discussions and the Documentation link to fluttersdk.com/artisan.
+  Bug + feature templates use a 14-option Subsystem dropdown matching the actual `lib/src/` layout
+  (Console, Commands, Lifecycle, Scaffolding, Plugin Management, MCP Server, MCP Tools, install.yaml,
+  PluginInstaller DSL, Helpers, State, Tinker, Codegen barrels, Documentation). Bug template includes
+  the V1 macOS / Linux / Windows platform note and asks for the exact `dart run fluttersdk_artisan ...`
+  invocation that triggered the bug.
 - **`artisan_tinker` as the 10th substrate MCP tool**: the `tinker` command is now allowlisted in
   `lib/src/mcp/mcp_server.dart` alongside the lifecycle quartet plus status / logs / doctor / list. The
   dispatcher detects `CommandBoot.connected`, builds `ArtisanContext.connected` with the lazy-reconnected VM

@@ -1,0 +1,114 @@
+name: Bug Report
+description: Report a bug in fluttersdk_artisan
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please fill in the details below so we can reproduce and fix it.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug.
+      placeholder: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this bug?
+      placeholder: |
+        1. Run `dart run fluttersdk_artisan consumer:scaffold` in a fresh Dart project
+        2. Run `dart run fluttersdk_artisan plugin:install <plugin_name>`
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened? Include the full error message and stack trace if available.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: subsystem
+    attributes:
+      label: Subsystem
+      description: Which part of the framework is affected?
+      options:
+        - Console (ArtisanApplication, ArtisanRegistry, signature DSL)
+        - Commands (21 builtin commands)
+        - Lifecycle (start / stop / status / logs / restart / reload / hot-restart)
+        - Scaffolding (make:plugin / make:command / consumer:scaffold)
+        - Plugin Management (plugin:install / plugin:uninstall / plugins:refresh)
+        - MCP Server (mcp:serve / mcp:install / mcp:uninstall, stdio JSON-RPC, filter)
+        - MCP Tools (substrate artisan_* or plugin-contributed tools)
+        - install.yaml manifest / ManifestInstaller
+        - PluginInstaller DSL / InstallOperation / InstallTransaction
+        - Helpers (FileHelper, ConfigEditor, MainDartEditor, PlistWriter, etc.)
+        - State (state.json, FIFO stdin pipe, VM Service URI)
+        - Tinker / VM Service evaluate
+        - Codegen barrels (_plugins.g.dart, _index.g.dart)
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command Invocation
+      description: The exact `dart run fluttersdk_artisan ...` command (or MCP tool name + arguments) that triggered the bug.
+      placeholder: "dart run fluttersdk_artisan plugin:install awesome_plugin --dry-run"
+      render: shell
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Minimal Reproduction Code
+      description: A minimal code snippet (or install.yaml / pubspec.yaml fragment) that reproduces the issue.
+      render: dart
+
+  - type: input
+    id: artisan-version
+    attributes:
+      label: fluttersdk_artisan Version
+      placeholder: "0.0.1"
+    validations:
+      required: true
+
+  - type: input
+    id: dart-version
+    attributes:
+      label: Dart Version
+      description: Output of `dart --version`.
+      placeholder: "Dart SDK version: 3.6.0 (stable)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: V1 supports macOS and Linux for lifecycle commands (POSIX FIFO). Windows is unsupported for lifecycle but other surfaces should still work.
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - All
+    validations:
+      required: true

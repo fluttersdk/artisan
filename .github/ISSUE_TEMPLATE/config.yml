@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question / Discussion
+    url: https://github.com/fluttersdk/artisan/discussions
+    about: Ask questions and discuss fluttersdk_artisan with the community
+  - name: Documentation
+    url: https://fluttersdk.com/artisan
+    about: Browse the canonical documentation site
