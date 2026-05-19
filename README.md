@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fluttersdk/magic/master/.github/magic-logo.svg" width="120" alt="Artisan Logo" />
+  <img src=".github/artisan-logo.svg" width="120" alt="Artisan Logo" />
 </p>
 
 <h1 align="center">Artisan</h1>
 
 <p align="center">
-  <strong>Symfony-Console-grade CLI framework for Dart and Flutter.</strong><br/>
-  One <code>artisan</code> binary unifies every fluttersdk command surface: <code>make:*</code>, <code>plugin:*</code>, <code>dusk:*</code>, <code>telescope:*</code>, <code>tinker</code>, and any plugin you ship.
+  <strong>Composable CLI framework and stdio MCP server for Flutter and Dart.</strong><br/>
+  Scaffolding, code generation, transactional plugin installs, hot reload orchestration, REPL, and AI agent tool surfaces in one binary.
 </p>
 
 <p align="center">
@@ -25,649 +25,329 @@
 
 ---
 
-> **Alpha Release**: Artisan is under active development. APIs may change before stable. [Star the repo](https://github.com/fluttersdk/artisan) to follow progress.
+> **Alpha Release v0.0.1**, APIs may change before stable. [Star the repo](https://github.com/fluttersdk/artisan) to follow progress.
 
 ## Why Artisan?
 
-Dart and Flutter ship a great runtime, but the developer surface is fragmented. Every project reinvents its own script directory: `bin/run.sh`, `bin/build.sh`, `bin/codegen.dart`. Generators live in scattered packages with conflicting conventions. Plugins (logging, analytics, auth) each invent their own install ritual.
+Dart's CLI surface is fragmented. Every package invents its own install ritual, its own scaffold script, its own hand-edited entry point. A team that adopts five tools ends up with five `bin/*.dart` wrappers, five README install sections, and five chances for a bad merge to silently break the build. AI agents that want to drive the running app reach for ad hoc shell scripts because there is no shared tool surface.
 
-**Artisan fixes this.** One `artisan` binary, one command grammar, one plugin protocol.
+**Artisan fixes this.** One binary registers every command, one protocol describes every plugin install, and one stdio MCP server exposes the whole stack to AI agents.
 
 ```bash
-# Before: every package has its own incantation
-dart run build_runner build
-dart run melos run setup
-flutter create --template=plugin foo && cd foo && sed -i 's/.../...' lib/foo.dart
-dart pub global activate foo_cli && foo_cli init && foo_cli register
-
-# After: one binary, one grammar
-dart run magic:artisan make:plugin foo
-cd packages/foo && dart run magic:artisan make:command Sync
-dart run magic:artisan plugin:install foo
-dart run magic:artisan foo:sync
+# Before, the painful manual setup ritual
+edit pubspec.yaml                          # add the plugin dependency
+edit bin/<custom>.dart                     # wire the provider
+edit lib/main.dart                         # register the config factory
+edit android/app/src/AndroidManifest.xml   # add the permission
+edit ios/Runner/Info.plist                 # add the entry
+write .env stub                            # remember which keys
+restart the app and hope nothing collided
 ```
 
-If you know Laravel's Artisan or Symfony Console, you already know fluttersdk_artisan.
+```bash
+# After, the Artisan way
+dart pub add fluttersdk_artisan
+dart run fluttersdk_artisan consumer:scaffold
+dart run fluttersdk_artisan plugin:install <name>
+```
+
+If you know `php artisan`, you already know the verb shape. The implementation is pure Dart 3.4+, no Flutter runtime dependency in the framework core.
 
 ## Features
 
 | | Feature | Description |
 |:--|:--------|:------------|
-| 🎼 | **Command Registry** | Type-safe `ArtisanRegistry`, auto-discovery via `_plugins.g.dart` codegen, collision detection on register |
-| ✍️ | **Signature DSL** | Laravel-style `'cmd:name {arg} {arg?} {arg=default} {--flag} {--option=val}'` with help text inline |
-| 🧰 | **19 Built-in Commands** | `make:plugin`, `make:command`, `plugin:install`, `plugin:uninstall`, `plugins:refresh`, `consumer:scaffold`, `tinker`, `doctor`, `start`/`stop`/`restart`/`logs`, `reload`/`hot-restart`, `help`, `list`, `mcp:serve`, `mcp:install`, `mcp:uninstall` |
-| 🤖 | **MCP Server** | Single binary serves both CLI and MCP (Model Context Protocol). `mcp:install` writes a `.mcp.json` entry so any MCP-compatible client connects without extra setup. 9 substrate tools (`artisan_start` / `_stop` / `_status` / `_logs` / `_restart` / `_reload` / `_hot_restart` / `_doctor` / `_list`) always available + up to 11 plugin tools (Dusk / Telescope / Tinker) when the consumer wrapper registers their providers. Three-layer filter (file, env, CLI) gates what each session sees. Soft-fails when no Flutter app is running; lazy-reconnects on the next tool call. |
-| 🌳 | **Magic-Free Path** | `consumer:scaffold` writes the canonical `bin/artisan.dart` + `lib/app/_plugins.g.dart` + `lib/app/commands/_index.g.dart` for plain Flutter projects. `plugin:install` works without `install.yaml` once the scaffold is present (writes to `.artisan/plugins.json` + refreshes `_plugins.g.dart` directly) |
-| 🔌 | **Plugin Protocol** | Declarative `install.yaml` manifest with `publish`, `magic.provider`, `native.*`, `prompts`, `bootstrap_command`. Procedural escape hatch via `ArtisanInstallCommand` |
-| 🏗️ | **PluginInstaller DSL** | Fluent builder: `injectProvider`, `injectConfigFactory`, `injectRoute`, `publishConfig`, `injectAndroidPermission`, `injectIntoWebHead`, `injectEnvVar` |
-| 🔄 | **Idempotent Installs** | `ConflictDetector` + atomic `.tmp` + rename writes; re-running `plugin:install` is a safe no-op |
-| ↩️ | **Reversible Ops** | `InstallTransaction` records every op to `.artisan/installed/<plugin>.json`; `plugin:uninstall` reverses (V1 reverses `WriteFile`; manual reverse for inject ops) |
-| 🪞 | **VM Service Hooks** | `tinker` REPL evaluates Dart expressions against a running Flutter app; `hot-restart` + `reload` drive `flutter run` via SIGUSR signals |
-| 🎯 | **Context-Aware Generators** | `make:command` detects plugin vs consumer-app context, writes to the correct directory, auto-registers in the nearest `ArtisanServiceProvider` |
-| 🧪 | **Testable Primitives** | `InMemoryFs` + `InstallContext.test()` + `BufferedOutput`. Every installer pathway is unit-testable without disk IO |
+| 🎼 | **Command Registry** | `ArtisanRegistry` collects commands from every registered `ArtisanServiceProvider`, collision-detected at boot |
+| 🧰 | **21 Built-in Commands** | Lifecycle, scaffolding, plugin management, MCP, introspection, codegen, one binary |
+| ✍️ | **Signature DSL** | `String get signature => 'cmd:name {arg} {--flag}'`, Dart 3 record-style parser, ArgParser fallback when needed |
+| 🤖 | **MCP Server** | Stdio JSON-RPC server built on `dart_mcp`, exposes substrate and plugin tools to AI agents |
+| 🌳 | **Magic-Free Path** | `consumer:scaffold` writes a canonical wrapper for plain Flutter and Dart projects, no framework dependency |
+| 🔌 | **Plugin Protocol** | `install.yaml` declarative manifest plus `PluginInstaller` fluent DSL escape hatch |
+| 🔄 | **Idempotent Installs** | Lookahead-anchored regex injection, replace-by-name registry, re-running an install is a safe no-op |
+| ↩️ | **Reversible Ops** | Every applied operation is recorded under `.artisan/installed/<plugin>.json`, `plugin:uninstall` walks it in reverse |
+| 🪞 | **VM Service Hooks** | `tinker`, `reload`, `hot-restart` drive the running Flutter VM directly over `ext.*` extensions |
+| 🎯 | **Context-Aware Generators** | `make:command` detects plugin vs consumer context, `make:plugin` upgrades to magic-mode automatically |
+| 🧪 | **Testable Primitives** | `VirtualFs` plus `InMemoryFs`, `InstallContext.test`, `ArtisanContext.bare`, `BufferedOutput` capture |
 
 ## Quick Start
 
-Artisan is consumed in two roles: as a **CLI runner** (the `artisan` binary your consumer app calls) and as a **plugin authoring framework** (when you write a plugin that ships commands).
-
-Two equivalent bootstrap paths land you in the same auto-discovery story:
-
-### Path A: Plain Flutter (Magic-free)
-
-For projects that do not want a framework dependency. Add only `fluttersdk_artisan`, then run `consumer:scaffold`.
+### 1. Install and scaffold
 
 ```bash
-flutter create my_app && cd my_app
-```
-
-```yaml
-# pubspec.yaml
-dependencies:
-  fluttersdk_artisan:
-    path: ../path/to/fluttersdk_artisan   # or pub.dev once published
-```
-
-```bash
-flutter pub get
+dart pub add fluttersdk_artisan
 dart run fluttersdk_artisan consumer:scaffold
 ```
 
-`consumer:scaffold` writes three canonical files (idempotent; pass `--force` to overwrite):
+`consumer:scaffold` writes three files: `bin/artisan.dart` (the consumer entry that calls `runArtisan(...)`), `lib/app/_plugins.g.dart` (auto-discovered provider list), and `lib/app/commands/_index.g.dart` (auto-discovered command list). Re-running is idempotent, pass `--force` to overwrite.
 
-- `bin/artisan.dart`: thin wrapper that auto-discovers consumer commands from `lib/app/commands/_index.g.dart` AND plugin providers from `lib/app/_plugins.g.dart`. Zero manual edits required after every `make:command` / `plugin:install`.
-- `lib/app/_plugins.g.dart`: empty plugin registry seed; populated by `plugin:install <name>`.
-- `lib/app/commands/_index.g.dart`: empty consumer-command index; populated by `make:command <Name>`.
-
-### Path B: Magic-managed (full framework)
-
-For projects that want the Laravel-style Magic framework (Eloquent ORM, Facades, ServiceProviders) on top of Artisan.
+After scaffold, run any built-in command via the consumer wrapper:
 
 ```bash
-flutter create my_app && cd my_app
+dart run artisan list
+dart run artisan doctor
+dart run artisan start --device=chrome
 ```
 
-```yaml
-# pubspec.yaml
-dependencies:
-  magic:
-    path: ../path/to/magic   # or pub.dev once published
-
-dependency_overrides:
-  fluttersdk_artisan:
-    path: ../path/to/fluttersdk_artisan
-```
+### 2. Install a plugin
 
 ```bash
-flutter pub get
-dart run magic:artisan magic:install
+dart pub add awesome_plugin
+dart run fluttersdk_artisan plugin:install awesome_plugin
 ```
 
-`magic:install` produces the same auto-discovery wiring as `consumer:scaffold` plus 10 magic configs, ServiceProviders, env files, and the `MagicApplication` runtime. The default Flutter counter app at `lib/main.dart` is auto-detected and silently overwritten by the ConflictDetector heuristic.
+Plugins ship either an `install.yaml` manifest (declarative, walked by `ManifestInstaller`) or a procedural `ArtisanInstallCommand` subclass that drives `PluginInstaller` directly. Either way, the registry records every applied operation so a future `plugin:uninstall` can reverse them safely.
 
-### Verify either path
+Plugin commands surface automatically. After installing `fluttersdk_dusk`, `dart run artisan list` shows the new `dusk:*` entries under their own namespace section.
+
+### 3. Wire the MCP server for your AI agent
 
 ```bash
-dart run fluttersdk_artisan list   # Path A
-dart run magic:artisan list        # Path B (also resolves to fluttersdk_artisan via the magic dep)
+dart run fluttersdk_artisan mcp:install
 ```
 
-You should see the 16 built-in commands grouped by `:` namespace (`make:*`, `plugin:*`, `plugins:*`, `commands:*`, `consumer:*`, plus the unprefixed dev commands).
+`mcp:install` writes (or updates) the `mcpServers.fluttersdk` entry in `.mcp.json`. After install, reconnect the MCP client once (for Claude Code: `/mcp reconnect fluttersdk`). The server boots in stdio JSON-RPC mode and exposes 9 substrate tools (`artisan_start`, `artisan_stop`, `artisan_status`, `artisan_logs`, `artisan_restart`, `artisan_reload`, `artisan_hot_restart`, `artisan_doctor`, `artisan_list`) plus any plugin-contributed tools.
 
-## The Recommended Plugin Flow
-
-This is the validated end-to-end workflow for shipping a plugin that injects providers and contributes commands. The flow is identical in Path A (plain Flutter) and Path B (Magic); only the binary name differs (`fluttersdk_artisan` vs `magic:artisan`, both resolve to the same artisan runtime).
-
-### Step 1: Scaffold the plugin
-
-From the consumer app's root:
-
-```bash
-dart run fluttersdk_artisan make:plugin awesome_plugin     # Path A (plain Flutter)
-dart run magic:artisan make:plugin awesome_plugin           # Path B (Magic-managed)
-```
-
-What this does:
-- Runs `flutter create --template=package packages/awesome_plugin`
-- Renders the generic plugin stubs (7 files: `pubspec.yaml`, `bin/awesome_plugin.dart`, `lib/cli.dart`, `lib/awesome_plugin.dart`, `lib/src/awesome_plugin_artisan_provider.dart`, `test/awesome_plugin_artisan_provider_test.dart`, `README.md`)
-- In **magic mode** (auto-detected when `magic:install` is in the registry), adds 5 more stubs: `install.yaml` (declarative manifest), `lib/src/commands/{install,uninstall}_command.dart` (procedural escape hatches), `lib/src/awesome_plugin_service_provider.dart` (Magic ServiceProvider), `assets/stubs/install/awesome_plugin_config.dart.stub`, `lib/src/awesome_plugin_artisan_provider.dart` (with install/uninstall pre-registered)
-- Enrolls the plugin into the parent app's `pubspec.yaml` `workspace:` list (Dart 3.6+ pub workspaces)
-- Deletes the flutter-create-default `test/awesome_plugin_test.dart` to keep `flutter analyze` green out of the box
-
-### Step 2: Add the plugin to the parent app's dependencies
-
-Pub workspaces handle resolution, but the consumer needs an explicit `dependencies:` entry to import the package:
-
-```yaml
-# my_app/pubspec.yaml
-dependencies:
-  awesome_plugin:
-    path: ./packages/awesome_plugin
-```
-
-```bash
-flutter pub get
-```
-
-### Step 3: Add commands to the plugin
-
-```bash
-cd packages/awesome_plugin
-dart run fluttersdk_artisan make:command Sync   # or magic:artisan
-```
-
-`make:command` is **context-aware**: when invoked inside a plugin (detected via `lib/src/*_artisan_provider.dart`), it:
-- Writes the class to `lib/src/commands/sync_command.dart` (plugin convention, not the consumer `lib/app/commands/`)
-- Generates `class SyncCommand extends ArtisanCommand` with idempotent suffix handling (`Sync` and `SyncCommand` both produce `SyncCommand`)
-- Sets the signature to `awesome_plugin:sync` (auto-prefixed with the plugin name)
-- Injects `import 'commands/sync_command.dart';` and `SyncCommand(),` into `AwesomePluginArtisanProvider.commands()` at the end of the list (idempotent, re-running is a safe no-op; falls back to inserting after the opening `<ArtisanCommand>[` when the list is empty)
-
-Fill in the `handle()` body, then move on.
-
-### Step 4: Install the plugin into the consumer
-
-```bash
-cd ../..   # back to my_app
-dart run fluttersdk_artisan plugin:install awesome_plugin   # Path A
-dart run magic:artisan plugin:install awesome_plugin         # Path B
-```
-
-What this does:
-- **When `install.yaml` exists** (magic-mode plugin): reads the manifest, runs `ManifestInstaller` which publishes config files, injects providers into `lib/config/app.dart`, records the install at `.artisan/installed/<name>.json`. Then writes the plugin entry to `.artisan/plugins.json` and regenerates `lib/app/_plugins.g.dart`.
-- **When `install.yaml` is absent** (generic plugin) AND `lib/app/_plugins.g.dart` exists (canonical scaffold from `consumer:scaffold` or `magic:install`): skips the manifest flow, writes the plugin entry directly to `.artisan/plugins.json`, and regenerates `_plugins.g.dart`. This is the Magic-free fast path.
-- **When neither holds** (legacy consumer wrapper without canonical scaffold): falls back to the legacy `registry.registerProvider(...)` injection into `bin/artisan.dart` (anchored to the `auto.commands` line; documented at `doc/legacy-flow.md`).
-
-After install, the consumer's `bin/artisan.dart` discovers `AwesomePluginArtisanProvider` via `_plugins.g.dart` and includes its commands in `list` on the next invocation.
-
-### Step 5: Run the new command
-
-```bash
-dart run fluttersdk_artisan list                       # awesome_plugin:sync now visible (Path A)
-dart run fluttersdk_artisan awesome_plugin:sync         # run from the consumer
-```
-
-Or via the consumer's own bin wrapper (created by `consumer:scaffold` / `magic:install`):
-
-```bash
-dart run my_app:artisan awesome_plugin:sync
-```
-
-Or from inside the plugin directory itself (each plugin ships its own bin):
-
-```bash
-cd packages/awesome_plugin
-dart run awesome_plugin awesome_plugin:sync         # plugin's own bin/awesome_plugin.dart
-```
-
-That is the entire authoring loop. No manual provider edits, no manual registry edits, no manual `commands:refresh`. The recommended flow scales to dozens of plugins.
+Read the full setup walkthrough at [doc/mcp/setup](doc/mcp/setup.md).
 
 ## Commands
 
-### Consumer Setup
+Artisan ships 21 built-in commands across 6 namespaces. Every command is a `final class X extends ArtisanCommand` with a `signature` string and a `handle()` method.
 
-| Command | Description |
-|---------|-------------|
-| `consumer:scaffold` | Write the canonical native Flutter consumer wrapper: `bin/artisan.dart` + `lib/app/_plugins.g.dart` + `lib/app/commands/_index.g.dart`. Idempotent (pass `--force` to overwrite). Magic-managed consumers get the same wiring from `magic:install` and do not need this command. |
+| Namespace | Count | Commands |
+|:----------|:-----:|:---------|
+| **Lifecycle** | 7 | `start`, `stop`, `status`, `logs`, `restart`, `reload`, `hot-restart` |
+| **Scaffolding** | 3 | `make:plugin`, `make:command`, `consumer:scaffold` |
+| **Plugin Management** | 3 | `plugin:install`, `plugin:uninstall`, `plugins:refresh` |
+| **MCP** | 3 | `mcp:serve`, `mcp:install`, `mcp:uninstall` |
+| **Introspection** | 4 | `help`, `list`, `doctor`, `tinker` |
+| **Codegen** | 1 | `commands:refresh` |
 
-### Plugin Lifecycle
+Highlights:
 
-| Command | Description |
-|---------|-------------|
-| `make:plugin <name>` | Scaffold a new plugin package under `packages/<name>/`. Magic-mode add-ons (install.yaml + ServiceProvider + install/uninstall commands) included when `magic:install` is in the registry; otherwise generic 7-file scaffold (use `--path=<dir>` for a sibling location) |
-| `plugin:install <name>` | Three routing modes: (1) `install.yaml` present → `ManifestInstaller` + `.artisan/plugins.json` + `_plugins.g.dart` refresh; (2) no manifest but `lib/app/_plugins.g.dart` exists → direct registry write + refresh (Magic-free fast path); (3) neither → legacy `bin/artisan.dart` injection |
-| `plugin:uninstall <name>` | Reverse the recorded install ops (V1 reverses `WriteFile`; logs `[skipped]` for `InjectImport` and `InjectAfterPattern`) |
-| `plugins:refresh` | Regenerate `lib/app/_plugins.g.dart` from `.artisan/plugins.json` (idempotent, byte-identical across runs) |
+```bash
+# Lifecycle
+dart run artisan start --device=chrome   # spawn flutter run, record VM Service URI to ~/.artisan/state.json
+dart run artisan reload                  # send r (hot reload) via FIFO bridge to detached process
+dart run artisan hot-restart             # send R (hot restart, drops Dart state)
 
-### Code Generators
+# Scaffolding
+dart run artisan make:plugin awesome     # 7-file plugin skeleton, auto-upgrades to magic-mode when applicable
+dart run artisan make:command Greet      # context-aware: plugin vs consumer context, auto-registers in provider
 
-| Command | Description |
-|---------|-------------|
-| `make:command <Name>` | Scaffold an `ArtisanCommand` subclass. Context-aware: writes to `lib/app/commands/` in consumer apps, `lib/src/commands/` in plugins (auto-registers in the nearest `ArtisanServiceProvider`) |
-| `commands:refresh` | Regenerate the consumer's auto-discovery index for `lib/app/commands/` |
+# Introspection
+dart run artisan tinker                  # connected REPL against the running VM
+dart run artisan tinker --eval='1 + 1'   # one-shot evaluation flag for automation
+dart run artisan doctor                  # preflight checks: flutter + dart on PATH, default port availability
+```
 
-### Development Loop
+Full command catalog and per-command flag reference at [doc/commands/](doc/commands/index.md).
 
-| Command | Description |
-|---------|-------------|
-| `start [--device=<id>]` | Spawn `flutter run -d <device>` detached, record VM Service URI to `~/.artisan/state.json` |
-| `stop` | SIGTERM the recorded `flutter run` process, delete `state.json` |
-| `restart` | `stop` + `start` |
-| `status` | Print the recorded process status as JSON |
-| `logs [--follow]` | Print or tail the captured `flutter run` log |
-| `reload` | Send `r` (hot reload) to the running `flutter run` stdin |
-| `hot-restart` | Send `R` (hot restart). Drops Dart state, keeps process |
+### Writing your own command
 
-### Inspection
-
-| Command | Description |
-|---------|-------------|
-| `tinker` | Connected REPL: evaluate Dart expressions against the running Flutter VM (Magic facade autocomplete, Eloquent model casting) |
-| `doctor` | Preflight checks: `flutter` + `dart` on PATH, default port availability |
-| `list` | Every registered command grouped by `:` namespace |
-| `help <cmd>` | Detailed help for a single command |
-
-### MCP Server
-
-| Command | Description |
-|---------|-------------|
-| `mcp:serve [--include-tool <name>] [--exclude-tool <name>] [--include-package <pkg>] [--exclude-package <pkg>]` | Start the MCP server (stdio JSON-RPC). Merges three filter layers: `.artisan/mcp.json` (file), `ARTISAN_MCP_TOOLS_ALLOW` / `ARTISAN_MCP_TOOLS_DENY` / `ARTISAN_MCP_PACKAGES_ALLOW` / `ARTISAN_MCP_PACKAGES_DENY` (env), and CLI flags. Deny wins over allow at every layer. CLI flags are repeatable; CLI replaces env+file on the allow lists, deny lists from every layer union. |
-| `mcp:install [--path <file>]` | Write (or update) the `fluttersdk` entry under `mcpServers` in `.mcp.json` (default: `.mcp.json` in cwd). Idempotent; preserves other server entries. |
-| `mcp:uninstall [--path <file>]` | Remove the `fluttersdk` entry from `.mcp.json` (default: `.mcp.json` in cwd). |
-
-## Command Signature DSL
-
-Artisan parses Laravel-style signature strings into argument + option metadata. One line declares the full surface:
+`make:command` scaffolds a `final class` extending `ArtisanCommand` and auto-registers it in the nearest service provider. The signature DSL parses arguments and flags from one string, the `handle()` method receives a typed `ArtisanContext`:
 
 ```dart
-class SyncCommand extends ArtisanCommand {
+final class GreetCommand extends ArtisanCommand {
   @override
-  String get signature =>
-      'awesome_plugin:sync '
-      '{target : Team slug to sync} '         // required positional with help
-      '{since? : Cutoff timestamp} '          // optional positional
-      '{--limit=100 : Max records per page} ' // option with default
-      '{--force : Skip confirmation prompt}'; // boolean flag
+  String get signature => 'greet {name} {--shout}';
 
   @override
-  Future<int> handle(ArtisanContext ctx) async {
-    final target = ctx.input.argument('target') as String;
-    final since = ctx.input.argument('since') as String?;
-    final limit = int.parse(ctx.input.option('limit') as String);
-    final force = ctx.input.option('force') as bool;
+  String get description => 'Greet a person by name.';
 
-    ctx.output.info('Syncing $target (limit=$limit, force=$force)');
-    // ... your work ...
-    ctx.output.success('Sync complete.');
+  @override
+  Future<int> handle(ArtisanContext context) async {
+    final name = context.input.argument('name');
+    final shout = context.input.option('shout') == 'true';
+    final greeting = shout ? 'HELLO, ${name.toUpperCase()}!' : 'Hello, $name';
+    context.output.success(greeting);
     return 0;
   }
 }
 ```
 
-| Syntax | Meaning |
-|--------|---------|
-| `{name}` | Required positional argument |
-| `{name?}` | Optional positional argument |
-| `{name=default}` | Positional with default value |
-| `{--flag}` | Boolean flag (presence sets `true`) |
-| `{--opt=default}` | Option that accepts a value, with default |
-| `{name : help text}` | Trailing colon provides help text shown by `help <cmd>` |
+For cases the signature DSL cannot express (positional rest, mutually exclusive flag groups), override `void configure(ArgParser parser)` and read from `context.input.results` directly. Signature DSL grammar at [doc/reference/signature-dsl](doc/reference/signature-dsl.md).
 
-## install.yaml Manifest
+## Plugin Protocol
 
-The declarative manifest is the canonical install path. The procedural `<plugin>:install` command is an escape hatch for plugins that need runtime branching the YAML schema cannot express.
+Artisan plugins declare their install footprint in `install.yaml`, a declarative manifest walked by `ManifestInstaller`. The manifest supports `publish` (files to copy), `magic.provider` plus `magic.configFactory` plus `magic.routes` (framework wiring), `native.android` (permissions, metaData, gradle plugins, gradle dependencies), `native.ios` and `native.macos` (plist entries, pod entries), `native.web` (head injections, meta tags), `env` (environment variable declarations with defaults), `prompts` (interactive install prompts), `placeholders` (token resolution from prompt answers), and `bootstrap_command` (post-install hint). Schema reference at [doc/plugins/install-yaml](doc/plugins/install-yaml.md).
+
+A minimal `install.yaml` looks like this:
 
 ```yaml
-# packages/awesome_plugin/install.yaml
-plugin_name: awesome_plugin
-
 publish:
-  install/awesome_plugin_config.dart: lib/config/awesome_plugin.dart
+  - from: stubs/config.dart
+    to: lib/config/awesome.dart
 
 magic:
-  provider: AwesomePluginServiceProvider                    # injected into lib/config/app.dart
-  configFactory: awesomePluginConfig                        # injected into lib/main.dart configFactories
-  routes: AwesomePluginRoutes.register                      # registered in route provider
+  provider: package:awesome/awesome_provider.dart
+  configFactory: package:awesome/config.dart
 
 native:
   android:
     permissions:
       - android.permission.INTERNET
-    metaData:
-      io.flutter.embedding.android.SplashScreenDrawable: "@drawable/launch_background"
-    gradle:
-      plugins:
-        - com.google.gms.google-services
-      dependencies:
-        - implementation 'com.google.firebase:firebase-bom:32.0.0'
   ios:
     plistEntries:
-      NSCameraUsageDescription: "We need the camera for plugin features."
-  web:
-    headInjections:
-      - <script src="https://example.com/awesome.js"></script>
-    metaTags:
-      - name: theme-color
-        content: "#000000"
+      NSCameraUsageDescription: "We need the camera to scan codes."
 
 env:
   AWESOME_API_KEY:
     default: ""
-    comment: "API key for Awesome Plugin"
+    comment: "API key for awesome.example.com"
 
-prompts:
-  - key: configPath
-    type: string
-    default: "~/.awesome.conf"
-    question: "Configuration path?"
-
-placeholders:
-  configFilePath: "{{ prompts.configPath }}"
-
-bootstrap_command: awesome_plugin:init
+bootstrap_command: "Run dart run artisan awesome:bootstrap after install."
 ```
 
-The schema is documented at `doc/install_yaml_schema.md`. Every section is optional except `plugin_name`.
+For plugins that need runtime branching the YAML schema cannot express, subclass `ArtisanInstallCommand` and drive `PluginInstaller` directly. The DSL exposes file operations (`writeFile`, `publishConfig`, `mergeJson`), source-injection operations (`injectImport`, `injectBefore`, `injectAfter`, `injectProvider`, `injectConfigFactory`, `injectRoute`), native operations (`injectAndroidPermission`, `injectIosPlistEntry`, and friends), and environment operations (`injectEnvVar`). Every operation is deferred and batched, nothing writes until `commit(dryRun:, force:)` fires:
+
+```dart
+final class AwesomeInstallCommand extends ArtisanInstallCommand {
+  @override
+  String get signature => 'awesome:install';
+
+  @override
+  Future<int> handle(ArtisanContext context) async {
+    final apiKey = await installer.ask('Enter the awesome API key:');
+    installer
+      ..injectImport('lib/main.dart', 'package:awesome/awesome.dart')
+      ..injectConfigFactory('Awesome.configFactory')
+      ..injectEnvVar('AWESOME_API_KEY', defaultValue: apiKey)
+      ..injectAndroidPermission('android.permission.INTERNET');
+
+    final result = await installer.commit(dryRun: false, force: false);
+    return result is Success ? 0 : 1;
+  }
+}
+```
+
+Full DSL reference at [doc/plugins/installer-dsl](doc/plugins/installer-dsl.md).
+
+Operations are idempotent (lookahead-anchored regex skips when the target code is already present), atomic (every write goes through `.tmp` plus atomic rename so concurrent readers never see partial state), and reversible (each applied operation is recorded under `.artisan/installed/<plugin>.json` with a content hash for tamper detection on uninstall).
 
 ## MCP Server
 
-Artisan ships a built-in MCP (Model Context Protocol) server alongside the CLI. The same binary serves both surfaces: `mcp:serve` starts the JSON-RPC stdio server, and `mcp:install` writes the client config so any MCP-compatible host (Claude Desktop, Cursor, etc.) connects without extra setup.
+The same binary that runs CLI commands also serves Model Context Protocol tools over stdio JSON-RPC. No separate process, no extra package. The server is built on the official `dart_mcp` SDK and surfaces two tool layers.
 
-### What it does
+**Substrate tools (9 always-on).** A curated subset of the artisan CLI surfaces as MCP tools so an AI agent can bootstrap the Flutter app without leaving the chat: `artisan_start`, `artisan_stop`, `artisan_status`, `artisan_logs`, `artisan_restart`, `artisan_reload`, `artisan_hot_restart`, `artisan_doctor`, `artisan_list`. Dispatch runs in-process via the registry, no VM Service required. Per-command `inputSchema` is byte-verified against the underlying command's `configure(ArgParser)` so the wire contract cannot drift from the CLI surface.
 
-One binary, two surfaces: CLI commands and MCP tools share the same `ArtisanRegistry` and `ArtisanServiceProvider` plugin catalog. When `mcp:serve` starts, it scans all registered providers, collects their `mcpTools()` contributions, applies the active filter, and exposes the surviving tools to the MCP client.
+**Plugin tools (27 across the official plugins).** Contributed by `ArtisanServiceProvider.mcpTools()` overrides. Dispatch routes through `ext.*` VM Service extensions:
 
-### Installing the MCP entry
+| Plugin | Tools | Count |
+|:-------|:------|:-----:|
+| `fluttersdk_dusk` | `dusk_snap`, `dusk_tap`, `dusk_screenshot`, `dusk_hover`, `dusk_drag`, `dusk_type`, plus 11 more | 17 |
+| `fluttersdk_telescope` | `telescope_tail`, `telescope_requests`, `telescope_clear`, `telescope_exceptions`, plus 5 more | 9 |
+| `magic_tinker` | `tinker_eval` | 1 |
 
-```bash
-# Write the .mcp.json entry in the current directory (default: .mcp.json)
-dart run artisan mcp:install
+A three-layer filter pipeline (`.artisan/mcp.json` file, `ARTISAN_MCP_*` env vars, CLI flags on `mcp:serve`) lets operators allow or deny tools and packages with Cargo-style precedence, deny wins at every layer. Worked example:
 
-# Write to a different config path
-dart run artisan mcp:install --path /path/to/.mcp.json
-
-# Remove the entry
-dart run artisan mcp:uninstall
-```
-
-`mcp:install` writes a JSON entry under the `mcpServers.fluttersdk` key of the target `.mcp.json` file. On subsequent runs the entry is updated in place (idempotent); other server entries are preserved untouched. After install, reconnect the client once: in Claude Desktop / Claude Code run `/mcp reconnect fluttersdk`.
-
-### Tool Catalog
-
-Two layers: **substrate** tools (always present, no plugin registration required) and **plugin** tools (contributed by any `ArtisanServiceProvider` that overrides `mcpTools()`).
-
-**Substrate tools (9 always-on)**: a curated subset of artisan's own builtin CLI commands surfaces as MCP tools so an MCP client can bootstrap the Flutter app without ever leaving the chat. Dispatch runs in-process via the registry; no VM Service required.
-
-| Tool | Wraps | What it does |
-|------|-------|--------------|
-| `artisan_start` | `start` | Boot `flutter run -d <device>` detached + record VM Service URI to `~/.artisan/state.json` |
-| `artisan_stop` | `stop` | SIGTERM the recorded `flutter run` process + delete state.json |
-| `artisan_status` | `status` | Return JSON status of the recorded Flutter app (pid + vmServiceUri + device + alive probe) |
-| `artisan_logs` | `logs` | Return recent buffered logs OR tail live with `follow: true` |
-| `artisan_restart` | `restart` | Stop + start (full process re-spawn) |
-| `artisan_reload` | `reload` | Hot reload (sends `r` to flutter run stdin); Dart state preserved |
-| `artisan_hot_restart` | `hot-restart` | Hot restart (sends `R`); drops Dart state, keeps process |
-| `artisan_doctor` | `doctor` | Preflight checks (flutter / dart / port availability) + stale `.mcp.json` advisory |
-| `artisan_list` | `list` | List every registered artisan command grouped by namespace |
-
-**Plugin tools (up to 11 V1)**: contributed by `ArtisanServiceProvider.mcpTools()` overrides. Only surface when the consumer's `bin/artisan.dart` wrapper registers the matching provider.
-
-| Provider | Tool | Description |
-|----------|------|-------------|
-| `fluttersdk_dusk` | `dusk_snap` | Capture a Semantics YAML snapshot of the running Flutter app with `[ref=eN]` tokens for subsequent action tools |
-| `fluttersdk_dusk` | `dusk_tap` | Tap a widget by ref token from a prior `dusk_snap` |
-| `fluttersdk_dusk` | `dusk_screenshot` | Capture a JPEG / PNG screenshot of the current screen |
-| `fluttersdk_dusk` | `dusk_hover` | Hover a mouse cursor over a widget by ref (mouse-only, web + desktop) |
-| `fluttersdk_dusk` | `dusk_drag` | Drag from one widget ref to another by ref tokens |
-| `fluttersdk_dusk` | `dusk_type` | Type text into a TextField by ref (call `dusk_tap` first to focus) |
-| `fluttersdk_telescope` | `telescope_tail` | Return recent log records (filterable by level + limit) |
-| `fluttersdk_telescope` | `telescope_requests` | Return recent HTTP request records (method + url + status + duration) |
-| `fluttersdk_telescope` | `telescope_clear` | Wipe all Telescope ring buffers (http + logs + exceptions) |
-| `fluttersdk_telescope` | `telescope_exceptions` | Return recent uncaught exception records with stack traces |
-| `magic_tinker` | `tinker_eval` | Evaluate a Dart expression against the running app's root library (VM Service `evaluate` RPC) |
-
-Plugin tools need a running Flutter app (VM Service URI in `~/.artisan/state.json`) because their dispatch routes through `ext.*` VM Service extensions. Substrate tools that do not need a running app (`artisan_doctor`, `artisan_list`, `artisan_status` reading absent state) work even with no `flutter run` in progress; the others fail gracefully with `### Error\nRun \`artisan start\` to launch the Flutter app, then retry the tool call.`
-
-### MCP Server Lifecycle
-
-The server boots in **soft-fail mode**: if `~/.artisan/state.json` is missing at `initialize` time (no Flutter app running yet), the server stays online with 0 plugin tools registered and the 9 substrate tools available. On the next `tools/call` requiring VM Service, the server **lazy-reconnects** via a memoized in-flight future (race-guarded so two concurrent calls share one connect attempt). This lets MCP clients (Claude Code, Cursor, Windsurf) survive the natural dev cycle of starting and stopping the Flutter app without ever reconnecting the server.
-
-`bin/mcp.dart` is the canonical entry: `dart run fluttersdk_artisan:mcp`. It forces `delegateToConsumer: false` so the substrate's complete builtin list (including `mcp:serve`) owns dispatch even when the cwd has a consumer `bin/artisan.dart` wrapper that might be stale.
-
-### Three-Layer Filter
-
-Tools are filtered at three layers. Deny wins over allow at every layer. The layers apply in order: file (lowest priority) then env then CLI (highest priority). This matches Cargo-style resolution: the innermost (CLI) setting always wins.
-
-| Layer | Mechanism | Example |
-|-------|-----------|---------|
-| File | `.artisan/mcp.json` `packages.deny` / `packages.allow` | Remove all Telescope tools without touching env |
-| Env | `ARTISAN_MCP_TOOLS_DENY` / `ARTISAN_MCP_TOOLS_ALLOW` (comma-separated tool names) | Override file config in CI or per-session |
-| CLI | `--exclude-tool <name>` / `--include-tool <name>` / `--include-package <pkg>` / `--exclude-package <pkg>` flags on `mcp:serve` (each repeatable) | One-shot override for a single server start |
-
-**Example: remove Telescope tools via file, then override one tool via env, then exclude tinker_eval via CLI**
-
-Step 1: create `.artisan/mcp.json` to deny all Telescope tools (removes 4 tools):
-
-```json
+```jsonc
+// .artisan/mcp.json
 {
-  "packages": {
-    "deny": ["fluttersdk_telescope"]
-  }
+  "packages": { "deny": ["fluttersdk_telescope"] }
 }
 ```
 
-Step 2: env override to also deny a specific Dusk tool, regardless of what the file says:
-
 ```bash
+# Env (process-scoped, overrides file)
 export ARTISAN_MCP_TOOLS_DENY=dusk_snap
+
+# CLI (session-scoped, overrides env)
+dart run fluttersdk_artisan mcp:serve --exclude-tool tinker_eval
 ```
 
-Step 3: CLI flag for a one-shot session that additionally excludes `tinker_eval`:
+Result: the Telescope package (9 tools) is removed by the file, `dusk_snap` is additionally removed by the env, `tinker_eval` is removed by the CLI flag for this session. Net surface: 9 substrate plus 16 dusk tools = 25 tools exposed.
 
-```bash
-dart run artisan mcp:serve --exclude-tool tinker_eval
-```
+After `mcp:install` writes the client config entry, every MCP-capable agent can spawn the server on demand:
 
-Result: the running server exposes 5 tools (`dusk_tap`, `dusk_screenshot`, `dusk_hover`, `dusk_drag`, `dusk_type`). Deny at any layer is final: `dusk_snap` denied by env wins over any allow in the file; `tinker_eval` denied by CLI wins over everything.
-
-### Reconnect Caveat
-
-MCP clients cache the tool manifest at connect time. After changing `.artisan/mcp.json` or running `mcp:install`, reconnect the client to pick up the new tool list. In Claude Desktop: `/mcp reconnect fluttersdk`.
-
-### Plugin Authoring: Contributing MCP Tools
-
-Override `mcpTools()` in your `ArtisanServiceProvider` subclass to contribute tools to the MCP server. The default implementation returns an empty list, so existing providers need no changes.
-
-```dart
-class AwesomePluginArtisanProvider extends ArtisanServiceProvider {
-  @override
-  List<McpToolDescriptor> mcpTools() => const <McpToolDescriptor>[
-        McpToolDescriptor(
-          name: 'awesome_ping',
-          description: 'Ping the awesome service and return latency.',
-          inputSchema: <String, dynamic>{
-            'type': 'object',
-            'properties': <String, dynamic>{
-              'url': <String, dynamic>{
-                'type': 'string',
-                'description': 'Target URL',
-              },
-            },
-            'required': <String>['url'],
-          },
-          // The MCP server dispatches `awesome_ping` by calling this VM
-          // Service extension on the running Flutter app. Register the
-          // handler in your plugin's runtime via `registerExtension('ext.
-          // awesome.ping', handler)` so the call lands in your app code.
-          extensionMethod: 'ext.awesome.ping',
-        ),
-      ];
-}
-```
-
-Tools contributed via `mcpTools()` are automatically discovered when the provider is registered. The three-layer filter applies to plugin-contributed tools the same way it applies to built-in tools.
-
-## PluginInstaller DSL (Procedural Escape Hatch)
-
-When the YAML manifest cannot express your install logic (runtime platform detection, env-specific branches, dynamic prompts), subclass `ArtisanInstallCommand` and drive `PluginInstaller` directly:
-
-```dart
-class CustomInstallCommand extends ArtisanInstallCommand {
-  @override
-  String get signature => 'awesome_plugin:install $baseFlags';
-
-  @override
-  String pluginName(ArtisanContext ctx) => 'awesome_plugin';
-
-  @override
-  Future<int> handle(ArtisanContext ctx) async {
-    final installer = PluginInstaller(buildContext(ctx), pluginName: pluginName(ctx))
-        .publishConfig(
-          stubName: 'install/awesome_plugin_config.dart',
-          targetPath: '${buildContext(ctx).projectRoot}/lib/config/awesome_plugin.dart',
-        )
-        .injectProvider('AwesomePluginServiceProvider')
-        .injectConfigFactory('awesomePluginConfig')
-        .injectAndroidPermission('android.permission.INTERNET')
-        .injectEnvVar('AWESOME_API_KEY', defaultValue: '', comment: 'API key');
-
-    if (Platform.isMacOS) {
-      installer.injectAndroidGradlePlugin('com.google.gms.google-services');
+```jsonc
+// .mcp.json (managed by mcp:install)
+{
+  "mcpServers": {
+    "fluttersdk": {
+      "command": "dart",
+      "args": ["run", "fluttersdk_artisan:mcp"]
     }
-
-    final result = await installer.commit(dryRun: isDryRun(ctx), force: isForce(ctx));
-    return switch (result) {
-      Success() => 0,
-      DryRun() => 0,
-      Conflict() => 1,
-      Error() => 2,
-    };
   }
 }
 ```
 
-Every DSL call enqueues an `InstallOperation` to the transaction. `commit()` runs `ConflictDetector` against the planned ops, then atomically writes via `.tmp` + rename. Re-running the same command is a safe no-op thanks to the idempotency guards in `ConfigEditor.insertCodeAfterPattern` and `addImportToFile`.
+When `~/.artisan/state.json` is absent at `initialize` time (no Flutter app running), the server stays online with the 9 substrate tools available and 0 plugin tools registered. On the next `tools/call` requiring VM Service, the server lazy-reconnects via a memoized in-flight future so MCP clients survive the natural dev cycle of starting and stopping the Flutter app without reconnecting.
 
-## Programmatic API
-
-Embed Artisan in your own bin script:
-
-```dart
-// bin/artisan.dart (consumer app)
-import 'dart:io';
-import 'package:fluttersdk_artisan/artisan.dart';
-import 'package:magic/cli.dart' show MagicArtisanProvider;
-import '../lib/app/_plugins.g.dart' as plugins;
-
-Future<void> main(List<String> args) async {
-  exit(await runArtisan(
-    args,
-    baseProviders: [
-      MagicArtisanProvider(),
-      ...plugins.autoDiscoveredProviders(),
-    ],
-    delegateToConsumer: false,
-  ));
-}
-```
-
-```dart
-// bin/awesome_plugin.dart (plugin)
-import 'dart:io';
-import 'package:fluttersdk_artisan/artisan.dart';
-import 'package:awesome_plugin/cli.dart' show AwesomePluginArtisanProvider;
-
-Future<void> main(List<String> args) async {
-  exit(await runArtisan(
-    args,
-    baseProviders: [AwesomePluginArtisanProvider()],
-    delegateToConsumer: false,
-  ));
-}
-```
-
-`runArtisan` accepts `delegateToConsumer`. When true (default for the `magic:artisan` binary), it walks up looking for the consumer's wrapper and forwards execution so plugin contributions are included. Set false for self-contained plugin binaries that should not chain.
+Setup walkthrough at [doc/mcp/setup](doc/mcp/setup.md). Full tool reference at [doc/mcp/tool-reference](doc/mcp/tool-reference.md).
 
 ## Architecture
 
-```
-artisan <command> <args>
-    ↓
-ArtisanApplication.dispatch()
-    ↓
-ArtisanRegistry (collision-checked)
-    ├─ baseProviders[]                    # injected at runtime
-    └─ autoDiscoveredProviders()          # codegen from .artisan/plugins.json
-    ↓
-CommandSignature.parse() → ArtisanInput
-    ↓
-ArtisanContext { input, output, registry, fs, clock }
-    ↓
-command.handle(ctx) → int exit code
-```
+Artisan is subsystem-first under `lib/src/`, every directory owns a single concern:
 
 ```
-lib/src/
-├── commands/          # 15 built-in commands (make:*, plugin:*, dev loop, tinker, doctor, list, help)
-├── console/           # ArtisanApplication, ArtisanRegistry, CommandSignature, ArtisanContext, ArtisanInput, ArtisanOutput
-├── installer/         # PluginInstaller, ManifestInstaller, InstallTransaction, ConflictDetector,
-│                      # PluginsRegistryFile, VirtualFs, install_operation sealed hierarchy
-├── stubs/             # StubLoader (asset + filesystem resolution)
-├── helpers/           # FileHelper, ConfigEditor, MainDartEditor, EnvEditor, PlistWriter, StringHelper
-├── extensions/        # String / Map extensions used across the framework
-├── state/             # StateFile JSON state persistence for start/stop/status commands
-├── tinker/            # REPL session + VM Service evaluation
-└── vm/                # VmServiceClient (wraps package:vm_service for hot-reload, hot-restart, evaluate)
+lib/
+├── artisan.dart                # Single barrel, re-exports the full public API
+├── fluttersdk_artisan.dart     # Convention sibling, re-exports the same surface
+└── src/
+    ├── console/                # ArtisanApplication, ArtisanRegistry, CommandSignature DSL, ArtisanContext
+    ├── commands/               # 21 built-in commands, one final class per file
+    ├── installer/              # PluginInstaller DSL, ManifestInstaller, InstallTransaction, sealed InstallOperation
+    ├── mcp/                    # McpServer, McpToolDescriptor, McpFilterConfig (3-layer filter pipeline)
+    ├── helpers/                # FileHelper, ConfigEditor, MainDartEditor, EnvEditor, PlistWriter, StringHelper
+    ├── stubs/                  # StubLoader, asset bundle plus filesystem resolution
+    ├── state/                  # StateFile, JSON persistence for start, stop, status, mcp:serve discovery
+    ├── tinker/                 # Connected REPL primitives over ext.tinker.evaluate
+    └── vm/                     # VmServiceClient, wraps package:vm_service, DDS-aware, no isolate-id cache
 ```
 
-## Testing
+Flow at boot:
 
-Every installer primitive is unit-testable without disk IO via `InMemoryFs` and `InstallContext.test`:
-
-```dart
-import 'package:fluttersdk_artisan/artisan.dart';
-import 'package:test/test.dart';
-
-test('injectProvider appends to the end of the providers list', () async {
-  final fs = InMemoryFs();
-  fs.writeAsString('/proj/lib/config/app.dart', _seedAppDart);
-
-  final ctx = InstallContext.test(
-    fs: fs,
-    prompt: _SilentPromptDriver(),
-    stubs: _SilentStubDriver(),
-    projectRoot: '/proj',
-  );
-
-  final result = await PluginInstaller(ctx, pluginName: 'demo')
-      .injectProvider('DemoServiceProvider')
-      .commit(force: true);
-
-  expect(result, isA<Success>());
-  expect(fs.readAsString('/proj/lib/config/app.dart'),
-      contains('(app) => DemoServiceProvider(app),'));
-});
+```
+runArtisan(args)
+    ↓
+ArtisanApplication.create(providers, builtins)
+    ↓
+ArtisanRegistry.registerAll(providers + builtins)   # collision-detected
+    ↓
+[CLI path] dispatch by signature       OR   [MCP path] collectMcpTools then serve stdio
+    ↓
+ArtisanCommand.handle(ArtisanContext)
 ```
 
-Real-FS integration tests use `Directory.systemTemp.createTempSync` for `make:plugin` and `plugin:install` end-to-end coverage. See `test/installer/plugin_installer_inject_test.dart` and `test/commands/plugin_install_command_test.dart` for the canonical patterns.
+Every public type is a `final class`. Sealed dispatch over Dart 3 exhaustiveness wherever an op set or result set is closed (`InstallOperation` has 26 sealed subclasses, `TransactionResult` has 4). New ops or result variants force every dispatcher to update, no silent drift.
 
 ## AI Agent Integration
 
-Use Artisan with AI coding assistants like Claude Code, Cursor, or GitHub Copilot. The **fluttersdk-artisan** skill teaches your AI the command signature DSL, plugin authoring conventions, install.yaml schema, `PluginInstaller` API, and the recommended `make:plugin` then `make:command` then `plugin:install` workflow, so it generates correct Artisan code on the first try.
+Use Artisan with AI coding assistants like Claude Code, Cursor, or GitHub Copilot. The MCP server gives the agent direct tool access: start the Flutter app, drive widget interactions over Dusk, inspect HTTP traffic over Telescope, evaluate Dart expressions over Tinker, all without spawning shells or pattern-matching log output.
 
-Setup instructions and skill files: **[fluttersdk/ai](https://github.com/fluttersdk/ai)**
+A typical agent session looks like this:
+
+```
+[agent] artisan_doctor                  // verify toolchain
+[agent] artisan_start { device: chrome }  // launch the app
+[agent] dusk_snap                       // capture Semantics tree
+[agent] dusk_tap { selector: "Sign in" } // drive interaction
+[agent] telescope_requests              // inspect outgoing HTTP
+[agent] tinker_eval { expr: "User.find(1)" }  // poke the running VM
+[agent] artisan_stop                    // tear down
+```
+
+For agents that read structured project context at attach time, the canonical entry point is [`llms.txt`](llms.txt) at the repo root (also published at `https://artisan.fluttersdk.com/llms.txt`). It enumerates the command surface, the plugin protocol, and the MCP tool catalog in agent-readable form.
+
+Skill files and per-agent setup recipes: **[fluttersdk/ai](https://github.com/fluttersdk/ai)**.
 
 ## Documentation
 
-Full docs at **[artisan.fluttersdk.com](https://artisan.fluttersdk.com)**.
+Full docs with live examples at **[artisan.fluttersdk.com](https://artisan.fluttersdk.com)**.
 
 | Topic | |
-|-------|--|
-| [Quick Start](https://artisan.fluttersdk.com/getting-started/quick-start) | Setup and the recommended plugin flow |
-| [Command Signature DSL](https://artisan.fluttersdk.com/basics/signature-dsl) | Argument and option syntax |
-| [Plugin Authoring](https://artisan.fluttersdk.com/plugin-authoring/overview) | Manifest schema, DSL, lifecycle |
-| [install.yaml Schema](https://artisan.fluttersdk.com/plugin-authoring/install-yaml) | Every section + every key |
-| [PluginInstaller DSL](https://artisan.fluttersdk.com/plugin-authoring/plugin-installer) | Procedural escape hatch reference |
-| [ConflictDetector](https://artisan.fluttersdk.com/internals/conflict-detector) | Atomic write semantics + scaffold detection |
-| [VM Service Hooks](https://artisan.fluttersdk.com/internals/vm-service) | `tinker`, `reload`, `hot-restart` mechanics |
+|:------|:-|
+| [Getting Started](doc/getting-started/index.md) | Overview, requirements, first command |
+| [Installation](doc/getting-started/installation.md) | `dart pub add fluttersdk_artisan` plus consumer scaffold |
+| [Quickstart](doc/getting-started/quickstart.md) | The 3-step path from empty repo to running MCP server |
+| [Commands](doc/commands/index.md) | The 21 built-in commands, grouped by namespace |
+| [Signature DSL](doc/reference/signature-dsl.md) | Argument and flag declaration grammar |
+| [Plugin Authoring](doc/plugins/authoring.md) | The 5-step plugin authoring flow |
+| [install.yaml Schema](doc/plugins/install-yaml.md) | Every section, every key, every example |
+| [PluginInstaller DSL](doc/plugins/installer-dsl.md) | The procedural escape hatch reference |
+| [MCP Overview](doc/mcp/overview.md) | Substrate plus plugin tool layers, soft-fail lifecycle |
+| [MCP Setup](doc/mcp/setup.md) | Per-client install (Claude Code, Cursor, Continue) |
+| [MCP Tool Reference](doc/mcp/tool-reference.md) | Every tool, every input schema, every example call |
 
 ## Contributing
 
@@ -676,6 +356,18 @@ git clone https://github.com/fluttersdk/artisan.git
 cd artisan && dart pub get
 dart test && dart analyze
 ```
+
+The baseline is roughly 1070 tests green on the touched-files scope. New behavior ships with the matching test (red, green, refactor). `dart format lib/ test/ bin/` must produce no diff and `dart analyze` must report zero issues across `lib/`, `test/`, and `bin/`.
+
+Before opening a pull request, also run:
+
+```bash
+dart format lib/ test/ bin/         # zero diff
+dart analyze                         # zero issues
+dart pub publish --dry-run           # validate the publish archive
+```
+
+The publish archive must stay under 500 KB compressed. The `.pubignore` excludes `example/`, `example_magic/`, `build/`, `coverage/`, and editor scaffolding from the pub archive, extend it if you add new top-level directories that should not ship.
 
 [Report a bug](https://github.com/fluttersdk/artisan/issues/new?template=bug_report.yml) · [Request a feature](https://github.com/fluttersdk/artisan/issues/new?template=feature_request.yml)
 
@@ -687,5 +379,5 @@ MIT, see [LICENSE](LICENSE) for details.
 
 <p align="center">
   <sub>Built with care by <a href="https://github.com/fluttersdk">FlutterSDK</a></sub><br/>
-  <sub>If Artisan saves you time, <a href="https://github.com/fluttersdk/artisan">give it a star</a>. It helps others discover it.</sub>
+  <sub>If Artisan saves you time, <a href="https://github.com/fluttersdk/artisan">give it a star</a>, it helps others discover it.</sub>
 </p>
