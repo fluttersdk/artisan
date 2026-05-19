@@ -4,15 +4,4 @@
 
 import 'package:fluttersdk_artisan/artisan.dart';
 
-import 'clean_cache.dart';
-import 'db_seed.dart';
-import 'mail_digest.dart';
-import 'sync.dart';
-
-List<ArtisanCommand> get commands => <ArtisanCommand>[
-  CleanCacheCommand(),
-  DbSeedCommand(),
-  MailDigestCommand(),
-  SyncCommand(),
-];
-
+List<ArtisanCommand> get commands => <ArtisanCommand>[];

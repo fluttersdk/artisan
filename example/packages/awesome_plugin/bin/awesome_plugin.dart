@@ -1,11 +1,12 @@
 import 'dart:io';
+
 import 'package:fluttersdk_artisan/artisan.dart';
-import 'package:magic_logger/cli.dart' show MagicLoggerArtisanProvider;
+import 'package:awesome_plugin/cli.dart' show AwesomePluginArtisanProvider;
 
 Future<void> main(List<String> args) async {
   exit(await runArtisan(
     args,
-    baseProviders: [MagicLoggerArtisanProvider()],
+    baseProviders: [AwesomePluginArtisanProvider()],
     delegateToConsumer: false,
   ));
 }
