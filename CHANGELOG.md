@@ -8,6 +8,13 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **`.github/workflows/publish.yml` tag trigger** switched from `[0-9]+.[0-9]+.[0-9]+*`
+  to `v[0-9]+.[0-9]+.[0-9]+*` so the pub.dev Admin "Automated publishing" tag
+  pattern `v{{version}}` matches. Industry standard SemVer convention (GitHub
+  Releases UI prefixes releases with `v`).
+
 ## [0.0.1] - 2026-05-19
 
 ### Changed
