@@ -115,8 +115,8 @@ void main() {
     test('make composes load + replace via default search paths', () {
       // The loader treats the replacement map as literal substitution; this
       // mirrors how consumer:scaffold renders the bin/artisan.dart wrapper.
-      final content = StubLoader.make('consumer_artisan_bin.dart',
-          <String, String>{'name': 'my_app'});
+      final content = StubLoader.make(
+          'consumer_artisan_bin.dart', <String, String>{'name': 'my_app'});
 
       expect(content, contains('my_app'));
     });

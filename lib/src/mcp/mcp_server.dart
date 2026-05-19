@@ -686,8 +686,8 @@ final class McpServer extends MCPServer with ToolsSupport {
           ],
         );
       }
-      ctx = ArtisanContext.connected(input, output, vmClient,
-          registry: registry);
+      ctx =
+          ArtisanContext.connected(input, output, vmClient, registry: registry);
     } else {
       ctx = ArtisanContext.bare(input, output, registry: registry);
     }
