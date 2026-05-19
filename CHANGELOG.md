@@ -8,6 +8,22 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **GitHub Release auto-creation in `publish.yml`**: new `github-release` job
+  (depends on the OIDC `publish` job) extracts the `## [<version>] - <date>`
+  block from `CHANGELOG.md` via `awk` and creates a matching GitHub Release
+  using `softprops/action-gh-release@v2`. Falls back to a stub body linking to
+  CHANGELOG.md when the section is missing.
+
+### Changed
+
+- **`publish.yml` triggers** narrowed to `push.tags` and `workflow_dispatch`.
+  Removed the `release.types: [published]` trigger to avoid a release/publish
+  recursion (we create the release FROM the workflow now). Tag-first flow:
+  `git tag X.Y.Z && git push origin X.Y.Z` -> validate -> pub.dev publish via
+  OIDC -> GitHub Release with CHANGELOG-driven notes.
+
 ## [0.0.1] - 2026-05-19
 
 ### Changed
