@@ -29,14 +29,14 @@ jobs:
       - name: Analyze code
         run: dart analyze lib/ test/ bin/
 
-      - name: Run tests (verbose, to identify hanging tests via per-test trace)
-        run: dart test --reporter=expanded --exclude-tags=integration --timeout=30s
+      - name: Run tests with coverage
+        run: dart test --coverage=coverage --exclude-tags=integration --timeout=30s
 
       - name: Install coverage tool
         run: dart pub global activate coverage
 
-      - name: Collect coverage
-        run: dart pub global run coverage:test_with_coverage --out=coverage -- --exclude-tags=integration --timeout=30s
+      - name: Format coverage as LCOV
+        run: dart pub global run coverage:format_coverage --lcov --in=coverage --out=coverage/lcov.info --packages=.dart_tool/package_config.json --report-on=lib
 
       - name: Enforce 80% line coverage floor
         run: |
