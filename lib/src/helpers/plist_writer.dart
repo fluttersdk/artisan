@@ -63,13 +63,13 @@ class PlistWriter {
         return;
       }
       // 2. Different value: replace the sibling in place.
-      final replacement = XmlElement(XmlName('string'))
+      final replacement = XmlElement(XmlName.parts('string'))
         ..children.add(XmlText(value));
       existing.replace(replacement);
     } else {
       // 3. Key is absent: append the pair.
       _appendPair(dict, key,
-          XmlElement(XmlName('string'))..children.add(XmlText(value)));
+          XmlElement(XmlName.parts('string'))..children.add(XmlText(value)));
     }
 
     _write(plistPath, doc);
@@ -98,10 +98,10 @@ class PlistWriter {
         return;
       }
       // 2. Different value: replace in place.
-      existing.replace(XmlElement(XmlName(tagName)));
+      existing.replace(XmlElement(XmlName.parts(tagName)));
     } else {
       // 3. Key is absent: append the pair.
-      _appendPair(dict, key, XmlElement(XmlName(tagName)));
+      _appendPair(dict, key, XmlElement(XmlName.parts(tagName)));
     }
 
     _write(plistPath, doc);
@@ -179,7 +179,7 @@ class PlistWriter {
 
     // 3. Append the new <string> child.
     existing.children
-        .add(XmlElement(XmlName('string'))..children.add(XmlText(value)));
+        .add(XmlElement(XmlName.parts('string'))..children.add(XmlText(value)));
     _write(plistPath, doc);
   }
 
@@ -266,17 +266,18 @@ class PlistWriter {
   /// Build an `<array>` element whose children are `<string>` elements, one
   /// per entry in [values].
   static XmlElement _buildArray(List<String> values) {
-    final array = XmlElement(XmlName('array'));
+    final array = XmlElement(XmlName.parts('array'));
     for (final v in values) {
       array.children
-          .add(XmlElement(XmlName('string'))..children.add(XmlText(v)));
+          .add(XmlElement(XmlName.parts('string'))..children.add(XmlText(v)));
     }
     return array;
   }
 
   /// Append a `<key>` + [valueEl] pair to [dict].
   static void _appendPair(XmlElement dict, String key, XmlElement valueEl) {
-    dict.children.add(XmlElement(XmlName('key'))..children.add(XmlText(key)));
+    dict.children
+        .add(XmlElement(XmlName.parts('key'))..children.add(XmlText(key)));
     dict.children.add(valueEl);
   }
 

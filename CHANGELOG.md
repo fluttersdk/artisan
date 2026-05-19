@@ -10,6 +10,15 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- **`xml` dependency bumped to ^7.0.0** (was ^6.5.0). Major release deprecates
+  the `XmlName('localname')` constructor in favor of `XmlName.parts('localname')`.
+  Migrated all 8 occurrences in `lib/src/helpers/plist_writer.dart`. Tests pass;
+  zero analyzer issues.
+- **`lints` dev-dependency bumped to ^6.0.0** (was ^5.0.0). New rule set is
+  fully compatible with current code; no analyzer issues surface.
+- **Dependabot PR #1 closed** (test 1.30 → 1.31 in example/packages/awesome_plugin):
+  test 1.31 requires test_api 0.7.11+, but the current Flutter SDK (3.44) bundles
+  test_api 0.7.10 via flutter_test. Wait for Flutter to bump.
 - **Documentation site**: subdomain `artisan.fluttersdk.com` replaced with path-style `fluttersdk.com/artisan`
   across `pubspec.yaml` (homepage, documentation), `README.md`, `llms.txt`, the awesome_plugin example
   README, and the generic make:plugin README stub.
