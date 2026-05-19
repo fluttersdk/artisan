@@ -1,5 +1,5 @@
 name: fluttersdk_artisan
-description: "Laravel Artisan-style CLI framework for Dart and Flutter. Plugin scaffolding, declarative install protocol, dev loop (hot reload, hot restart, tinker REPL), and a built-in stdio MCP server (Model Context Protocol) that exposes substrate + plugin tools to Claude / Cursor / Windsurf."
+description: "Composable CLI framework and stdio MCP server for Flutter and Dart. Scaffolding, code generation, transactional plugin installs, hot reload orchestration, REPL, and AI agent tool surfaces in one binary."
 version: 0.0.1
 homepage: https://artisan.fluttersdk.com
 repository: https://github.com/fluttersdk/artisan
@@ -10,7 +10,7 @@ documentation: https://artisan.fluttersdk.com
 # These drive tag-based discovery on https://pub.dev/packages?q=topic%3A<topic>.
 topics:
   - cli
-  - artisan
+  - mcp-server
   - scaffolding
   - plugin-system
   - code-generation
