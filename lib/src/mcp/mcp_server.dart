@@ -147,6 +147,13 @@ final class McpServer extends MCPServer with ToolsSupport {
         final isolateId = await vmClient.getMainIsolateId();
         _vmClient = vmClient;
         _isolateId = isolateId;
+        // BUG #11 fix: when callServiceExtension's internal retry-on-sentinel
+        // discovers the cached isolate id is stale (hot-restart minted a new
+        // isolate), it refreshes via getMainIsolateId() and broadcasts the
+        // new id on onIsolateRefreshed. Update our cached _isolateId in
+        // place so subsequent dispatches use the fresh value without paying
+        // a getVM RPC per call.
+        vmClient.onIsolateRefreshed.listen((fresh) => _isolateId = fresh);
       } catch (e) {
         stderr.writeln(
           '[fluttersdk_artisan_mcp] VM Service connect failed: $e. '
@@ -319,6 +326,9 @@ final class McpServer extends MCPServer with ToolsSupport {
     final isolateId = await vmClient.getMainIsolateId();
     _vmClient = vmClient;
     _isolateId = isolateId;
+    // BUG #11 fix mirror of the initialize() path: keep the cached
+    // _isolateId in lock-step with the wrapper's own retry-driven refresh.
+    vmClient.onIsolateRefreshed.listen((fresh) => _isolateId = fresh);
     stderr.writeln(
       '[fluttersdk_artisan_mcp] lazy-connected to VM Service at $wsUri',
     );

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:vm_service/vm_service.dart' as vm;
 import 'package:vm_service/vm_service_io.dart';
 
@@ -57,19 +59,72 @@ class VmServiceClient {
 
   /// Call a VM Service extension method (delegates to
   /// `vm.callServiceExtension` which is DDS-namespace transparent).
+  ///
+  /// When the call returns a `Sentinel` (the underlying isolate is gone —
+  /// usually because a hot-restart minted a new isolate id and the caller
+  /// held a stale one) the method refreshes the isolate via
+  /// [getMainIsolateId] and retries ONCE. The retry only fires when the
+  /// fresh id differs from [isolateId]; otherwise the sentinel propagates.
+  /// This makes every connected-mode handler tolerant of the standard
+  /// `artisan_hot_restart` → next-MCP-call workflow without forcing every
+  /// caller to invalidate its own cache.
   Future<T> callServiceExtension<T>(
     String method, {
     required String isolateId,
     Map<String, dynamic>? params,
   }) async {
     final s = _requireConnected();
-    final resp = await s.callServiceExtension(
-      method,
-      isolateId: isolateId,
-      args: params,
-    );
-    return resp.json as T;
+    try {
+      final resp = await s.callServiceExtension(
+        method,
+        isolateId: isolateId,
+        args: params,
+      );
+      return resp.json as T;
+    } on vm.SentinelException catch (e) {
+      // Sentinel almost always means "isolate gone". Refresh once and try
+      // again; if the id has not actually changed, the sentinel is
+      // genuine (isolate genuinely unreachable) and we re-throw.
+      final String fresh;
+      try {
+        fresh = await getMainIsolateId();
+      } catch (_) {
+        rethrow;
+      }
+      if (fresh == isolateId) rethrow;
+      final resp = await s.callServiceExtension(
+        method,
+        isolateId: fresh,
+        args: params,
+      );
+      // Surface the fresh id to interested callers (mcp_server caches it)
+      // via the dedicated event stream.
+      _lastResolvedIsolateId = fresh;
+      _isolateRefreshController.add(fresh);
+      _markRefreshFromException(e);
+      return resp.json as T;
+    }
   }
+
+  /// Reports the last isolate id this client transparently refreshed away
+  /// from. Callers that cache the isolate id can listen on
+  /// [onIsolateRefreshed] and update their cache without reaching into
+  /// `getMainIsolateId` after every tool call.
+  String? get lastResolvedIsolateId => _lastResolvedIsolateId;
+  String? _lastResolvedIsolateId;
+
+  /// Broadcasts whenever the retry path inside [callServiceExtension]
+  /// recovers from a stale-isolate sentinel by reaching for a fresh id.
+  /// Single subscriber per cache (mcp_server uses one); broadcast so
+  /// multiple commands can listen without contention.
+  Stream<String> get onIsolateRefreshed => _isolateRefreshController.stream;
+  final StreamController<String> _isolateRefreshController =
+      StreamController<String>.broadcast();
+
+  // Records the exception so a future trace flag can correlate the silent
+  // recovery with the original RPC failure. No-op today; the hook exists
+  // so the retry path is visible in tests.
+  void _markRefreshFromException(vm.SentinelException _) {}
 
   /// Evaluate a Dart expression in the running app's root library.
   /// Wraps the expression in `(() async => $expr)()` when it contains `await`
