@@ -20,4 +20,4 @@ dart run fluttersdk_artisan plugin:install awesome_plugin
 Edit `install.yaml` to declare what gets published, injected, and configured.
 Edit `lib/src/commands/install_command.dart` for procedural overrides.
 
-See the [fluttersdk_artisan plugin authoring guide](https://artisan.fluttersdk.com/plugins).
+See the [fluttersdk_artisan plugin authoring guide](https://fluttersdk.com/artisan/plugins).

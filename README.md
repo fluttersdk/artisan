@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="https://artisan.fluttersdk.com">Documentation</a> ·
+  <a href="https://fluttersdk.com/artisan">Documentation</a> ·
   <a href="https://pub.dev/packages/fluttersdk_artisan">pub.dev</a> ·
   <a href="https://github.com/fluttersdk/artisan/issues">Issues</a>
 </p>
@@ -105,7 +105,7 @@ dart run fluttersdk_artisan mcp:install
 
 `mcp:install` writes (or updates) the `mcpServers.fluttersdk` entry in `.mcp.json`. After install, reconnect the MCP client once (for Claude Code: `/mcp reconnect fluttersdk`). The server boots in stdio JSON-RPC mode and exposes 9 substrate tools (`artisan_start`, `artisan_stop`, `artisan_status`, `artisan_logs`, `artisan_restart`, `artisan_reload`, `artisan_hot_restart`, `artisan_doctor`, `artisan_list`) plus any plugin-contributed tools.
 
-Read the full setup walkthrough at [MCP setup guide](https://artisan.fluttersdk.com/mcp/setup).
+Read the full setup walkthrough at [MCP setup guide](https://fluttersdk.com/artisan/mcp/setup).
 
 ## Commands
 
@@ -138,7 +138,7 @@ dart run artisan tinker --eval='1 + 1'   # one-shot evaluation flag for automati
 dart run artisan doctor                  # preflight checks: flutter + dart on PATH, default port availability
 ```
 
-Full command catalog and per-command flag reference at [commands catalog](https://artisan.fluttersdk.com/commands/).
+Full command catalog and per-command flag reference at [commands catalog](https://fluttersdk.com/artisan/commands/).
 
 ### Writing your own command
 
@@ -163,11 +163,11 @@ final class GreetCommand extends ArtisanCommand {
 }
 ```
 
-For cases the signature DSL cannot express (positional rest, mutually exclusive flag groups), override `void configure(ArgParser parser)` and read from `context.input.results` directly. Signature DSL grammar at [signature DSL reference](https://artisan.fluttersdk.com/reference/signature-dsl).
+For cases the signature DSL cannot express (positional rest, mutually exclusive flag groups), override `void configure(ArgParser parser)` and read from `context.input.results` directly. Signature DSL grammar at [signature DSL reference](https://fluttersdk.com/artisan/reference/signature-dsl).
 
 ## Plugin Protocol
 
-Artisan plugins declare their install footprint in `install.yaml`, a declarative manifest walked by `ManifestInstaller`. The manifest supports `publish` (files to copy), `magic.provider` plus `magic.configFactory` plus `magic.routes` (framework wiring), `native.android` (permissions, metaData, gradle plugins, gradle dependencies), `native.ios` and `native.macos` (plist entries, pod entries), `native.web` (head injections, meta tags), `env` (environment variable declarations with defaults), `prompts` (interactive install prompts), `placeholders` (token resolution from prompt answers), and `bootstrap_command` (post-install hint). Schema reference at [install.yaml schema](https://artisan.fluttersdk.com/plugins/install-yaml).
+Artisan plugins declare their install footprint in `install.yaml`, a declarative manifest walked by `ManifestInstaller`. The manifest supports `publish` (files to copy), `magic.provider` plus `magic.configFactory` plus `magic.routes` (framework wiring), `native.android` (permissions, metaData, gradle plugins, gradle dependencies), `native.ios` and `native.macos` (plist entries, pod entries), `native.web` (head injections, meta tags), `env` (environment variable declarations with defaults), `prompts` (interactive install prompts), `placeholders` (token resolution from prompt answers), and `bootstrap_command` (post-install hint). Schema reference at [install.yaml schema](https://fluttersdk.com/artisan/plugins/install-yaml).
 
 A minimal `install.yaml` looks like this:
 
@@ -218,7 +218,7 @@ final class AwesomeInstallCommand extends ArtisanInstallCommand {
 }
 ```
 
-Full DSL reference at [PluginInstaller DSL reference](https://artisan.fluttersdk.com/plugins/installer-dsl).
+Full DSL reference at [PluginInstaller DSL reference](https://fluttersdk.com/artisan/plugins/installer-dsl).
 
 Operations are idempotent (lookahead-anchored regex skips when the target code is already present), atomic (every write goes through `.tmp` plus atomic rename so concurrent readers never see partial state), and reversible (each applied operation is recorded under `.artisan/installed/<plugin>.json` with a content hash for tamper detection on uninstall).
 
@@ -271,7 +271,7 @@ After `mcp:install` writes the client config entry, every MCP-capable agent can 
 
 When `~/.artisan/state.json` is absent at `initialize` time (no Flutter app running), the server stays online with the 9 substrate tools available and 0 plugin tools registered. On the next `tools/call` requiring VM Service, the server lazy-reconnects via a memoized in-flight future so MCP clients survive the natural dev cycle of starting and stopping the Flutter app without reconnecting.
 
-Setup walkthrough at [MCP setup guide](https://artisan.fluttersdk.com/mcp/setup). Full tool reference at [tool reference](https://artisan.fluttersdk.com/mcp/tool-reference).
+Setup walkthrough at [MCP setup guide](https://fluttersdk.com/artisan/mcp/setup). Full tool reference at [tool reference](https://fluttersdk.com/artisan/mcp/tool-reference).
 
 ## Architecture
 
@@ -325,27 +325,27 @@ A typical agent session looks like this:
 [agent] artisan_stop                    // tear down
 ```
 
-For agents that read structured project context at attach time, the canonical entry point is [`llms.txt`](llms.txt) at the repo root (also published at `https://artisan.fluttersdk.com/llms.txt`). It enumerates the command surface, the plugin protocol, and the MCP tool catalog in agent-readable form.
+For agents that read structured project context at attach time, the canonical entry point is [`llms.txt`](llms.txt) at the repo root (also published at `https://fluttersdk.com/artisan/llms.txt`). It enumerates the command surface, the plugin protocol, and the MCP tool catalog in agent-readable form.
 
 Skill files and per-agent setup recipes: **[fluttersdk/ai](https://github.com/fluttersdk/ai)**.
 
 ## Documentation
 
-Full docs with live examples at **[artisan.fluttersdk.com](https://artisan.fluttersdk.com)**.
+Full docs with live examples at **[fluttersdk.com/artisan](https://fluttersdk.com/artisan)**.
 
 | Topic | |
 |:------|:-|
-| [Getting Started](https://artisan.fluttersdk.com/getting-started/) | Overview, requirements, first command |
-| [Installation](https://artisan.fluttersdk.com/getting-started/installation) | `dart pub add fluttersdk_artisan` plus consumer scaffold |
-| [Quickstart](https://artisan.fluttersdk.com/getting-started/quickstart) | The 3-step path from empty repo to running MCP server |
-| [Commands](https://artisan.fluttersdk.com/commands/) | The 21 built-in commands, grouped by namespace |
-| [Signature DSL](https://artisan.fluttersdk.com/reference/signature-dsl) | Argument and flag declaration grammar |
-| [Plugin Authoring](https://artisan.fluttersdk.com/plugins/authoring) | The 5-step plugin authoring flow |
-| [install.yaml Schema](https://artisan.fluttersdk.com/plugins/install-yaml) | Every section, every key, every example |
-| [PluginInstaller DSL](https://artisan.fluttersdk.com/plugins/installer-dsl) | The procedural escape hatch reference |
-| [MCP Overview](https://artisan.fluttersdk.com/mcp/overview) | Substrate plus plugin tool layers, soft-fail lifecycle |
-| [MCP Setup](https://artisan.fluttersdk.com/mcp/setup) | Per-client install (Claude Code, Cursor, Continue) |
-| [MCP Tool Reference](https://artisan.fluttersdk.com/mcp/tool-reference) | Every tool, every input schema, every example call |
+| [Getting Started](https://fluttersdk.com/artisan/getting-started/) | Overview, requirements, first command |
+| [Installation](https://fluttersdk.com/artisan/getting-started/installation) | `dart pub add fluttersdk_artisan` plus consumer scaffold |
+| [Quickstart](https://fluttersdk.com/artisan/getting-started/quickstart) | The 3-step path from empty repo to running MCP server |
+| [Commands](https://fluttersdk.com/artisan/commands/) | The 21 built-in commands, grouped by namespace |
+| [Signature DSL](https://fluttersdk.com/artisan/reference/signature-dsl) | Argument and flag declaration grammar |
+| [Plugin Authoring](https://fluttersdk.com/artisan/plugins/authoring) | The 5-step plugin authoring flow |
+| [install.yaml Schema](https://fluttersdk.com/artisan/plugins/install-yaml) | Every section, every key, every example |
+| [PluginInstaller DSL](https://fluttersdk.com/artisan/plugins/installer-dsl) | The procedural escape hatch reference |
+| [MCP Overview](https://fluttersdk.com/artisan/mcp/overview) | Substrate plus plugin tool layers, soft-fail lifecycle |
+| [MCP Setup](https://fluttersdk.com/artisan/mcp/setup) | Per-client install (Claude Code, Cursor, Continue) |
+| [MCP Tool Reference](https://fluttersdk.com/artisan/mcp/tool-reference) | Every tool, every input schema, every example call |
 
 ## Contributing
 
