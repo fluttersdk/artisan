@@ -15,6 +15,12 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
   `VmServiceClient` error). Mirrors `php artisan tinker --execute=` for non-interactive automation. The
   interactive REPL still launches when `--eval` is absent. Covered by 3 new tests in
   `test/commands/tinker_command_test.dart`.
+- **`consumer:scaffold` monorepo path-dep detection**: `scaffoldInto({root, force, ctx})` static entry point lets
+  other commands (notably `dusk:install`) invoke the scaffolder programmatically without spawning a subprocess.
+  When the consumer's `.dart_tool/package_config.json` resolves `fluttersdk_artisan` to a local sibling
+  (monorepo / path-dep workflow), the scaffolder writes `bin/artisan.dart` + injects a `path:` dependency
+  pointing at the resolved sibling. Falls back to `any` for pub.dev workflows. Covered by 11 new tests in
+  `test/commands/consumer_scaffold_command_test.dart`.
 
 ---
 
