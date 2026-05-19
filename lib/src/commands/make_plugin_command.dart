@@ -346,6 +346,7 @@ class MakePluginCommand extends ArtisanCommand {
               'pubspec.yaml': 'magic',
               'cli.dart': 'magic',
               'runtime.dart': 'magic',
+              'provider.dart': 'magic',
             }
           : const <String, String>{},
     );
