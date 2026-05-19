@@ -29,8 +29,11 @@ jobs:
       - name: Analyze code
         run: dart analyze lib/ test/ bin/
 
+      - name: Install coverage tool
+        run: dart pub global activate coverage
+
       - name: Run tests with coverage
-        run: flutter test --coverage --exclude-tags=integration
+        run: dart pub global run coverage:test_with_coverage --out=coverage -- --exclude-tags=integration
 
       - name: Enforce 80% line coverage floor
         run: |
