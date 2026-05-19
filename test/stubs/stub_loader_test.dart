@@ -102,22 +102,23 @@ void main() {
   });
 
   group('StubLoader default search paths (package_config resolver)', () {
-    test('load via default paths resolves the artisan_command stub', () {
+    test('load via default paths resolves the consumer_artisan_bin stub', () {
       // No searchPaths arg → exercises _defaultSearchPaths +
       // _resolveFromPackageConfig. The package_config.json sitting at the
       // package root names fluttersdk_artisan, so the resolver returns a
       // valid stub dir.
-      final content = StubLoader.load('artisan_command');
+      final content = StubLoader.load('consumer_artisan_bin.dart');
 
-      expect(content, contains('{{ className }}'));
+      expect(content, contains('{{ name }}'));
     });
 
     test('make composes load + replace via default search paths', () {
-      final content = StubLoader.make('artisan_command', <String, String>{
-        'className': 'SyncMonitors',
-      });
+      // The loader treats the replacement map as literal substitution; this
+      // mirrors how consumer:scaffold renders the bin/artisan.dart wrapper.
+      final content = StubLoader.make('consumer_artisan_bin.dart',
+          <String, String>{'name': 'my_app'});
 
-      expect(content, contains('SyncMonitorsCommand'));
+      expect(content, contains('my_app'));
     });
 
     test(
@@ -127,12 +128,12 @@ void main() {
         // a const does not break stub resolution. This test exercises both
         // package_config.json parsing (line 157) and pubspec walking (line 107)
         // which reference the package name.
-        final content = StubLoader.load('artisan_command');
+        final content = StubLoader.load('consumer_artisan_bin.dart');
 
         // If the const extraction broke either path, this would throw
         // FileSystemException. Confirming it returns valid content.
         expect(content, isNotEmpty);
-        expect(content, contains('{{ className }}'));
+        expect(content, contains('{{ name }}'));
       },
     );
   });
