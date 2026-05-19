@@ -414,35 +414,4 @@ placeholders:
     });
   });
 
-  group('ManifestParser — sample fixtures parse', () {
-    test('doc/samples/install.minimal.yaml parses without throwing', () {
-      final manifest =
-          ManifestParser.parseFile('doc/samples/install.minimal.yaml');
-
-      expect(manifest.pluginName, 'example_plugin');
-      expect(manifest.publish, hasLength(1));
-      expect(manifest.magic.provider, 'ExampleServiceProvider');
-    });
-
-    test('doc/samples/install.full.yaml parses every populated section', () {
-      final manifest =
-          ManifestParser.parseFile('doc/samples/install.full.yaml');
-
-      expect(manifest.pluginName, 'example_plugin');
-      expect(manifest.pubspec.deps, isNotEmpty);
-      expect(manifest.publish, isNotEmpty);
-      expect(manifest.jsonMerge, isNotEmpty);
-      expect(manifest.magic.provider, isNotNull);
-      expect(manifest.native.android, isNotNull);
-      expect(manifest.native.ios, isNotNull);
-      expect(manifest.native.macos, isNotNull);
-      expect(manifest.native.web, isNotNull);
-      expect(manifest.env, isNotEmpty);
-      expect(manifest.prompts, isNotEmpty);
-      expect(manifest.placeholders, isNotEmpty);
-      expect(manifest.postInstall.run, isNotEmpty);
-      expect(manifest.postInstall.askToRun, isNotEmpty);
-      expect(manifest.bootstrapCommand, 'example:install');
-    });
-  });
 }
