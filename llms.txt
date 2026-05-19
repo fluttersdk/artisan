@@ -1,0 +1,33 @@
+# fluttersdk_artisan
+
+> Composable CLI framework and stdio MCP server for Flutter and Dart. Scaffolding, code generation, transactional plugin installs, hot reload orchestration, REPL, and AI agent tool surfaces in one binary.
+
+Pure Dart 3.4+ CLI framework. Consumed via `dart run fluttersdk_artisan <command>`. 21 built-in commands plus a stdio MCP server for AI coding agents (Claude Code, Cursor, Windsurf).
+
+## Docs
+- [Installation](https://artisan.fluttersdk.com/getting-started/installation)
+- [Quickstart](https://artisan.fluttersdk.com/getting-started/quickstart)
+- [Command catalog](https://artisan.fluttersdk.com/commands/)
+- [start](https://artisan.fluttersdk.com/commands/start)
+- [plugin:install](https://artisan.fluttersdk.com/commands/plugin-install)
+- [mcp:serve](https://artisan.fluttersdk.com/commands/mcp-serve)
+- [make:plugin](https://artisan.fluttersdk.com/commands/make-plugin)
+- [consumer:scaffold](https://artisan.fluttersdk.com/commands/consumer-scaffold)
+- [tinker](https://artisan.fluttersdk.com/commands/tinker)
+- [MCP overview](https://artisan.fluttersdk.com/mcp/overview)
+- [MCP setup](https://artisan.fluttersdk.com/mcp/setup)
+- [MCP tool reference](https://artisan.fluttersdk.com/mcp/tool-reference)
+- [Plugin authoring](https://artisan.fluttersdk.com/plugins/authoring)
+- [install.yaml schema](https://artisan.fluttersdk.com/plugins/install-yaml)
+- [Installer DSL](https://artisan.fluttersdk.com/plugins/installer-dsl)
+- [Signature DSL](https://artisan.fluttersdk.com/reference/signature-dsl)
+
+## Source
+- [GitHub](https://github.com/fluttersdk/artisan)
+- [pub.dev](https://pub.dev/packages/fluttersdk_artisan)
+- [CHANGELOG](https://github.com/fluttersdk/artisan/blob/master/CHANGELOG.md)
+
+## Optional
+- [README](https://github.com/fluttersdk/artisan/blob/master/README.md)
+- [LICENSE](https://github.com/fluttersdk/artisan/blob/master/LICENSE)
+- [Issues](https://github.com/fluttersdk/artisan/issues)
