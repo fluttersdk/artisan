@@ -30,7 +30,7 @@ jobs:
         run: dart analyze lib/ test/ bin/
 
       - name: Run tests with coverage
-        run: flutter test --coverage
+        run: flutter test --coverage --exclude-tags=integration
 
       - name: Enforce 80% line coverage floor
         run: |

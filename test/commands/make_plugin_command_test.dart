@@ -1154,16 +1154,18 @@ void main() {
     });
   });
 
-  group('MakePluginCommand, generated plugin passes dart pub get', () {
-    // Integration test: uses REAL flutter create (not mocked) and REAL
-    // dart pub get. This is intentional — the original pubspec path-resolution
-    // bug (hardcoded `../../` instead of a computed relative path) would have
-    // been caught immediately by this test because `dart pub get` would have
-    // failed with "path does not exist".
+  group('MakePluginCommand, generated plugin passes dart pub get', tags: 'integration', () {
+    // Integration tests: REAL flutter create (not mocked) and REAL dart pub get.
+    // Catches the original pubspec path-resolution bug (hardcoded `../../` vs
+    // computed relative path) because `dart pub get` would have failed with
+    // "path does not exist".
     //
-    // Note: this test is slower than the unit tests above (real flutter binary,
-    // real pub network or cache hit). It is kept as a normal test rather than
-    // @Tags(['integration']) so CI catches it without tag filtering.
+    // Tagged `integration` so CI can exclude them via
+    // `flutter test --exclude-tags=integration`. In a hosted-runner environment
+    // the real flutter create + dart pub get path can hang on cold pub caches
+    // or stdin-bound prompts; running them in CI made the workflow stuck for
+    // 50+ minutes. Local devs run them on demand with
+    // `dart test --tags=integration` before tagging a release.
 
     late Directory tmpRoot;
 

@@ -1,0 +1,11 @@
+# Tag registry for `dart test` / `flutter test`.
+#
+# - `integration`: tests that spawn real subprocesses (flutter create, dart pub
+#   get) against the host machine's toolchain. Slow (30-60s each) and reliant
+#   on network / pub cache state, so CI excludes them via
+#   `flutter test --exclude-tags=integration`. Local devs run them on demand
+#   with `dart test --tags=integration` (a couple of minutes) before tagging a
+#   release.
+tags:
+  integration:
+    timeout: 5x
