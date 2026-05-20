@@ -8,38 +8,45 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-05-20
+
 ### Breaking
 
 - **`consumer:scaffold` renamed to `install`**: the command `consumer:scaffold` no longer exists. Consumers must use `dart run fluttersdk_artisan install` going forward.
 - **`bin/artisan.dart` renamed to `bin/dispatcher.dart`**: the scaffold output path has changed. Migration: re-run `dart run fluttersdk_artisan install --force` to scaffold the new file layout, then update any scripts or CI steps that reference `bin/artisan.dart`.
 - **Old stub removed**: `consumer_artisan_bin.dart.stub` is gone; the replacement stub is `dispatcher.dart.stub`.
+- **`InstallCommand` -> `InstallArtisanCommand`**: the public class on the `package:fluttersdk_artisan/artisan.dart` barrel now carries the `Artisan` prefix so plugins exporting their own `InstallCommand` (notifications, deeplink, etc.) no longer collide with the substrate at import time.
 
 ### Added
 
 - **`install` auto-chains `make:fast-cli`**: after writing the consumer entry and barrels, `install` automatically runs `make:fast-cli` so `bin/fsa` (the AOT-compiled fast startup wrapper) is ready without a separate manual step.
 - **New stub `dispatcher.dart.stub`**: replaces the former `consumer_artisan_bin.dart.stub`; rendered to `bin/dispatcher.dart` during `install`.
-
-### Removed
-
-- **`consumer:scaffold` command**: superseded by `install`. Old invocations (`dart run fluttersdk_artisan consumer:scaffold`) must be updated.
-- **`consumer_artisan_bin.dart.stub`**: removed alongside the command it served; replaced by `dispatcher.dart.stub`.
-
-### Added
-
-- **`artisan start --cdp-port=N` opt-in flag** (`lib/src/commands/start_command.dart`): when set, pre-launches Chrome with `--remote-debugging-port=N --remote-allow-origins=* --user-data-dir=/tmp/dusk-chrome-N`, runs `flutter run -d web-server --web-port=N --web-experimental-hot-reload` (silent remap from `--device=chrome`), scrapes vmServiceUri from DWDS log, then sends `Page.navigate` to the served URL via inline CDP. Writes `chromePid` + `cdpPort` + `tmpProfileDir` to `~/.artisan/state.json`. Default flow (no `--cdp-port`) unchanged. Gates the branch on `flutter --version --machine` >= 3.30.0 with an actionable upgrade error.
+- **`artisan start --cdp-port=N` opt-in flag** (`lib/src/commands/start_command.dart`): when set, pre-launches Chrome with `--remote-debugging-port=N --remote-allow-origins=* --user-data-dir=/tmp/dusk-chrome-N`, runs `flutter run -d web-server --web-port=N --web-experimental-hot-reload --host-vmservice-port=N` (silent remap from `--device=chrome`), waits for the "is being served at" log line, navigates Chrome to the served URL via inline CDP, then scrapes `vmServiceUri` from the DWDS log once the debugger client connected. Writes `chromePid` + `cdpPort` + `tmpProfileDir` to `~/.artisan/state.json`. Default flow (no `--cdp-port`) unchanged. Gates the branch on `flutter --version --machine` >= 3.30.0 with an actionable upgrade error.
 - **`artisan stop` Chrome cleanup**: when `state['chromePid'] != null`, sends SIGTERM, waits the grace period, escalates to SIGKILL if the process is still alive, deletes `tmpProfileDir`. Inlines the SIGTERM-grace-SIGKILL pattern from `fluttersdk_dusk/lib/src/utils/chrome_reaper.dart:216-264` to avoid inverting the plugin dependency direction (see Deferred Ideas: V1.x consolidation).
 - **`artisan doctor` Flutter SDK gate**: new check `flutter sdk >= 3.30.0 (for --cdp-port)` registered in the existing `_Check` list. Advisory `_cdpUpgradeWarning` writeln (mirrors `_checkStaleMcpJson` pattern) surfaces an upgrade message when the SDK is too old. Required for `flutter/flutter#170612` (DWDS WebSocket hot reload on `-d web-server`).
 - **`StateFile` schema**: new `cdpPort` field (int | null, --cdp-port value passed to start; null when CDP not enabled). Roundtrip test added.
 - **GitHub Release auto-creation in `publish.yml`**: new `github-release` job (depends on the OIDC `publish` job) extracts the `## [<version>] - <date>` block from `CHANGELOG.md` via `awk` and creates a matching GitHub Release using `softprops/action-gh-release@v2`. Falls back to a stub body linking to `CHANGELOG.md` when the section is missing.
 - **`make:fast-cli` builtin command + `bin/fsa` wrapper** (`lib/src/commands/make_fast_cli_command.dart`, `assets/stubs/bin_fsa.sh.stub`): scaffold a POSIX shell wrapper that compiles `bin/dispatcher.dart` into an AOT binary via `dart build cli`, cached at `.artisan/cli-bundle/bundle/bin/dispatcher`. Wrapper auto-detects staleness (pubspec.lock SHA256 + Dart SDK version + pubspec.yaml mtime greater than pubspec.lock) and re-compiles transparently. Result: ~50ms startup for `./bin/fsa <cmd>` vs ~3s for `dart run fluttersdk_artisan <cmd>` (no "Running build hooks..." overhead). Idempotent on re-run; `--force` overwrites the wrapper. POSIX-only V1 (macOS + Linux); Windows .cmd variant deferred. The existing `dart run fluttersdk_artisan` path is unchanged and remains the canonical CLI entry.
 
+### Changed
+
+- **`plugin:install` preflight scope**: the wrapper-presence check (`bin/artisan.dart` must exist) moved out of the shared preflight into the legacy-injection branch only. Canonical-scaffold projects (`lib/app/_plugins.g.dart` present) now route through `.artisan/plugins.json` registration without tripping the legacy gate, even when the consumer never wrote a `bin/artisan.dart` file.
+- **`artisan start --vm-service-port`** now plumbs through to `flutter run` as `--host-vmservice-port=N` and is recorded in `state.json` so downstream tools see the actual bound port. The option was declared but never read in 0.0.1.
+- **`publish.yml` triggers** narrowed to `push.tags` and `workflow_dispatch`. Removed the `release.types: [published]` trigger to avoid release/publish recursion (the workflow creates the release itself now). Tag-first flow: `git tag X.Y.Z && git push origin X.Y.Z` -> validate -> pub.dev publish via OIDC -> GitHub Release with CHANGELOG-driven notes.
+
+### Fixed
+
+- **`start --cdp-port` ordering deadlock**: 0.0.1 scraped the VM Service URI before navigating Chrome, which deadlocked under DWDS (the URI emits only after a debugger client connects). Restructured the branch to wait for the "is being served at" log line, navigate Chrome to the served URL, then scrape. Three end-to-end Chrome / CDP automation issues fixed alongside: `--no-first-run` + `--no-default-browser-check` on the launch argv, `Page.navigate` now targets the page-level WebSocket from `/json` instead of the browser-level `/json/version`, automation-noise suppression flags added.
+- **`start --cdp-port=<non-int>`** now returns exit 1 with an actionable error instead of silently falling through to the non-CDP path.
+- **`stop`** no longer emits `Chrome SIGTERM sent...` unconditionally: the boolean from `Process.killPid` is checked and a `not delivered` warning surfaces when the signal could not land (process already gone, permission denied).
+- **`doctor` SDK gate** now tolerates beta channel strings like `3.30.0-1.0.pre` and missing trailing segments (`3.30`), matching `StartCommand.compareSemver` exactly so the doctor cannot flag a version the start command would accept.
+- **VM Service** retries once on the transient DWDS `WipError: Promise was collected` and on the stale-isolate sentinel from `callServiceExtension`, so a single device-target switch or DWDS hiccup does not surface to consumers.
+- **`install` consumer-wrapper detection** accepts both `bin/dispatcher.dart` (canonical post-rename) and `bin/artisan.dart` (legacy) as valid wrappers for auto-delegation. `InstallArtisanCommand.scaffoldInto` auto-triggers `PluginsRefreshCommand` in-process when `<root>/.artisan/plugins.json` exists so the codegen barrel does not get overwritten with an empty list.
+- **`bin/fsa` PID-aware lock recovery**: when a prior `./bin/fsa` invocation crashed mid-build the wrapper used to deadlock on `.artisan/.fsa.lock` for every subsequent run. The stub now reads the holder PID, verifies the process is still alive, and reclaims the lock when it is not.
+
 ### Known limitations
 
 - **MCP schema drift for `artisan_start`**: the hand-authored `_commandInputSchema('start')` at `lib/src/mcp/mcp_server.dart` does NOT advertise the new `--cdp-port` flag. The substrate dispatch still routes CLI args through correctly, but agents driving `artisan_start` via MCP cannot discover the flag from the schema. V1.x backlog: auto-derive the schema from `ArtisanCommand.signature` / `configure(ArgParser)` so it cannot drift.
-
-### Changed
-
-- **`publish.yml` triggers** narrowed to `push.tags` and `workflow_dispatch`. Removed the `release.types: [published]` trigger to avoid release/publish recursion (the workflow creates the release itself now). Tag-first flow: `git tag X.Y.Z && git push origin X.Y.Z` -> validate -> pub.dev publish via OIDC -> GitHub Release with CHANGELOG-driven notes.
 
 ## [0.0.1] - 2026-05-19
 
