@@ -10,29 +10,28 @@ import '../console/command_boot.dart';
 import '../helpers/config_editor.dart';
 import '../helpers/file_helper.dart';
 import '../stubs/stub_loader.dart';
+import 'make_fast_cli_command.dart';
 
-/// `consumer:scaffold` — write the canonical native Flutter consumer
-/// wrapper (`bin/artisan.dart` + `lib/app/_plugins.g.dart` + initial
-/// `lib/app/commands/_index.g.dart`) into the current project so
-/// `plugin:install`, `plugins:refresh`, `make:command`, and the dev-loop
-/// commands all integrate without manual bin edits.
+/// `install` — scaffold the canonical native Flutter consumer
+/// (`bin/dispatcher.dart` + `lib/app/_plugins.g.dart` + initial
+/// `lib/app/commands/_index.g.dart`) into the current project AND
+/// auto-chain `make:fast-cli` so `bin/fsa` lands in the same invocation.
 ///
 /// Idempotent: skips files that already exist; pass `--force` to
 /// overwrite.
 ///
-/// Magic-installed consumers already get an equivalent scaffold from
-/// `magic:install`; this command is the Magic-less alternative for native
-/// Flutter projects that consume artisan directly via
-/// `fluttersdk_artisan: path:` without taking a Magic dependency.
-class ConsumerScaffoldCommand extends ArtisanCommand {
+/// Magic-installed consumers reach the same canonical state by routing
+/// `magic:install` through this command in-process. Vanilla Flutter
+/// consumers use `dart run fluttersdk_artisan install` directly.
+final class InstallCommand extends ArtisanCommand {
   @override
-  String get signature => 'consumer:scaffold '
+  String get signature => 'install '
       '{--force : Overwrite files even when they already exist}';
 
   @override
   String get description =>
-      'Scaffold the canonical native Flutter consumer wrapper '
-      '(bin/artisan.dart + lib/app/_plugins.g.dart + lib/app/commands/_index.g.dart).';
+      'Scaffold the canonical Flutter consumer (bin/dispatcher.dart + barrels) '
+      'and install bin/fsa fast-CLI.';
 
   @override
   CommandBoot get boot => CommandBoot.none;
@@ -44,27 +43,36 @@ class ConsumerScaffoldCommand extends ArtisanCommand {
     return scaffoldInto(root: root, force: force, ctx: ctx);
   }
 
-  /// Testable entry point. Writes the 3 canonical files into [root] +
-  /// ensures `fluttersdk_artisan` is declared as a direct dependency in
-  /// `<root>/pubspec.yaml` (the codegen barrels import from it, so a
-  /// transitive resolution trips `depend_on_referenced_packages`).
+  /// Testable entry point. Writes the 3 canonical files into [root], injects
+  /// the `fluttersdk_artisan` pubspec dep (path-dep when package_config
+  /// resolves it locally, `any` otherwise), then chains to
+  /// `MakeFastCliCommand.scaffoldInto` so `bin/fsa` + `.gitignore` + AOT
+  /// bundle land in the same invocation.
   ///
-  /// Idempotent across all four steps:
-  /// - Each of the 3 file writes skips when the target already exists
-  ///   unless [force] is true.
-  /// - The pubspec dep injection is a no-op when `fluttersdk_artisan` is
-  ///   already listed under `dependencies:` (via `ConfigEditor`).
+  /// Idempotent across all phases:
+  /// - Each of the 3 file writes skips when the target already exists unless
+  ///   [force] is true.
+  /// - Pubspec dep injection is a no-op when `fluttersdk_artisan` is already
+  ///   listed under `dependencies:` (via `ConfigEditor`).
+  /// - The auto-chained `MakeFastCliCommand.scaffoldInto` is itself
+  ///   idempotent (per its docblock).
+  ///
+  /// Returns 0 on success, 1 on missing pubspec name, and propagates any
+  /// non-zero exit from the auto-chained `MakeFastCliCommand`.
   @visibleForTesting
   static Future<int> scaffoldInto({
     required String root,
     required bool force,
     required ArtisanContext ctx,
   }) async {
+    // 1. Read consumer name from pubspec.yaml. Without it the stub cannot
+    //    substitute the `{{ name }}` placeholder for the two `package:` imports
+    //    that wire the codegen barrels into the dispatcher.
     final consumerName = _readConsumerName(root);
     if (consumerName == null) {
       ctx.output.error(
         'Could not read `name:` from $root/pubspec.yaml. '
-        'Run `consumer:scaffold` from a Dart/Flutter project root.',
+        'Run `install` from a Dart/Flutter project root.',
       );
       return 1;
     }
@@ -72,20 +80,22 @@ class ConsumerScaffoldCommand extends ArtisanCommand {
     var wrote = 0;
     var skipped = 0;
 
-    // 1. bin/artisan.dart
-    final binPath = p.join(root, 'bin', 'artisan.dart');
-    if (_shouldWrite(binPath, force)) {
-      final raw = StubLoader.load('consumer_artisan_bin.dart');
+    // 2. bin/dispatcher.dart — canonical consumer wrapper rendered from the
+    //    `dispatcher.dart.stub` template with the consumer package name.
+    final dispatcherPath = p.join(root, 'bin', 'dispatcher.dart');
+    if (_shouldWrite(dispatcherPath, force)) {
+      final raw = StubLoader.load('dispatcher.dart');
       final rendered = StubLoader.replace(raw, {'name': consumerName});
-      FileHelper.writeFile(binPath, rendered);
-      ctx.output.success('Created: $binPath');
+      FileHelper.writeFile(dispatcherPath, rendered);
+      ctx.output.success('Created: $dispatcherPath');
       wrote++;
     } else {
-      ctx.output.info('Skipped (exists): $binPath');
+      ctx.output.info('Skipped (exists): $dispatcherPath');
       skipped++;
     }
 
-    // 2. lib/app/_plugins.g.dart
+    // 3. lib/app/_plugins.g.dart — initial empty barrel for the plugin
+    //    provider list. Regenerated by `plugin:install` / `plugins:refresh`.
     final pluginsGPath = p.join(root, 'lib', 'app', '_plugins.g.dart');
     if (_shouldWrite(pluginsGPath, force)) {
       final raw = StubLoader.load('consumer_plugins_g.dart');
@@ -97,7 +107,8 @@ class ConsumerScaffoldCommand extends ArtisanCommand {
       skipped++;
     }
 
-    // 3. lib/app/commands/_index.g.dart (initial empty list)
+    // 4. lib/app/commands/_index.g.dart — initial empty consumer command
+    //    list. Regenerated by `commands:refresh` / `make:command`.
     final indexPath = p.join(root, 'lib', 'app', 'commands', '_index.g.dart');
     if (_shouldWrite(indexPath, force)) {
       final raw = StubLoader.load('consumer_commands_index_initial.dart');
@@ -109,19 +120,16 @@ class ConsumerScaffoldCommand extends ArtisanCommand {
       skipped++;
     }
 
-    // 4. pubspec dep: the codegen barrels at (2) + (3) import from
-    //    `package:fluttersdk_artisan/artisan.dart`; without a direct dep
-    //    in the consumer's pubspec.yaml the analyzer flags every barrel
-    //    with `depend_on_referenced_packages`. Two routing modes:
+    // 5. pubspec dep injection. The codegen barrels at phases 3 + 4 import
+    //    from `package:fluttersdk_artisan/artisan.dart`; without a direct dep
+    //    in the consumer pubspec the analyzer flags every barrel with
+    //    `depend_on_referenced_packages`. Two routing modes:
     //    a. monorepo / path-dep workflow: read .dart_tool/package_config.json,
     //       find the artisan rootUri, inject as a path dep so the consumer
     //       pubspec resolves the same artisan checkout that already powers
-    //       the in-flight `dart run fluttersdk_artisan` invocation. Pinning
-    //       a SemVer here would force pub to fetch from pub.dev, which is
-    //       a different (often unpublished) artisan in dev.
-    //    b. pub.dev workflow (no package_config or artisan not yet
-    //       resolved): inject `fluttersdk_artisan: any` so pub solves it
-    //       transitively against whatever the parent plugin pins.
+    //       the in-flight `dart run fluttersdk_artisan` invocation.
+    //    b. pub.dev workflow (no package_config or artisan resolved from a
+    //       pub-cache absolute URI): inject `fluttersdk_artisan: any`.
     //    ConfigEditor is idempotent in both branches.
     final pubspecPath = p.join(root, 'pubspec.yaml');
     final relativeArtisan = _resolveArtisanRelativePath(root);
@@ -140,10 +148,27 @@ class ConsumerScaffoldCommand extends ArtisanCommand {
     }
 
     ctx.output.info(
-      'Consumer scaffold complete ($wrote written, $skipped skipped). '
-      'Next: add plugins via `plugin:install <name>` or write a command '
-      'with `make:command <Name>`.',
+      'Install scaffold complete ($wrote written, $skipped skipped). '
+      'Chaining make:fast-cli for bin/fsa setup.',
     );
+
+    // 6. Auto-chain make:fast-cli IN-PROCESS so a single `install` invocation
+    //    yields the full canonical state (dispatcher + barrels + pubspec dep
+    //    + bin/fsa + AOT bundle). Process-spawning here would lose stdout
+    //    sharing + cost ~3s startup; the static entry preserves both.
+    final fastCliExitCode = await MakeFastCliCommand.scaffoldInto(
+      root: root,
+      force: force,
+      ctx: ctx,
+    );
+    if (fastCliExitCode != 0) {
+      ctx.output.error(
+        'install: auto-chained make:fast-cli failed (exit $fastCliExitCode). '
+        'Re-run `make:fast-cli --force` after fixing the underlying issue.',
+      );
+      return fastCliExitCode;
+    }
+
     return 0;
   }
 
@@ -155,6 +180,9 @@ class ConsumerScaffoldCommand extends ArtisanCommand {
 
   /// Extracts the package name from `<root>/pubspec.yaml`. Returns null
   /// when the file is missing or has no `name:` line.
+  ///
+  /// Extraction to a shared helper deferred per the extract-when-third-caller
+  /// rule.
   static String? _readConsumerName(String root) {
     final pubspec = File(p.join(root, 'pubspec.yaml'));
     if (!pubspec.existsSync()) return null;
@@ -170,8 +198,9 @@ class ConsumerScaffoldCommand extends ArtisanCommand {
   /// `fluttersdk_artisan` entry, and rebases its `rootUri` (relative to
   /// `.dart_tool/`) onto [consumerRoot]. Returns null when the file is
   /// missing, malformed, or when artisan resolves to a pub-cache location
-  /// (which means the consumer is on a published-pub.dev workflow and the
-  /// caller should use a SemVer constraint instead of a path dep).
+  /// (in which case the caller falls back to a version-constraint dep).
+  ///
+  /// See `_readConsumerName` extraction rationale above.
   static String? _resolveArtisanRelativePath(String consumerRoot) {
     final configFile = File(
       p.join(consumerRoot, '.dart_tool', 'package_config.json'),
@@ -193,12 +222,12 @@ class ConsumerScaffoldCommand extends ArtisanCommand {
       if (entry['name'] != 'fluttersdk_artisan') continue;
       final rootUri = entry['rootUri'];
       if (rootUri is! String) return null;
-      // pub-cache resolutions start with `file://` absolute paths to the
-      // hosted-cache layout; we only want path-dep workflows here.
+      // Pub-cache resolutions start with `file://` absolute URIs; only
+      // path-dep workflows yield a relative rootUri suitable for a path: dep.
       if (rootUri.startsWith('file://')) return null;
       if (p.isAbsolute(rootUri)) return null;
       // rootUri is relative to .dart_tool/ inside the consumer; rebase to
-      // be relative to the consumer's pubspec.yaml location instead.
+      // be relative to the consumer's pubspec.yaml location.
       final absolute = p.normalize(
         p.join(consumerRoot, '.dart_tool', rootUri),
       );

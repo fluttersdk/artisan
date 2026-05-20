@@ -9,8 +9,9 @@ import '../commands/hot_restart_command.dart';
 import '../commands/list_command.dart';
 import '../commands/logs_command.dart';
 import '../commands/make_command_command.dart';
+import '../commands/make_fast_cli_command.dart';
 import '../commands/make_plugin_command.dart';
-import '../commands/consumer_scaffold_command.dart';
+import '../commands/install_command.dart';
 import '../commands/mcp_install_command.dart';
 import '../commands/mcp_serve_command.dart';
 import '../commands/mcp_uninstall_command.dart';
@@ -172,12 +173,13 @@ List<ArtisanCommand> _builtinCommands(ArtisanRegistry registry) =>
       ListCommand(registry),
       HelpCommand(registry),
       MakeCommandCommand(),
+      MakeFastCliCommand(),
       MakePluginCommand(),
       CommandsRefreshCommand(),
       PluginsRefreshCommand(),
       PluginInstallCommand(),
       PluginUninstallCommand(),
-      ConsumerScaffoldCommand(),
+      InstallCommand(),
       TinkerCommand(),
       McpServeCommand(),
       McpInstallCommand(),

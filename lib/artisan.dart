@@ -58,6 +58,7 @@ export 'src/commands/commands_refresh_command.dart';
 export 'src/commands/doctor_command.dart';
 export 'src/commands/help_command.dart';
 export 'src/commands/hot_restart_command.dart';
+export 'src/commands/install_command.dart' show InstallCommand;
 export 'src/commands/list_command.dart';
 export 'src/commands/mcp_install_command.dart';
 export 'src/commands/mcp_uninstall_command.dart';

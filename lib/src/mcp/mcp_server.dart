@@ -337,7 +337,7 @@ final class McpServer extends MCPServer with ToolsSupport {
   /// Walks the registry's command list and emits an [McpToolDescriptor] for
   /// every command in [_safeArtisanCommandNames]. The allowlist excludes
   /// interactive (`tinker`, `help`), codegen (`make:*`, `*:refresh`), MCP
-  /// meta (`mcp:*`), installer (`plugin:*`, `consumer:scaffold`) commands
+  /// meta (`mcp:*`), installer (`plugin:*`, `install`) commands
   /// that either need a TTY or recurse into the MCP server itself.
   ///
   /// Tool names are normalized from `cmd:name` to `cmd_name` because MCP
@@ -741,7 +741,7 @@ const String _artisanDispatchPrefix = 'artisan:';
 
 /// Substrate commands the MCP server exposes as tools by default. The
 /// allowlist intentionally excludes codegen (`make:*`, `*:refresh`),
-/// installer (`plugin:*`, `consumer:scaffold`), and MCP meta (`mcp:*`)
+/// installer (`plugin:*`, `install`), and MCP meta (`mcp:*`)
 /// commands because they either mutate source on disk in ways better served
 /// by the client's own file tools, or recurse into the MCP server itself.
 ///

@@ -168,7 +168,7 @@ class PluginInstallCommand extends ArtisanInstallCommand {
     //     bin/artisan.dart injection: write directly to .artisan/plugins.json
     //     and refresh _plugins.g.dart. This is the Magic-less parallel of
     //     the manifest-flow `_registerArtisanProvider` step, working purely
-    //     against the canonical scaffold from `consumer:scaffold`.
+    //     against the canonical scaffold from `install`.
     if (File(p.join(root, 'lib', 'app', '_plugins.g.dart')).existsSync()) {
       await _registerArtisanProvider(ctx, name: name);
       ctx.output.success(
