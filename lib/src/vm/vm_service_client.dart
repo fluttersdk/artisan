@@ -81,6 +81,22 @@ class VmServiceClient {
         args: params,
       );
       return resp.json as T;
+    } on vm.RPCError catch (e) {
+      // DWDS surfaces transient "WipError -32000 Promise was collected"
+      // errors when a Chrome eval Promise gets GC'd before resolution
+      // (happens during sustained MCP traffic against a Flutter Web
+      // app). RPCError wraps DWDS errors with code -32603 + the WipError
+      // string in the message. Retry ONCE on this exact shape; surface
+      // every other RPCError unchanged.
+      final isWipPromiseCollected =
+          e.code == -32603 && e.message.contains('Promise was collected');
+      if (!isWipPromiseCollected) rethrow;
+      final resp = await s.callServiceExtension(
+        method,
+        isolateId: isolateId,
+        args: params,
+      );
+      return resp.json as T;
     } on vm.SentinelException catch (e) {
       // Sentinel almost always means "isolate gone". Refresh once and try
       // again; if the id has not actually changed, the sentinel is
