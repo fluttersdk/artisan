@@ -22,6 +22,7 @@ import 'package:meta/meta.dart';
 ///   device UDID)
 /// - `chromePid` (int | null, D6 Chrome capture outcome)
 /// - `tmpProfileDir` (string | null, D6 Chrome capture outcome)
+/// - `cdpPort` (int | null, --cdp-port value passed to start; null when CDP not enabled)
 class StateFile {
   StateFile._();
 

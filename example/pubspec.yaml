@@ -36,7 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   fluttersdk_artisan:
-    path: ../
+    path: ..
 
   awesome_plugin:
     path: ./packages/awesome_plugin

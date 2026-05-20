@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:meta/meta.dart';
+
 import '../console/artisan_command.dart';
 import '../console/artisan_context.dart';
 import '../console/command_boot.dart';
@@ -11,6 +13,18 @@ const _staleMcpWarning =
     'WARN: Stale MCP entry detected. Pre-upgrade .mcp.json points at the '
     'removed fluttersdk_mcp package. Run: dart run fluttersdk_artisan:artisan '
     'mcp:install';
+
+/// Minimum Flutter SDK version required for the WebSocket hot reload fix that
+/// enables CDP commands (flutter/flutter#170612).
+const _minSdkVersion = '3.30.0';
+
+/// Advisory warning emitted when the detected Flutter SDK is older than
+/// [_minSdkVersion]. Instructs the user to run `flutter upgrade`.
+const _cdpUpgradeWarning =
+    'WARN: Flutter SDK is older than $_minSdkVersion. CDP commands '
+    '(dusk:resize, dusk:device, artisan start --cdp-port) require the '
+    'WebSocket hot reload fix from flutter/flutter#170612. '
+    'Run `flutter upgrade` and re-check.';
 
 /// Runs environment preflight checks (artisan toolchain).
 class DoctorCommand extends ArtisanCommand {
@@ -38,6 +52,24 @@ class DoctorCommand extends ArtisanCommand {
   @override
   CommandBoot get boot => CommandBoot.none;
 
+  /// Test seam: swap this to inject a fake [ProcessResult] in unit tests.
+  ///
+  /// Production code keeps the default ([Process.run]). Tests replace it with
+  /// a closure that returns a pre-built [ProcessResult] without spawning a
+  /// real process.
+  @visibleForTesting
+  static Future<ProcessResult> Function(String, List<String>)
+      doctorFlutterRunner = Process.run;
+
+  /// Exposes [_cdpUpgradeWarning] for assertion in unit tests.
+  @visibleForTesting
+  static String get cdpUpgradeWarningForTest => _cdpUpgradeWarning;
+
+  /// Exposes [_checkFlutterSdkVersion] for direct invocation in unit tests.
+  @visibleForTesting
+  static Future<bool> checkFlutterSdkVersionForTest() =>
+      _checkFlutterSdkVersion();
+
   @override
   Future<int> handle(ArtisanContext ctx) async {
     // 1. Run hard preflight checks.
@@ -45,6 +77,8 @@ class DoctorCommand extends ArtisanCommand {
       _Check('flutter --version', _checkFlutter),
       _Check('dart --version', _checkDart),
       _Check('port 3100 free', _checkPort3100),
+      _Check('flutter sdk >= $_minSdkVersion (for --cdp-port)',
+          _checkFlutterSdkVersion),
     ];
     var allPass = true;
     for (final c in checks) {
@@ -55,6 +89,9 @@ class DoctorCommand extends ArtisanCommand {
 
     // 2. Advisory: warn if .mcp.json still targets the removed fluttersdk_mcp.
     _checkStaleMcpJson(_workingDir ?? Directory.current.path, ctx);
+
+    // 3. Advisory: warn when Flutter SDK is too old for CDP commands.
+    await _checkCdpReadiness(ctx);
 
     return allPass ? 0 : 1;
   }
@@ -87,6 +124,74 @@ class DoctorCommand extends ArtisanCommand {
         return;
       }
     }
+  }
+
+  /// Emits [_cdpUpgradeWarning] to [ctx] when [_checkFlutterSdkVersion]
+  /// returns false. Advisory only; never influences the exit code.
+  static Future<void> _checkCdpReadiness(ArtisanContext ctx) async {
+    final sdkOk = await _checkFlutterSdkVersion();
+    if (!sdkOk) {
+      ctx.output.writeln(_cdpUpgradeWarning);
+    }
+  }
+
+  /// Returns true when the installed Flutter SDK is at or above
+  /// [_minSdkVersion], false otherwise.
+  ///
+  /// Runs `flutter --version --machine` and parses `frameworkVersion` from the
+  /// JSON output. On parse failure or when `flutter` is not found, returns
+  /// false so the check label surfaces the issue to the user.
+  static Future<bool> _checkFlutterSdkVersion() async {
+    try {
+      final r = await doctorFlutterRunner(
+          'flutter', <String>['--version', '--machine']);
+      if (r.exitCode != 0) return false;
+
+      final Map<String, dynamic> json;
+      try {
+        json = jsonDecode(r.stdout as String) as Map<String, dynamic>;
+      } catch (_) {
+        return false;
+      }
+
+      final version = json['frameworkVersion'];
+      if (version is! String) return false;
+
+      return _isSdkVersionSufficient(version, _minSdkVersion);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Compares two three-segment semver strings (e.g. "3.30.0") numerically.
+  ///
+  /// Returns true when [detected] is greater than or equal to [minimum].
+  /// Malformed version strings (fewer than 3 segments or non-numeric segments)
+  /// return false.
+  static bool _isSdkVersionSufficient(String detected, String minimum) {
+    final detectedParts = _parseVersion(detected);
+    final minimumParts = _parseVersion(minimum);
+    if (detectedParts == null || minimumParts == null) return false;
+
+    for (var i = 0; i < 3; i++) {
+      if (detectedParts[i] > minimumParts[i]) return true;
+      if (detectedParts[i] < minimumParts[i]) return false;
+    }
+    return true; // equal
+  }
+
+  /// Parses a three-segment semver string into an integer list, or returns
+  /// null when the string does not conform to `major.minor.patch`.
+  static List<int>? _parseVersion(String version) {
+    final parts = version.split('.');
+    if (parts.length != 3) return null;
+    final segments = <int>[];
+    for (final part in parts) {
+      final n = int.tryParse(part);
+      if (n == null) return null;
+      segments.add(n);
+    }
+    return segments;
   }
 
   static Future<bool> _checkFlutter() async {
