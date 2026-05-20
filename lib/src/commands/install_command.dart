@@ -23,7 +23,7 @@ import 'plugins_refresh_command.dart';
 /// Magic-installed consumers reach the same canonical state by routing
 /// `magic:install` through this command in-process. Vanilla Flutter
 /// consumers use `dart run fluttersdk_artisan install` directly.
-final class InstallCommand extends ArtisanCommand {
+final class InstallArtisanCommand extends ArtisanCommand {
   @override
   String get signature => 'install '
       '{--force : Overwrite files even when they already exist}';
@@ -58,7 +58,7 @@ final class InstallCommand extends ArtisanCommand {
   ///   idempotent (per its docblock).
   ///
   /// Called by both the `install` CLI entry (via [handle]) and by
-  /// `MagicInstallCommand.delegateArtisanInstall` (cross-package composition
+  /// `MagicInstallArtisanCommand.delegateArtisanInstall` (cross-package composition
   /// in the magic-managed install flow). The previous `@visibleForTesting`
   /// gate was lifted, mirroring `MakeFastCliCommand.scaffoldInto`, so
   /// cross-command production composition does not trip

@@ -195,7 +195,7 @@ List<ArtisanCommand> _builtinCommands(ArtisanRegistry registry) =>
       PluginsRefreshCommand(),
       PluginInstallCommand(),
       PluginUninstallCommand(),
-      InstallCommand(),
+      InstallArtisanCommand(),
       TinkerCommand(),
       McpServeCommand(),
       McpInstallCommand(),

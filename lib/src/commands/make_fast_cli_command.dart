@@ -63,7 +63,7 @@ final class MakeFastCliCommand extends ArtisanCommand {
   ///   [force] is false (stamp is written only on first compile).
   ///
   /// Public composition seam: called by both the `make:fast-cli` CLI entry
-  /// (via [handle]) and by `InstallCommand.scaffoldInto` (auto-chain at the
+  /// (via [handle]) and by `InstallArtisanCommand.scaffoldInto` (auto-chain at the
   /// end of the canonical `install` flow). The previous `@visibleForTesting`
   /// gate was lifted so cross-command production composition does not trip
   /// `invalid_use_of_visible_for_testing_member`.
