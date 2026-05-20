@@ -191,7 +191,17 @@ class StartCommand extends ArtisanCommand {
     final profileStatic =
         (ctx.input.option('profile-static') as bool?) ?? false;
     final cdpPortRaw = ctx.input.option('cdp-port') as String?;
-    final cdpPort = cdpPortRaw != null ? int.tryParse(cdpPortRaw) : null;
+    int? cdpPort;
+    if (cdpPortRaw != null) {
+      cdpPort = int.tryParse(cdpPortRaw);
+      if (cdpPort == null) {
+        ctx.output.error(
+          '--cdp-port expects an integer port number, got "$cdpPortRaw". '
+          'Pass e.g. --cdp-port=9223.',
+        );
+        return 1;
+      }
+    }
 
     if (cdpPort != null) {
       return await _handleCdpBranch(

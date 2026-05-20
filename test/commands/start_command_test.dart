@@ -226,6 +226,30 @@ void main() {
       }
     });
 
+    test(
+        'rejects non-integer --cdp-port value: exit 1 + actionable error '
+        '(no silent fallback to the default flow)', () async {
+      final command = StartCommand();
+      final output = BufferedOutput();
+      final ctx = ArtisanContext.bare(
+        MapInput(<String, dynamic>{
+          'device': 'chrome',
+          'port': '3100',
+          'dds': false,
+          'profile-static': false,
+          'cdp-port': 'abc',
+        }),
+        output,
+      );
+
+      final code = await command.handle(ctx);
+
+      expect(code, 1);
+      expect(output.content,
+          contains('--cdp-port expects an integer port number, got "abc"'));
+      expect(output.content, contains('--cdp-port=9223'));
+    });
+
     test('rejects --device=macos with --cdp-port: exit 1 + reject-device error',
         () async {
       final command = StartCommand();
