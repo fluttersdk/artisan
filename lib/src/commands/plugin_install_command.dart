@@ -136,12 +136,14 @@ class PluginInstallCommand extends ArtisanInstallCommand {
       return 1;
     }
 
-    // 2. Run the shared pre-flight (pubspec dep + package_config + wrapper
-    //    presence). Both branches need the wrapper present.
+    // 2. Run the shared pre-flight (pubspec dep + package_config). The
+    //    legacy bin/artisan.dart presence check used to live here too, but
+    //    that blocked plugin:install in canonical-scaffold projects (which
+    //    ship bin/dispatcher.dart and never touch the legacy filename); it
+    //    now runs inside the legacy-flow branch only.
     final root = getProjectRoot();
     final wrapperPath = p.join(root, 'bin', 'artisan.dart');
-    final preflight =
-        _preflight(ctx, root: root, name: name, wrapperPath: wrapperPath);
+    final preflight = _preflight(ctx, root: root, name: name);
     if (preflight != 0) return preflight;
 
     // 3. Resolve the plugin's install.yaml. When found, route to the
@@ -198,27 +200,8 @@ class PluginInstallCommand extends ArtisanInstallCommand {
     ArtisanContext ctx, {
     required String root,
     required String name,
-    required String wrapperPath,
   }) {
-    // 1. Wrapper presence. The legacy mode-3 flow injects directly into
-    //    the literal `bin/artisan.dart` file (kept for backward
-    //    compatibility); the canonical-scaffold path (handled later in
-    //    `handle`) writes to `.artisan/plugins.json` + regenerates
-    //    `lib/app/_plugins.g.dart` and does not need this file. The
-    //    pre-flight remains gated on the legacy filename because the
-    //    routing decision happens AFTER pre-flight runs.
-    if (!File(wrapperPath).existsSync()) {
-      ctx.output.error(
-        'No consumer wrapper found at $wrapperPath. '
-        'Run `dart run fluttersdk_artisan install` to scaffold the '
-        'canonical wrapper (bin/dispatcher.dart). The legacy mode-3 '
-        'plugin:install flow targets the historical bin/artisan.dart '
-        'filename specifically.',
-      );
-      return 1;
-    }
-
-    // 2. Pubspec dep check, saves the user from a confusing import error.
+    // 1. Pubspec dep check, saves the user from a confusing import error.
     final pubspecPath = p.join(root, 'pubspec.yaml');
     if (File(pubspecPath).existsSync()) {
       final pubspec = File(pubspecPath).readAsStringSync();
@@ -231,7 +214,7 @@ class PluginInstallCommand extends ArtisanInstallCommand {
       }
     }
 
-    // 3. Package resolvable in package_config.json.
+    // 2. Package resolvable in package_config.json.
     final packageConfig = File(
       p.join(root, '.dart_tool', 'package_config.json'),
     );
@@ -371,6 +354,21 @@ class PluginInstallCommand extends ArtisanInstallCommand {
     required String name,
     required String wrapperPath,
   }) async {
+    // 0. Legacy injection writes directly to the literal bin/artisan.dart
+    //    file; it cannot run without that wrapper on disk. The canonical
+    //    scaffold path branches off before reaching here so this check
+    //    only blocks the legacy fallback (never the dispatcher-based flows).
+    if (!File(wrapperPath).existsSync()) {
+      ctx.output.error(
+        'No consumer wrapper found at $wrapperPath. '
+        'Run `dart run fluttersdk_artisan install` to scaffold the '
+        'canonical wrapper (bin/dispatcher.dart) plus '
+        '`lib/app/_plugins.g.dart`; plugin:install will then route through '
+        'the canonical-scaffold path instead of the legacy injection.',
+      );
+      return 1;
+    }
+
     final providerOverride = ctx.input.option('provider') as String?;
     final bootstrapOverride = ctx.input.option('bootstrap-command') as String?;
 
