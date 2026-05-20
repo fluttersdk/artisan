@@ -2,7 +2,7 @@
 
 Authoritative source: `lib/src/commands/*_command.dart`. Six DSL commands declare `String get signature`; five declare `configure(ArgParser parser)` with at least one flag; ten have no flag surface. The boot mode column reflects `CommandBoot boot` getter on each class.
 
-Invocation form throughout: `dart run artisan <cmd>` (in a consumer with `bin/artisan.dart`) or `dart run fluttersdk_artisan <cmd>` (direct).
+Invocation form throughout: `dart run artisan <cmd>` (in a consumer with `bin/dispatcher.dart`) or `dart run fluttersdk_artisan <cmd>` (direct).
 
 ## Lifecycle (7)
 
@@ -108,7 +108,7 @@ dart run artisan make:plugin my_logger --path=/workspace/plugins/my_logger
 
 `lib/src/commands/make_command_command.dart:32` (no signature DSL; uses configure)
 
-Context-aware. In a consumer (lib/app/ + bin/artisan.dart): writes to `lib/app/commands/<name>_command.dart`, refreshes the index barrel. In a plugin (`lib/src/<name>_artisan_provider.dart` at root): writes to `lib/src/commands/`, injects import + registration into the nearest provider class.
+Context-aware. In a consumer (lib/app/ + bin/dispatcher.dart): writes to `lib/app/commands/<name>_command.dart`, refreshes the index barrel. In a plugin (`lib/src/<name>_artisan_provider.dart` at root): writes to `lib/src/commands/`, injects import + registration into the nearest provider class.
 
 Name normalization is idempotent: `Hello` becomes `HelloCommand`, `HelloCommand` stays `HelloCommand`. The signature also strips the trailing `-command` from the kebab form, so the user invokes `hello`, not `hello-command`.
 
@@ -117,19 +117,19 @@ dart run artisan make:command Greet
 dart run artisan make:command Admin/UserSync     # produces admin:user-sync
 ```
 
-### `consumer:scaffold`
+### `install`
 
-`lib/src/commands/consumer_scaffold_command.dart:27` (signature DSL at line 29)
+`lib/src/commands/install_command.dart:27` (signature DSL at line 29)
 
 Writes the canonical Magic-free consumer wrapper.
 
-Signature: `consumer:scaffold {--force}`
+Signature: `install {--force}`
 
 Three files produced (skipped when present unless `--force`):
 
 | File | Purpose |
 |------|---------|
-| `bin/artisan.dart` | Consumer entry calling `runArtisan(...)` |
+| `bin/dispatcher.dart` | Consumer entry calling `runArtisan(...)` |
 | `lib/app/_plugins.g.dart` | Empty plugin provider barrel |
 | `lib/app/commands/_index.g.dart` | Empty command index |
 

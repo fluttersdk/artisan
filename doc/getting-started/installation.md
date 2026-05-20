@@ -47,7 +47,7 @@ dart pub get
 After installing the package, run the scaffold command to create the canonical consumer wrapper in your project:
 
 ```bash
-dart run fluttersdk_artisan consumer:scaffold
+dart run fluttersdk_artisan install
 ```
 
 This command writes three files into your project:
@@ -61,12 +61,12 @@ This command writes three files into your project:
 The command is idempotent: re-running it skips files that already exist. Pass `--force` to overwrite:
 
 ```bash
-dart run fluttersdk_artisan consumer:scaffold --force
+dart run fluttersdk_artisan install --force
 ```
 
 ### Dependency injection into pubspec.yaml
 
-`consumer:scaffold` also ensures `fluttersdk_artisan` is listed as a direct dependency in your `pubspec.yaml`. The generated barrel files at `lib/app/_plugins.g.dart` and `lib/app/commands/_index.g.dart` import from `package:fluttersdk_artisan/artisan.dart`, so the analyzer requires a direct dep to pass `depend_on_referenced_packages`.
+`install` also ensures `fluttersdk_artisan` is listed as a direct dependency in your `pubspec.yaml`. The generated barrel files at `lib/app/_plugins.g.dart` and `lib/app/commands/_index.g.dart` import from `package:fluttersdk_artisan/artisan.dart`, so the analyzer requires a direct dep to pass `depend_on_referenced_packages`.
 
 The injection is automatic and follows two modes:
 
@@ -89,7 +89,7 @@ The output lists all registered commands grouped by namespace. A fresh scaffold 
 | (root)    | `help`, `list` |
 | `artisan` | `start`, `stop`, `status`, `logs`, `restart`, `reload`, `hot-restart`, `doctor` |
 | `commands` | `commands:refresh` |
-| `consumer` | `consumer:scaffold` |
+| (root)    | `install` |
 | `make` | `make:command`, `make:plugin` |
 | `mcp` | `mcp:serve`, `mcp:install`, `mcp:uninstall` |
 | `plugin` | `plugin:install`, `plugin:uninstall` |

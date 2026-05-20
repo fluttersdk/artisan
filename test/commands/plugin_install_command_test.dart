@@ -299,6 +299,95 @@ void main() {
       expect(out, contains('[ERROR]'));
       expect(out, contains('not listed in pubspec.yaml'));
     });
+
+    test(
+        'canonical-scaffold projects (lib/app/_plugins.g.dart present, no '
+        'bin/artisan.dart) register via plugins.json without tripping the '
+        'legacy wrapper preflight', () async {
+      final root =
+          Directory.systemTemp.createTempSync('plinst_canonical_no_wrapper_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      // Seed pubspec + package_config (preflight rows 1 + 2), the canonical
+      // scaffold barrel, and explicitly OMIT bin/artisan.dart. Pre-fix this
+      // setup returned exit 1 from the legacy-wrapper preflight gate.
+      File(p.join(root.path, 'pubspec.yaml')).writeAsStringSync(
+        'name: consumer\n'
+        'dependencies:\n'
+        '  magic_logger: ^1.0.0\n',
+      );
+      Directory(p.join(root.path, '.dart_tool')).createSync(recursive: true);
+      File(p.join(root.path, '.dart_tool', 'package_config.json'))
+          .writeAsStringSync('{"packages":[{"name": "magic_logger"}]}\n');
+      Directory(p.join(root.path, 'lib', 'app')).createSync(recursive: true);
+      File(p.join(root.path, 'lib', 'app', '_plugins.g.dart'))
+          .writeAsStringSync(
+        '// GENERATED\nfinal providers = <Object>[];\n',
+      );
+
+      final cmd = _TestablePluginInstallCommand(fakeProjectRoot: root.path);
+      final ctx = _ctxWith(
+        const <String, dynamic>{
+          'force': false,
+          'no-bootstrap': false,
+          'dry-run': false,
+          'non-interactive': false,
+          'use-yaml-only': false,
+          'bootstrap-command': null,
+          'provider': null,
+        },
+        positional: const ['magic_logger'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0);
+      final out = (ctx.output as BufferedOutput).content;
+      expect(out, contains('canonical scaffold'));
+      expect(File(p.join(root.path, '.artisan', 'plugins.json')).existsSync(),
+          isTrue);
+    });
+
+    test(
+        'legacy injection rejects projects with no bin/artisan.dart AND no '
+        'canonical scaffold (preflight moved into the legacy branch only)',
+        () async {
+      final root =
+          Directory.systemTemp.createTempSync('plinst_no_wrapper_legacy_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      // Seed only the preflight prerequisites; no canonical scaffold, no
+      // bin/artisan.dart. Only the legacy flow runs, and it must error.
+      File(p.join(root.path, 'pubspec.yaml')).writeAsStringSync(
+        'name: consumer\n'
+        'dependencies:\n'
+        '  magic_logger: ^1.0.0\n',
+      );
+      Directory(p.join(root.path, '.dart_tool')).createSync(recursive: true);
+      File(p.join(root.path, '.dart_tool', 'package_config.json'))
+          .writeAsStringSync('{"packages":[{"name": "magic_logger"}]}\n');
+
+      final cmd = _TestablePluginInstallCommand(fakeProjectRoot: root.path);
+      final ctx = _ctxWith(
+        const <String, dynamic>{
+          'force': false,
+          'no-bootstrap': false,
+          'dry-run': false,
+          'non-interactive': false,
+          'use-yaml-only': false,
+          'bootstrap-command': null,
+          'provider': null,
+        },
+        positional: const ['magic_logger'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 1);
+      final out = (ctx.output as BufferedOutput).content;
+      expect(out, contains('No consumer wrapper found'));
+      expect(out, contains('install'));
+    });
   });
 
   group('PluginInstallCommand — install.yaml branch', () {

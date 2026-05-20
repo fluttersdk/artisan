@@ -144,7 +144,7 @@ lazy-reconnects on first call. Their filter package name is `fluttersdk_artisan`
 | `artisan_tinker` | `tinker` |
 
 Excluded from the substrate allowlist: `help`, `make:*`, `*:refresh`, `mcp:*`,
-`plugin:*`, `consumer:scaffold`. These require a TTY, mutate source on disk, or
+`plugin:*`, `install`. These require a TTY, mutate source on disk, or
 recurse into the server itself (source: `mcp_server.dart:744-755`).
 
 **Plugin tools:** contributed via `ArtisanServiceProvider.mcpTools()` on each

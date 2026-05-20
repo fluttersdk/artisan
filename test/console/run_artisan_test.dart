@@ -1,10 +1,12 @@
+import 'dart:io';
+
 import 'package:fluttersdk_artisan/artisan.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 void main() {
   group('runArtisan delegation', () {
-    test('delegates to consumer wrapper when bin/artisan.dart exists',
-        () async {
+    test('delegates to consumer wrapper when the wrapper exists', () async {
       var delegateCalled = false;
       List<String>? receivedArgs;
 
@@ -152,6 +154,52 @@ void main() {
       );
 
       expect(code, 0);
+    });
+  });
+
+  group('defaultConsumerWrapperExists', () {
+    // Post-rename to bin/dispatcher.dart, the default wrapper-presence helper
+    // must accept BOTH the legacy bin/artisan.dart name (still used by
+    // hand-curated wrappers) AND the new canonical bin/dispatcher.dart name
+    // (emitted by `dart run fluttersdk_artisan install`). Either filename
+    // qualifies the consumer for auto-delegation.
+
+    late Directory tempRoot;
+
+    setUp(() {
+      tempRoot = Directory.systemTemp.createTempSync('default_wrapper_');
+      Directory(p.join(tempRoot.path, 'bin')).createSync(recursive: true);
+    });
+
+    tearDown(() {
+      if (tempRoot.existsSync()) tempRoot.deleteSync(recursive: true);
+    });
+
+    test('returns true when bin/dispatcher.dart is present', () {
+      File(p.join(tempRoot.path, 'bin', 'dispatcher.dart'))
+          .writeAsStringSync('void main() {}\n');
+
+      expect(defaultConsumerWrapperExists(cwd: tempRoot.path), isTrue);
+    });
+
+    test('returns true when bin/artisan.dart is present (legacy filename)', () {
+      File(p.join(tempRoot.path, 'bin', 'artisan.dart'))
+          .writeAsStringSync('void main() {}\n');
+
+      expect(defaultConsumerWrapperExists(cwd: tempRoot.path), isTrue);
+    });
+
+    test('returns true when both wrappers are present', () {
+      File(p.join(tempRoot.path, 'bin', 'dispatcher.dart'))
+          .writeAsStringSync('void main() {}\n');
+      File(p.join(tempRoot.path, 'bin', 'artisan.dart'))
+          .writeAsStringSync('void main() {}\n');
+
+      expect(defaultConsumerWrapperExists(cwd: tempRoot.path), isTrue);
+    });
+
+    test('returns false when neither wrapper is present', () {
+      expect(defaultConsumerWrapperExists(cwd: tempRoot.path), isFalse);
     });
   });
 

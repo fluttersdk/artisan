@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:fluttersdk_artisan/artisan.dart';
@@ -40,11 +41,16 @@ void main() {
 
       await command.handle(ctx);
 
-      final lines = output.content.trim().split('\n');
-      expect(lines, hasLength(3));
-      for (final line in lines) {
-        expect(line.trim(), anyOf(startsWith('✓'), startsWith('✗')));
-      }
+      // Doctor can emit advisory warning lines (stale .mcp.json, CDP SDK
+      // upgrade) that do not start with ✓/✗; filter to the check rows only
+      // and assert against those. The four hard checks must always show up.
+      final checkLines = output.content
+          .trim()
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.startsWith('✓') || l.startsWith('✗'))
+          .toList();
+      expect(checkLines, hasLength(4));
     });
 
     test('runs end-to-end without throwing', () async {
@@ -160,6 +166,120 @@ void main() {
         );
 
         expect(codeWithStale, equals(codeWithoutStale));
+      });
+    });
+
+    // -------------------------------------------------------------------------
+    // Flutter SDK version check
+    // -------------------------------------------------------------------------
+
+    group('_checkFlutterSdkVersion', () {
+      /// Builds a fake [ProcessResult] with the given frameworkVersion in JSON.
+      ProcessResult fakeVersionResult(String version) => ProcessResult(
+            0,
+            0,
+            jsonEncode({'frameworkVersion': version}),
+            '',
+          );
+
+      setUp(() {
+        // Reset to real runner after each test.
+        addTearDown(
+          () => DoctorCommand.doctorFlutterRunner =
+              (exe, args) => Process.run(exe, args),
+        );
+      });
+
+      test('version 3.30.0 returns true (exactly at minimum)', () async {
+        DoctorCommand.doctorFlutterRunner =
+            (_, __) async => fakeVersionResult('3.30.0');
+
+        final result = await DoctorCommand.checkFlutterSdkVersionForTest();
+
+        expect(result, isTrue);
+      });
+
+      test('version 3.29.0 returns false (below minimum)', () async {
+        DoctorCommand.doctorFlutterRunner =
+            (_, __) async => fakeVersionResult('3.29.0');
+
+        final result = await DoctorCommand.checkFlutterSdkVersionForTest();
+
+        expect(result, isFalse);
+      });
+
+      test('version 4.0.0 returns true (above minimum)', () async {
+        DoctorCommand.doctorFlutterRunner =
+            (_, __) async => fakeVersionResult('4.0.0');
+
+        final result = await DoctorCommand.checkFlutterSdkVersionForTest();
+
+        expect(result, isTrue);
+      });
+
+      test(
+          'beta channel string 3.30.0-1.0.pre is accepted (parser strips suffix '
+          'to stay aligned with StartCommand.compareSemver)', () async {
+        DoctorCommand.doctorFlutterRunner =
+            (_, __) async => fakeVersionResult('3.30.0-1.0.pre');
+
+        final result = await DoctorCommand.checkFlutterSdkVersionForTest();
+
+        expect(result, isTrue);
+      });
+
+      test('malformed JSON output returns false (graceful parse failure)',
+          () async {
+        DoctorCommand.doctorFlutterRunner =
+            (_, __) async => ProcessResult(0, 0, 'not-json-at-all', '');
+
+        final result = await DoctorCommand.checkFlutterSdkVersionForTest();
+
+        expect(result, isFalse);
+      });
+
+      test('flutter binary missing (exception thrown) returns false', () async {
+        DoctorCommand.doctorFlutterRunner = (_, __) async =>
+            throw ProcessException('flutter', ['--version', '--machine'],
+                'No such file or directory', 2);
+
+        final result = await DoctorCommand.checkFlutterSdkVersionForTest();
+
+        expect(result, isFalse);
+      });
+
+      test(
+          'when SDK check fails, doctor exit code is 1 and upgrade warning is emitted',
+          () async {
+        // Inject a runner that pretends flutter version is below minimum.
+        DoctorCommand.doctorFlutterRunner =
+            (_, __) async => fakeVersionResult('3.10.0');
+
+        final output = BufferedOutput();
+        final ctx = ArtisanContext.bare(MapInput(const {}), output);
+        final command = DoctorCommand(workingDir: Directory.systemTemp.path);
+
+        final code = await command.handle(ctx);
+
+        expect(code, equals(1));
+        expect(
+            output.content, contains(DoctorCommand.cdpUpgradeWarningForTest));
+      });
+
+      test('when SDK check passes, no upgrade warning is emitted', () async {
+        DoctorCommand.doctorFlutterRunner =
+            (_, __) async => fakeVersionResult('3.30.0');
+
+        final output = BufferedOutput();
+        final ctx = ArtisanContext.bare(MapInput(const {}), output);
+        final command = DoctorCommand(workingDir: Directory.systemTemp.path);
+
+        await command.handle(ctx);
+
+        expect(
+          output.content,
+          isNot(contains(DoctorCommand.cdpUpgradeWarningForTest)),
+        );
       });
     });
   });

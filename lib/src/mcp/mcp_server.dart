@@ -147,6 +147,13 @@ final class McpServer extends MCPServer with ToolsSupport {
         final isolateId = await vmClient.getMainIsolateId();
         _vmClient = vmClient;
         _isolateId = isolateId;
+        // BUG #11 fix: when callServiceExtension's internal retry-on-sentinel
+        // discovers the cached isolate id is stale (hot-restart minted a new
+        // isolate), it refreshes via getMainIsolateId() and broadcasts the
+        // new id on onIsolateRefreshed. Update our cached _isolateId in
+        // place so subsequent dispatches use the fresh value without paying
+        // a getVM RPC per call.
+        vmClient.onIsolateRefreshed.listen((fresh) => _isolateId = fresh);
       } catch (e) {
         stderr.writeln(
           '[fluttersdk_artisan_mcp] VM Service connect failed: $e. '
@@ -319,6 +326,9 @@ final class McpServer extends MCPServer with ToolsSupport {
     final isolateId = await vmClient.getMainIsolateId();
     _vmClient = vmClient;
     _isolateId = isolateId;
+    // BUG #11 fix mirror of the initialize() path: keep the cached
+    // _isolateId in lock-step with the wrapper's own retry-driven refresh.
+    vmClient.onIsolateRefreshed.listen((fresh) => _isolateId = fresh);
     stderr.writeln(
       '[fluttersdk_artisan_mcp] lazy-connected to VM Service at $wsUri',
     );
@@ -327,7 +337,7 @@ final class McpServer extends MCPServer with ToolsSupport {
   /// Walks the registry's command list and emits an [McpToolDescriptor] for
   /// every command in [_safeArtisanCommandNames]. The allowlist excludes
   /// interactive (`tinker`, `help`), codegen (`make:*`, `*:refresh`), MCP
-  /// meta (`mcp:*`), installer (`plugin:*`, `consumer:scaffold`) commands
+  /// meta (`mcp:*`), installer (`plugin:*`, `install`) commands
   /// that either need a TTY or recurse into the MCP server itself.
   ///
   /// Tool names are normalized from `cmd:name` to `cmd_name` because MCP
@@ -731,7 +741,7 @@ const String _artisanDispatchPrefix = 'artisan:';
 
 /// Substrate commands the MCP server exposes as tools by default. The
 /// allowlist intentionally excludes codegen (`make:*`, `*:refresh`),
-/// installer (`plugin:*`, `consumer:scaffold`), and MCP meta (`mcp:*`)
+/// installer (`plugin:*`, `install`), and MCP meta (`mcp:*`)
 /// commands because they either mutate source on disk in ways better served
 /// by the client's own file tools, or recurse into the MCP server itself.
 ///

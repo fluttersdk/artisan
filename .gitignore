@@ -40,3 +40,4 @@ migrate_working_dir/
 # AI coding tools
 .ac/
 CLAUDE.local.md
+.sync-agents-cache.json

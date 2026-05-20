@@ -70,7 +70,7 @@ on first call.
 | `artisan_tinker` | `tinker` | Evaluate Dart expression in running app via VM Service. Maps to: tinker command. Requires running app (artisan_start first). |
 
 Commands intentionally excluded from the MCP allowlist: interactive commands (`help`),
-codegen commands (`make:*`, `*:refresh`), installer commands (`plugin:*`, `consumer:scaffold`), and
+codegen commands (`make:*`, `*:refresh`), installer commands (`plugin:*`, `install`), and
 MCP meta commands (`mcp:*`). They either require a TTY, mutate source files better handled by the
 client's own file tools, or recurse into the MCP server itself.
 

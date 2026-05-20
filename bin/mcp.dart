@@ -20,9 +20,10 @@ typedef RunArtisanFn = Future<int> Function(
 /// provider's MCP tool descriptors are collected into the [ArtisanRegistry]
 /// before the server starts, and forces `delegateToConsumer: false` so the
 /// substrate's complete builtin list (including `mcp:serve`) owns dispatch:
-/// the MCP entry NEVER delegates to a stale consumer `bin/artisan.dart`
-/// wrapper that may be missing `mcp:*` commands. The MCP server is the
-/// source of truth for its own dispatch surface.
+/// the MCP entry NEVER delegates to a stale consumer wrapper (whether
+/// `bin/dispatcher.dart` or the legacy `bin/artisan.dart`) that may be
+/// missing `mcp:*` commands. The MCP server is the source of truth for its
+/// own dispatch surface.
 ///
 /// [runArtisan] is the injectable seam; production callers omit it and get
 /// the real [runArtisan] bootstrap from `package:fluttersdk_artisan/artisan.dart`.

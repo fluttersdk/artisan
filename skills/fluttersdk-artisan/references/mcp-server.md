@@ -2,7 +2,7 @@
 
 Authoritative source: `lib/src/mcp/mcp_server.dart` (server class), `lib/src/mcp/mcp_server.dart:665-675` (substrate allowlist), `lib/src/mcp/mcp_filter_config.dart` (three-layer filter), `lib/src/commands/mcp_install_command.dart:72-76` (canonical `.mcp.json` shape), `lib/src/state/state_file.dart:13-24` (state.json schema), `bin/mcp.dart` (entry point).
 
-The fluttersdk_artisan MCP server is a stdio JSON-RPC server built on `dart_mcp ^0.5.1`. It surfaces 10 substrate tools (the lifecycle quartet, status / logs / doctor / list, and tinker for VM expression eval) plus any plugin-contributed tools the consumer's `bin/artisan.dart` registers via `ArtisanServiceProvider.mcpTools()`.
+The fluttersdk_artisan MCP server is a stdio JSON-RPC server built on `dart_mcp ^0.5.1`. It surfaces 10 substrate tools (the lifecycle quartet, status / logs / doctor / list, and tinker for VM expression eval) plus any plugin-contributed tools the consumer's `bin/dispatcher.dart` registers via `ArtisanServiceProvider.mcpTools()`.
 
 ## Quick install
 
@@ -77,7 +77,7 @@ final class MyPluginArtisanProvider extends ArtisanServiceProvider {
 }
 ```
 
-The MCP server surfaces the tool when the consumer's `bin/artisan.dart` calls `registry.registerProvider(MyPluginArtisanProvider());`. The tool's `extensionMethod` (without the `artisan:` prefix) routes the dispatch through VM Service; the running Flutter app must have registered the extension via `registerExtension('ext.myPlugin.action', handler)`.
+The MCP server surfaces the tool when the consumer's `bin/dispatcher.dart` calls `registry.registerProvider(MyPluginArtisanProvider());`. The tool's `extensionMethod` (without the `artisan:` prefix) routes the dispatch through VM Service; the running Flutter app must have registered the extension via `registerExtension('ext.myPlugin.action', handler)`.
 
 ### Sibling plugin catalog
 
@@ -278,7 +278,7 @@ When MCP tools misbehave:
 1. **No tools surfacing**: check `dart run fluttersdk_artisan list` output for the artisan binaries (confirm install). Check `.mcp.json` exists with the `fluttersdk` entry. Reconnect the MCP client.
 2. **`artisan_start` returns ok but `artisan_tinker` errors "not connected"**: lazy-reconnect should resolve; call `artisan_status` first to verify the app is recorded in state.json.
 3. **Tool count lower than expected**: the filter is active. Check `.artisan/mcp.json`, env vars, and CLI flags (`ARTISAN_MCP_*`). Empty deny lists, null allow lists everywhere = no filter.
-4. **Plugin tools missing**: confirm the consumer's `bin/artisan.dart` registers the plugin provider via `registry.registerProvider(...)`. Check `lib/app/_plugins.g.dart` for the auto-discovered list.
+4. **Plugin tools missing**: confirm the consumer's `bin/dispatcher.dart` registers the plugin provider via `registry.registerProvider(...)`. Check `lib/app/_plugins.g.dart` for the auto-discovered list.
 5. **State file stale**: `dart run artisan stop` to clean. Restart the MCP client.
 
 The MCP server writes initialization status to stderr; capture from the MCP client's log panel.

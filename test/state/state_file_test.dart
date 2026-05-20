@@ -99,5 +99,20 @@ void main() {
       expect(decoded, isA<Map>());
       expect((decoded as Map)['pid'], 42);
     });
+
+    test('cdpPort field round-trips correctly', () async {
+      final payload = <String, dynamic>{
+        'pid': 1234,
+        'vmServiceUri': 'ws://127.0.0.1:8181/abc/ws',
+        'device': 'chrome',
+        'cdpPort': 9223,
+      };
+
+      await StateFile.write(payload);
+      final got = await StateFile.read();
+
+      expect(got?['cdpPort'], 9223);
+      expect(got, payload);
+    });
   });
 }

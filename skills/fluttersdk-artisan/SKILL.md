@@ -1,8 +1,8 @@
 ---
 name: fluttersdk-artisan
-description: "fluttersdk_artisan: composable Dart 3.4+ CLI framework + stdio MCP server for Flutter and Dart. 21 builtin commands across 6 groups (lifecycle, scaffolding, plugin management, MCP, introspection, codegen) including consumer:scaffold, make:plugin, plugin:install, mcp:serve, tinker. Declarative install.yaml plugin manifest + procedural PluginInstaller fluent DSL with 26 sealed InstallOperation variants. 10 substrate MCP tools (artisan_*) including artisan_tinker for VM expression eval, plus plugin-contributed tools from sibling plugins (fluttersdk_dusk, fluttersdk_telescope; see each plugin's MCP tool reference for the current catalog). TRIGGER when: package:fluttersdk_artisan import, fluttersdk_artisan in pubspec, dart run fluttersdk_artisan command, bin/artisan.dart present, install.yaml manifest, ArtisanCommand / ArtisanServiceProvider / McpToolDescriptor / PluginInstaller mention, .mcp.json fluttersdk entry, or user asks about artisan, plugin scaffold, MCP setup, dev loop, signature DSL. DO NOT TRIGGER when code only uses Wind UI or Magic without artisan touchpoint."
+description: "fluttersdk_artisan: composable Dart 3.4+ CLI framework + stdio MCP server for Flutter and Dart. 21 builtin commands across 6 groups (lifecycle, scaffolding, plugin management, MCP, introspection, codegen) including install, make:plugin, plugin:install, mcp:serve, tinker. Declarative install.yaml plugin manifest + procedural PluginInstaller fluent DSL with 26 sealed InstallOperation variants. 10 substrate MCP tools (artisan_*) including artisan_tinker for VM expression eval, plus plugin-contributed tools from sibling plugins (fluttersdk_dusk, fluttersdk_telescope; see each plugin's MCP tool reference for the current catalog). TRIGGER when: package:fluttersdk_artisan import, fluttersdk_artisan in pubspec, dart run fluttersdk_artisan command, bin/dispatcher.dart present, install.yaml manifest, ArtisanCommand / ArtisanServiceProvider / McpToolDescriptor / PluginInstaller mention, .mcp.json fluttersdk entry, or user asks about artisan, plugin scaffold, MCP setup, dev loop, signature DSL. DO NOT TRIGGER when code only uses Wind UI or Magic without artisan touchpoint."
 version: 0.0.1
-when_to_use: "Any task touching fluttersdk_artisan: invoking commands, bootstrapping consumer:scaffold, authoring or installing a plugin (install.yaml or PluginInstaller DSL), configuring MCP for Claude Code / Cursor / Windsurf, evaluating Dart via artisan_tinker, reading install.yaml schema. Apply on any repo with bin/artisan.dart, lib/app/_plugins.g.dart, .artisan/state.json, install.yaml, or pubspec depending on fluttersdk_artisan."
+when_to_use: "Any task touching fluttersdk_artisan: invoking commands, bootstrapping install, authoring or installing a plugin (install.yaml or PluginInstaller DSL), configuring MCP for Claude Code / Cursor / Windsurf, evaluating Dart via artisan_tinker, reading install.yaml schema. Apply on any repo with bin/dispatcher.dart, lib/app/_plugins.g.dart, .artisan/state.json, install.yaml, or pubspec depending on fluttersdk_artisan."
 ---
 
 <!-- fluttersdk_artisan v0.0.1 | Skill updated: 2026-05-19 | Source: https://github.com/fluttersdk/artisan -->
@@ -13,9 +13,9 @@ Composable Dart 3.4+ CLI framework and stdio MCP server. One binary registers ev
 
 ## 1. Core Laws
 
-1. **One binary, two entry points.** `dart run fluttersdk_artisan <cmd>` runs against the artisan package directly. `dart run <consumer-package>:artisan <cmd>` runs through the consumer's `bin/artisan.dart` wrapper produced by `consumer:scaffold` (most projects).
+1. **One binary, two entry points.** `dart run fluttersdk_artisan <cmd>` runs against the artisan package directly. `dart run <consumer-package>:artisan <cmd>` runs through the consumer's `bin/dispatcher.dart` wrapper produced by `install` (most projects).
 2. **MCP entry is separate**: `dart run fluttersdk_artisan:mcp` is the stdio JSON-RPC entry point used by Claude Code / Cursor / Windsurf, not for human CLI use.
-3. **Pub.dev install only**: in any user-facing artifact use `dart pub add fluttersdk_artisan` or `fluttersdk_artisan: ^0.0.1`. Never `path:` local syntax in docs, README, or generated scaffold output. Path deps are monorepo-dev-only.
+3. **Pub.dev install in docs; install command chooses at runtime**: in any user-facing artifact (README, doc pages, `llms.txt`, install.yaml templates, examples) use `dart pub add fluttersdk_artisan` or `fluttersdk_artisan: ^0.0.1`. The `install` command itself picks the right dep shape at scaffold time: a `path:` entry when `.dart_tool/package_config.json` resolves `fluttersdk_artisan` to a relative `rootUri` (sibling-package monorepo workflow), otherwise `fluttersdk_artisan: any` so the next `pub get` pulls the published package. Never hand-write `path:` syntax in docs.
 4. **Atomic + idempotent**: every persistent file write goes through `.tmp` + rename. Plugin installers use lookahead-anchored regex injection so re-running `plugin:install` is a safe no-op.
 5. **State lives at `~/.artisan/state.json`** for the running app (PID, VM Service URI, device, FIFO stdin pipe). At `.artisan/plugins.json` for installed plugins. At `.artisan/installed/<plugin>.json` for plugin reverse-records. State files belong in `.gitignore`; the package's own `.gitignore` already excludes `.artisan/`.
 6. **Codegen barrels are generated**: `lib/app/_plugins.g.dart` (plugin provider list) and `lib/app/commands/_index.g.dart` (command index) regenerate from `.artisan/plugins.json` and from `lib/app/commands/*.dart` scans respectively. Never hand-edit the `.g.dart` files; mutate the source-of-truth and run the matching `plugins:refresh` or `commands:refresh`.
@@ -23,7 +23,7 @@ Composable Dart 3.4+ CLI framework and stdio MCP server. One binary registers ev
 8. **MCP allowlist is explicit**: only 10 substrate commands surface as `artisan_*` MCP tools by allowlist at `lib/src/mcp/mcp_server.dart:665-675`. The other 11 commands stay CLI-only because they need a TTY, mutate source on disk in ways the agent's own file tools handle better, or recurse into the MCP server.
 9. **Plugin MCP tools register via provider override**: a plugin contributes MCP tools by overriding `ArtisanServiceProvider.mcpTools()` and returning a `List<McpToolDescriptor>`. Substrate tools have `artisan_` prefix; plugin tools use the package's prefix (`dusk_`, `telescope_`, etc.).
 10. **Reversible installs are partial in V1**: `plugin:uninstall` fully reverses `WriteFile` / `DeleteFile` / `CopyFile` operations; injection ops (`InjectImport`, `InjectAndroidPermission`, etc.) are logged as `[skipped]`. Always run `plugin:uninstall --dry-run` first when unsure.
-11. **Magic-free path exists**: `consumer:scaffold` writes a canonical 3-file consumer skeleton without any framework dependency. The Magic framework is one possible plugin, not a prerequisite.
+11. **Magic-free path exists**: `install` writes a canonical 3-file consumer skeleton without any framework dependency. The Magic framework is one possible plugin, not a prerequisite.
 12. **No forbidden marketing keywords in artifacts**: avoid "Laravel", "Symfony Console", "Artisan-style", "Artisan-inspired" in user-facing docs and code. No em-dash (—) or en-dash (–); use comma, colon, semicolon, period, or parentheses instead.
 
 ## 2. Bootstrap a consumer project
@@ -32,17 +32,17 @@ Three steps from empty repo to running artisan command:
 
 ```bash
 dart pub add fluttersdk_artisan
-dart run fluttersdk_artisan consumer:scaffold
+dart run fluttersdk_artisan install
 dart run artisan list
 ```
 
-After `consumer:scaffold`, the wrapper at `bin/artisan.dart` calls `runArtisan(...)` with the consumer's package name resolved automatically. Every subsequent command runs via `dart run artisan <cmd>` (NOT `dart run fluttersdk_artisan` once the wrapper exists, though both work).
+After `install`, the wrapper at `bin/dispatcher.dart` calls `runArtisan(...)` with the consumer's package name resolved automatically. Every subsequent command runs via `dart run artisan <cmd>` (NOT `dart run fluttersdk_artisan` once the wrapper exists, though both work).
 
-**Files produced by `consumer:scaffold`:**
+**Files produced by `install`:**
 
 | File | Purpose |
 |------|---------|
-| `bin/artisan.dart` | Consumer entry wrapping `runArtisan(...)` |
+| `bin/dispatcher.dart` | Consumer entry wrapping `runArtisan(...)` |
 | `lib/app/_plugins.g.dart` | Generated plugin provider barrel (empty until `plugin:install`) |
 | `lib/app/commands/_index.g.dart` | Generated command index (empty until `make:command`) |
 
@@ -53,7 +53,7 @@ Pubspec is also mutated to add `fluttersdk_artisan: ^0.0.1` (pub.dev consumers) 
 | Group | Commands | Boot mode |
 |-------|----------|-----------|
 | **Lifecycle** (7) | `start` `stop` `status` `logs` `restart` `reload` `hot-restart` | `none` |
-| **Scaffolding** (3) | `make:plugin` `make:command` `consumer:scaffold` | `none` |
+| **Scaffolding** (3) | `make:plugin` `make:command` `install` | `none` |
 | **Plugin Management** (3) | `plugin:install` `plugin:uninstall` `plugins:refresh` | `none` |
 | **MCP** (3) | `mcp:serve` `mcp:install` `mcp:uninstall` | `none` |
 | **Introspection** (4) | `help` `list` `doctor` `tinker` | `none` except `tinker` is `connected` |
@@ -78,7 +78,7 @@ dart run artisan stop                        # SIGTERM the flutter run pid + cle
 dart run artisan make:plugin awesome_plugin            # 7-file plugin skeleton at packages/<name>/
 dart run artisan make:plugin awesome_plugin --magic    # adds install.yaml + ServiceProvider + install/uninstall commands
 dart run artisan make:command Greet                    # context-aware: plugin vs consumer; auto-registers
-dart run artisan consumer:scaffold                     # idempotent; --force to overwrite
+dart run artisan install                               # idempotent; --force to overwrite
 ```
 
 `make:plugin` detects the parent Flutter app and enrolls the new plugin in `pubspec.yaml` workspace if one exists.
@@ -88,8 +88,8 @@ dart run artisan consumer:scaffold                     # idempotent; --force to 
 **Three routing modes** dispatched by `plugin:install`, in source order at `lib/src/commands/plugin_install_command.dart:130-181`:
 
 1. **Manifest flow** (preferred): plugin ships `install.yaml` at package root or under `assets/install.yaml`. `plugin:install` parses, walks `ManifestInstaller`, commits atomically, records the install at `.artisan/installed/<plugin>.json`, registers the provider in `.artisan/plugins.json`, refreshes `lib/app/_plugins.g.dart`.
-2. **Magic-free canonical scaffold fast path**: no manifest, but `lib/app/_plugins.g.dart` exists. Skip legacy injection; write directly to `plugins.json` + refresh codegen. This is the path for plain Flutter consumers that ran `consumer:scaffold`.
-3. **Legacy injection fallback**: no manifest, no canonical scaffold. Inject `import 'package:<name>/cli.dart';` + `registry.registerProvider(<PascalCaseName>ArtisanProvider());` into `bin/artisan.dart`. Backward-compat path.
+2. **Magic-free canonical scaffold fast path**: no manifest, but `lib/app/_plugins.g.dart` exists. Skip legacy injection; write directly to `plugins.json` + refresh codegen. This is the path for plain Flutter consumers that ran `install`.
+3. **Legacy injection fallback**: no manifest, no canonical scaffold. Inject `import 'package:<name>/cli.dart';` + `registry.registerProvider(<PascalCaseName>ArtisanProvider());` into `bin/dispatcher.dart`. Backward-compat path.
 
 Force a specific mode with `--use-yaml-only` (fails when no manifest) or by passing `--provider=` and `--bootstrap-command=` overrides.
 
@@ -169,7 +169,7 @@ Allow lists: CLI > env > file (first non-null wins, replace not merge). Deny lis
 
 ```bash
 dart pub add fluttersdk_artisan
-dart run fluttersdk_artisan consumer:scaffold
+dart run fluttersdk_artisan install
 dart run fluttersdk_artisan mcp:install
 # Reconnect the MCP client once.
 ```
@@ -238,7 +238,7 @@ Both are atomic (`.tmp` + rename) and idempotent. `make:command` and `plugin:ins
 
 | Path | Purpose |
 |------|---------|
-| `bin/artisan.dart` (consumer) | Consumer entry wrapping `runArtisan(...)` |
+| `bin/dispatcher.dart` (consumer) | Consumer entry wrapping `runArtisan(...)` |
 | `bin/mcp.dart` (artisan package) | MCP server entry; forces `delegateToConsumer: false` |
 | `lib/app/_plugins.g.dart` (consumer) | Generated plugin provider barrel |
 | `lib/app/commands/_index.g.dart` (consumer) | Generated command index |
@@ -250,7 +250,7 @@ Both are atomic (`.tmp` + rename) and idempotent. `make:command` and `plugin:ins
 | `lib/src/mcp/mcp_server.dart:665-675` (artisan) | 10-tool substrate allowlist |
 | `lib/src/mcp/mcp_filter_config.dart` (artisan) | Three-layer filter logic |
 | `assets/stubs/make_plugin/{generic,magic}/` (artisan) | `make:plugin` scaffold stubs |
-| `assets/stubs/consumer_*.stub` (artisan) | `consumer:scaffold` skeleton stubs |
+| `assets/stubs/consumer_*.stub` (artisan) | `install` skeleton stubs |
 | `install.yaml` (plugin package) | Declarative install manifest |
 | `.artisan/plugins.json` (consumer) | Installed plugin registry |
 | `.artisan/installed/<plugin>.json` (consumer) | Plugin install record (reverse ops) |

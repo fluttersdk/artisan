@@ -10,13 +10,13 @@ Prerequisites: Dart 3.4+ SDK, a Flutter project with a valid `pubspec.yaml`, and
 
 ### 1. Install and scaffold
 
-Add `fluttersdk_artisan` to your project dependencies, then run `consumer:scaffold`
+Add `fluttersdk_artisan` to your project dependencies, then run `install`
 to write the canonical wrapper files. The scaffold is idempotent: re-running it when
 the files already exist is a safe no-op (pass `--force` to overwrite).
 
 ```bash
 dart pub add fluttersdk_artisan
-dart run fluttersdk_artisan consumer:scaffold
+dart run fluttersdk_artisan install
 ```
 
 The scaffold writes three files:

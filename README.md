@@ -45,7 +45,7 @@ restart the app and hope nothing collided
 ```bash
 # After, the Artisan way
 dart pub add fluttersdk_artisan
-dart run fluttersdk_artisan consumer:scaffold
+dart run fluttersdk_artisan install
 dart run fluttersdk_artisan plugin:install <name>
 ```
 
@@ -56,10 +56,10 @@ If you know `php artisan`, you already know the verb shape. The implementation i
 | | Feature | Description |
 |:--|:--------|:------------|
 | 🎼 | **Command Registry** | `ArtisanRegistry` collects commands from every registered `ArtisanServiceProvider`, collision-detected at boot |
-| 🧰 | **21 Built-in Commands** | Lifecycle, scaffolding, plugin management, MCP, introspection, codegen, one binary |
+| 🧰 | **22 Built-in Commands** | Lifecycle, scaffolding, plugin management, MCP, introspection, codegen, one binary |
 | ✍️ | **Signature DSL** | `String get signature => 'cmd:name {arg} {--flag}'`, Dart 3 record-style parser, ArgParser fallback when needed |
 | 🤖 | **MCP Server** | Stdio JSON-RPC server built on `dart_mcp`, exposes substrate and plugin tools to AI agents |
-| 🌳 | **Magic-Free Path** | `consumer:scaffold` writes a canonical wrapper for plain Flutter and Dart projects, no framework dependency |
+| 🌳 | **Magic-Free Path** | `install` writes a canonical wrapper for plain Flutter and Dart projects, no framework dependency |
 | 🔌 | **Plugin Protocol** | `install.yaml` declarative manifest plus `PluginInstaller` fluent DSL escape hatch |
 | 🔄 | **Idempotent Installs** | Lookahead-anchored regex injection, replace-by-name registry, re-running an install is a safe no-op |
 | ↩️ | **Reversible Ops** | Every applied operation is recorded under `.artisan/installed/<plugin>.json`, `plugin:uninstall` walks it in reverse |
@@ -73,10 +73,10 @@ If you know `php artisan`, you already know the verb shape. The implementation i
 
 ```bash
 dart pub add fluttersdk_artisan
-dart run fluttersdk_artisan consumer:scaffold
+dart run fluttersdk_artisan install
 ```
 
-`consumer:scaffold` writes three files: `bin/artisan.dart` (the consumer entry that calls `runArtisan(...)`), `lib/app/_plugins.g.dart` (auto-discovered provider list), and `lib/app/commands/_index.g.dart` (auto-discovered command list). Re-running is idempotent, pass `--force` to overwrite.
+`install` writes `bin/dispatcher.dart` (the consumer entry that calls `runArtisan(...)`) plus barrels (`lib/app/_plugins.g.dart`, `lib/app/commands/_index.g.dart`), then auto-chains `make:fast-cli` so `bin/fsa` is ready immediately. Re-running is idempotent, pass `--force` to overwrite.
 
 After scaffold, run any built-in command via the consumer wrapper:
 
@@ -109,12 +109,12 @@ Read the full setup walkthrough at [MCP setup guide](https://fluttersdk.com/arti
 
 ## Commands
 
-Artisan ships 21 built-in commands across 6 namespaces. Every command is a `final class X extends ArtisanCommand` with a `signature` string and a `handle()` method.
+Artisan ships 22 built-in commands across 6 namespaces. Every command is a `final class X extends ArtisanCommand` with a `signature` string and a `handle()` method.
 
 | Namespace | Count | Commands |
 |:----------|:-----:|:---------|
 | **Lifecycle** | 7 | `start`, `stop`, `status`, `logs`, `restart`, `reload`, `hot-restart` |
-| **Scaffolding** | 3 | `make:plugin`, `make:command`, `consumer:scaffold` |
+| **Scaffolding** | 4 | `make:plugin`, `make:command`, `make:fast-cli`, `install` |
 | **Plugin Management** | 3 | `plugin:install`, `plugin:uninstall`, `plugins:refresh` |
 | **MCP** | 3 | `mcp:serve`, `mcp:install`, `mcp:uninstall` |
 | **Introspection** | 4 | `help`, `list`, `doctor`, `tinker` |
@@ -131,6 +131,7 @@ dart run artisan hot-restart             # send R (hot restart, drops Dart state
 # Scaffolding
 dart run artisan make:plugin awesome     # 7-file plugin skeleton, auto-upgrades to magic-mode when applicable
 dart run artisan make:command Greet      # context-aware: plugin vs consumer context, auto-registers in provider
+dart run artisan make:fast-cli           # compile artisan to native binary at bin/fsa (~50ms startup vs ~3s)
 
 # Introspection
 dart run artisan tinker                  # connected REPL against the running VM
