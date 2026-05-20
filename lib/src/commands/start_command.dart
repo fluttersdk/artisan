@@ -94,12 +94,16 @@ Future<Process> _defaultProcessStart(
 /// 5. Runs `flutter run -d web-server --web-port=<port> --web-experimental-hot-reload`
 ///    (silent remap from `--device=chrome` because the chrome target would
 ///    auto-launch its own conflicting Chrome).
-/// 6. Scrapes the VM Service URI from the flutter run log (DWDS prints
-///    "Debug service listening on ..." once it binds).
+/// 6. Waits for the web-server log line "is being served at" so the URL
+///    is bound before any client attempts to connect.
 /// 7. Navigates the pre-launched Chrome to the served URL via CDP
-///    Page.navigate (only after scrape succeeds, to avoid Chrome's
-///    connection-refused caching breaking the auto-open behaviour).
-/// 8. Writes `chromePid`, `cdpPort`, and `tmpProfileDir` to the state file
+///    Page.navigate. DWDS only emits "Debug service listening on ..."
+///    AFTER a debugger client connects, so the navigate must happen
+///    BEFORE the VM Service scrape; scraping first would deadlock the
+///    handshake (see commit 871d0a7).
+/// 8. Scrapes the VM Service URI from the flutter run log (DWDS prints
+///    the "Debug service listening on ..." line once Chrome connected).
+/// 9. Writes `chromePid`, `cdpPort`, and `tmpProfileDir` to the state file
 ///    so [StopCommand] can reap Chrome on teardown.
 ///
 /// D6 Chrome reaper (POSIX, chrome target only) defers to V1.x; V1 ships
@@ -171,7 +175,13 @@ class StartCommand extends ArtisanCommand {
             'Flutter device target (chrome / macos / linux / windows / iOS UDID / Android serial).',
       )
       ..addOption('port', defaultsTo: '3100', help: 'Web port (chrome only).')
-      ..addOption('vm-service-port', defaultsTo: '8181')
+      ..addOption(
+        'vm-service-port',
+        defaultsTo: '8181',
+        help: 'Host VM Service port. Forwarded to flutter run as '
+            '--host-vmservice-port=N and recorded in state.json so tools '
+            'can reach the running app. Change when 8181 is already taken.',
+      )
       ..addFlag('dds', defaultsTo: false, negatable: true)
       ..addFlag('profile-static', defaultsTo: false, negatable: true)
       ..addOption(
@@ -187,6 +197,8 @@ class StartCommand extends ArtisanCommand {
   Future<int> handle(ArtisanContext ctx) async {
     final device = (ctx.input.option('device') as String?) ?? 'chrome';
     final webPort = int.parse((ctx.input.option('port') as String?) ?? '3100');
+    final vmServicePort =
+        int.parse((ctx.input.option('vm-service-port') as String?) ?? '8181');
     final ddsOn = (ctx.input.option('dds') as bool?) ?? false;
     final profileStatic =
         (ctx.input.option('profile-static') as bool?) ?? false;
@@ -208,6 +220,7 @@ class StartCommand extends ArtisanCommand {
         ctx: ctx,
         device: device,
         webPort: webPort,
+        vmServicePort: vmServicePort,
         ddsOn: ddsOn,
         profileStatic: profileStatic,
         cdpPort: cdpPort,
@@ -227,6 +240,7 @@ class StartCommand extends ArtisanCommand {
       '-d',
       device,
       if (isChromeTarget) '--web-port=$webPort',
+      '--host-vmservice-port=$vmServicePort',
       if (!ddsOn) '--no-dds',
       '--dart-define=AI_TEST=1',
     ];
@@ -254,7 +268,7 @@ class StartCommand extends ArtisanCommand {
       'stdinHolderPid': holderPid,
       'vmServiceUri': vmServiceUri,
       'webPort': webPort,
-      'vmServicePort': 8181,
+      'vmServicePort': vmServicePort,
       'startedAt': DateTime.now().toUtc().toIso8601String(),
       'profile': profileStatic ? 'static' : 'debug',
       'projectRoot': Directory.current.path,
@@ -278,6 +292,7 @@ class StartCommand extends ArtisanCommand {
     required ArtisanContext ctx,
     required String device,
     required int webPort,
+    required int vmServicePort,
     required bool ddsOn,
     required bool profileStatic,
     required int cdpPort,
@@ -399,6 +414,7 @@ class StartCommand extends ArtisanCommand {
       'web-server',
       '--web-port=$webPort',
       '--web-experimental-hot-reload',
+      '--host-vmservice-port=$vmServicePort',
       if (!ddsOn) '--no-dds',
       '--dart-define=AI_TEST=1',
     ];
@@ -437,7 +453,7 @@ class StartCommand extends ArtisanCommand {
       'stdinHolderPid': holderPid,
       'vmServiceUri': vmServiceUri,
       'webPort': webPort,
-      'vmServicePort': 8181,
+      'vmServicePort': vmServicePort,
       'startedAt': DateTime.now().toUtc().toIso8601String(),
       'profile': profileStatic ? 'static' : 'debug',
       'projectRoot': Directory.current.path,

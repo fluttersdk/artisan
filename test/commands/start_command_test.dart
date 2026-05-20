@@ -460,13 +460,14 @@ void main() {
       expect(chromeArgs, contains('about:blank'));
 
       // 2. flutter wrapper carries -d web-server + --web-experimental-hot-reload
-      //    even though user passed --device=chrome (silent remap).
+      //    + the default --host-vmservice-port=8181 (silent remap from chrome).
       final flutterArgs = spawned.firstWhere((a) => a.first == 'sh');
       final shPayload = flutterArgs[2];
       expect(shPayload, contains('-d web-server'));
       expect(shPayload, contains('--web-experimental-hot-reload'));
+      expect(shPayload, contains('--host-vmservice-port=8181'));
 
-      // 3. State file written.
+      // 3. State file written; vmServicePort defaults to 8181.
       final state = await StateFile.read();
       expect(state, isNotNull);
       expect(state!['chromePid'], 7777);
@@ -474,11 +475,66 @@ void main() {
       expect(
           state['tmpProfileDir'], '${tempProfileRoot.path}/dusk-chrome-9223');
       expect(state['vmServiceUri'], 'ws://127.0.0.1:8181/abc/ws');
+      expect(state['vmServicePort'], 8181);
 
       // 4. Page.navigate was sent.
       expect(navigateCalls, hasLength(1));
       expect(navigateCalls.first['port'], 9223);
       expect(navigateCalls.first['url'], 'http://localhost:3100/');
+    });
+
+    test(
+        '--vm-service-port=8282 plumbs through to flutter --host-vmservice-port '
+        '+ records the same value in state.json', () async {
+      StartCommand.cdpTmpProfileDirRoot = tempProfileRoot.path;
+      StartCommand.cdpProcessRunner = _fakeProcessRunner(
+        flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
+      );
+      StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+
+      final spawned = <List<String>>[];
+      StartCommand.cdpProcessStarter = (
+        String exec,
+        List<String> args, {
+        String? workingDirectory,
+        ProcessStartMode? mode,
+      }) async {
+        spawned.add(<String>[exec, ...args]);
+        if (exec == '/fake/chrome') return _SpyProcess(pid: 1111);
+        return _FakeFlutterProcess(holderPid: 200, flutterPid: 300);
+      };
+
+      StartCommand.cdpChromeProber = (port, timeout) async {};
+      StartCommand.cdpChromeNavigator = (port, url) async {};
+      StartCommand.cdpVmServiceScraper =
+          (_) async => 'ws://127.0.0.1:8282/abc/ws';
+      StartCommand.cdpWebServerReadyWaiter = (_) async {};
+      StartCommand.cdpFifoMaker = (path) async {
+        File(path).writeAsStringSync('');
+      };
+
+      final command = StartCommand();
+      final output = BufferedOutput();
+      final ctx = ArtisanContext.bare(
+        MapInput(<String, dynamic>{
+          'device': 'chrome',
+          'port': '3100',
+          'vm-service-port': '8282',
+          'dds': false,
+          'profile-static': false,
+          'cdp-port': '9223',
+        }),
+        output,
+      );
+
+      final code = await command.handle(ctx);
+
+      expect(code, 0, reason: output.content);
+      final shPayload = spawned.firstWhere((a) => a.first == 'sh')[2];
+      expect(shPayload, contains('--host-vmservice-port=8282'));
+      final state = await StateFile.read();
+      expect(state, isNotNull);
+      expect(state!['vmServicePort'], 8282);
     });
 
     test(
