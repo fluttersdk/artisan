@@ -217,6 +217,7 @@ void main() {
       StartCommand.cdpVmServiceScraper = null;
       StartCommand.cdpTmpProfileDirRoot = null;
       StartCommand.cdpFifoMaker = null;
+      StartCommand.cdpWebServerReadyWaiter = null;
       if (tempHome.existsSync()) {
         await tempHome.delete(recursive: true);
       }
@@ -404,6 +405,7 @@ void main() {
       // Skip the real VM Service URI scrape (would require log file flow).
       StartCommand.cdpVmServiceScraper =
           (_) async => 'ws://127.0.0.1:8181/abc/ws';
+      StartCommand.cdpWebServerReadyWaiter = (_) async {};
       StartCommand.cdpFifoMaker = (path) async {
         // Pretend we created the FIFO.
         File(path).writeAsStringSync('');
@@ -480,6 +482,7 @@ void main() {
       StartCommand.cdpChromeNavigator = (port, url) async {};
       StartCommand.cdpVmServiceScraper =
           (_) async => 'ws://127.0.0.1:8181/abc/ws';
+      StartCommand.cdpWebServerReadyWaiter = (_) async {};
       StartCommand.cdpFifoMaker = (path) async {
         File(path).writeAsStringSync('');
       };
@@ -502,8 +505,9 @@ void main() {
       expect(code, 0, reason: output.content);
     });
 
-    test('Page.navigate fires AFTER vmServiceUri scrape (ordering invariant)',
-        () async {
+    test(
+        'Page.navigate fires AFTER web-server ready + BEFORE vmServiceUri scrape '
+        '(ordering invariant)', () async {
       StartCommand.cdpTmpProfileDirRoot = tempProfileRoot.path;
       StartCommand.cdpProcessRunner = _fakeProcessRunner(
         flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
@@ -524,16 +528,23 @@ void main() {
 
       StartCommand.cdpChromeProber = (port, timeout) async {};
 
+      // Drive a deterministic ordering: readyWaiter blocks until released,
+      // navigate fires next, then scrape begins. Asserts the post-fix flow:
+      // ready -> navigate -> scrape (NOT scrape -> navigate, which would
+      // deadlock under DWDS because the URI emits only after Chrome connects).
       final timeline = <String>[];
-      final scrapeCompleter = Completer<String>();
-      StartCommand.cdpVmServiceScraper = (_) async {
-        timeline.add('scrape:start');
-        final uri = await scrapeCompleter.future;
-        timeline.add('scrape:done');
-        return uri;
+      final readyCompleter = Completer<void>();
+      StartCommand.cdpWebServerReadyWaiter = (_) async {
+        timeline.add('ready:start');
+        await readyCompleter.future;
+        timeline.add('ready:done');
       };
       StartCommand.cdpChromeNavigator = (port, url) async {
         timeline.add('navigate');
+      };
+      StartCommand.cdpVmServiceScraper = (_) async {
+        timeline.add('scrape:start');
+        return 'ws://127.0.0.1:8181/abc/ws';
       };
       StartCommand.cdpFifoMaker = (path) async {
         File(path).writeAsStringSync('');
@@ -553,15 +564,16 @@ void main() {
       );
 
       final handleFuture = command.handle(ctx);
-      // Yield event loop to let scrape:start log.
+      // Yield event loop to let ready:start log; navigate must not have fired.
       await Future<void>.delayed(const Duration(milliseconds: 50));
-      expect(timeline, ['scrape:start']);
-      // Resolve scrape; only then should navigate fire.
-      scrapeCompleter.complete('ws://127.0.0.1:8181/abc/ws');
+      expect(timeline, ['ready:start']);
+      // Release the ready gate; navigate then scrape should follow in order.
+      readyCompleter.complete();
       final code = await handleFuture;
 
       expect(code, 0, reason: output.content);
-      expect(timeline, ['scrape:start', 'scrape:done', 'navigate']);
+      expect(
+          timeline, ['ready:start', 'ready:done', 'navigate', 'scrape:start']);
     });
 
     test('without --cdp-port: existing flow unchanged (no Chrome pre-launch)',

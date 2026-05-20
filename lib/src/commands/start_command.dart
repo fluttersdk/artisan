@@ -52,6 +52,11 @@ typedef CdpVmServiceScraper = Future<String> Function(File logFile);
 /// tests stub to a regular file.
 typedef CdpFifoMaker = Future<void> Function(String path);
 
+/// Waits until the web-server log emits the "is being served at" line.
+/// Used to inject a fake (instant-return) in tests so the CDP branch can
+/// be exercised without a real flutter process writing to the log.
+typedef CdpWebServerReadyWaiter = Future<void> Function(File logFile);
+
 /// Bridges [CdpProcessStarter]'s nullable [ProcessStartMode?] to
 /// [Process.start]'s non-nullable parameter with a default.
 Future<Process> _defaultProcessStart(
@@ -149,6 +154,12 @@ class StartCommand extends ArtisanCommand {
   /// Test seam: replaces mkfifo (no-op in tests; production stays POSIX-pure).
   @visibleForTesting
   static CdpFifoMaker? cdpFifoMaker;
+
+  /// Test seam: web-server readiness waiter. When null, the production
+  /// [_waitForWebServerReady] polls the log file for the "is being served at"
+  /// marker; tests inject an instant-return fake.
+  @visibleForTesting
+  static CdpWebServerReadyWaiter? cdpWebServerReadyWaiter;
 
   @override
   void configure(ArgParser parser) {
@@ -403,7 +414,7 @@ class StartCommand extends ArtisanCommand {
     //    has a client to emit the VM Service URI to. Scraping the URI before
     //    navigation deadlocks: -d web-server only emits "Debug service
     //    listening on ws://..." AFTER a debugger client connects.
-    await _waitForWebServerReady(logFile);
+    await _runWebServerReadyWait(logFile);
     await cdpChromeNavigator(cdpPort, 'http://localhost:$webPort/');
 
     // 9. NOW scrape the VM Service URI emitted by DWDS once Chrome connected.
@@ -478,6 +489,13 @@ class StartCommand extends ArtisanCommand {
         '${mkfifoResult.stderr}',
       );
     }
+  }
+
+  /// Runs the web-server readiness wait, honoring the test seam when set.
+  Future<void> _runWebServerReadyWait(File logFile) {
+    final waiter = cdpWebServerReadyWaiter;
+    if (waiter != null) return waiter(logFile);
+    return _waitForWebServerReady(logFile);
   }
 
   /// Wait until the web-server log emits "is being served at" so the URL
