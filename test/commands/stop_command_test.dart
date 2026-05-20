@@ -186,7 +186,6 @@ void main() {
         'chromePid': chromePid,
       });
 
-      var dirDeleteAttempted = false;
       StopCommand.stopKillFunction = (pid, signal) => false;
 
       final command = StopCommand();
@@ -195,8 +194,9 @@ void main() {
 
       await command.handle(ctx);
 
-      // No tmpProfileDir in state; dir delete must never be attempted.
-      expect(dirDeleteAttempted, isFalse);
+      // No tmpProfileDir in state; the delete branch is gated on the field
+      // being non-null + non-empty, so the success line for tmpProfileDir
+      // is the observable proof that the branch did not execute.
       expect(output.content, isNot(contains('tmpProfileDir')));
       // killPid returned false; the cleanup branch surfaces a "not delivered"
       // warning instead of the success line so the operator sees that the
