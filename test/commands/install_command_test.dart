@@ -361,6 +361,101 @@ void main() {
     });
 
     test(
+      're-running install on a populated .artisan/plugins.json regenerates '
+      'the canonical _plugins.g.dart barrel (does not stomp with empty stub)',
+      () async {
+        // 1. First install: lands the canonical scaffold + initial empty barrel.
+        await InstallCommand.scaffoldInto(
+          root: tempRoot.path,
+          force: false,
+          ctx: _ctx(),
+        );
+
+        // 2. Seed an existing plugins.json with two registered plugins, as if
+        //    `plugin:install` had previously enrolled them. This mirrors the
+        //    real-world state where a consumer has running plugins, then
+        //    re-runs `install` (e.g. to refresh the dispatcher template).
+        final pluginsJsonPath =
+            p.join(tempRoot.path, '.artisan', 'plugins.json');
+        Directory(p.dirname(pluginsJsonPath)).createSync(recursive: true);
+        File(pluginsJsonPath).writeAsStringSync('''
+{
+  "version": 1,
+  "plugins": [
+    {
+      "name": "magic_logger",
+      "providerImport": "package:magic_logger/cli.dart",
+      "providerClass": "MagicLoggerArtisanProvider",
+      "registeredAt": "2026-05-19T10:00:00.000Z"
+    },
+    {
+      "name": "fluttersdk_dusk",
+      "providerImport": "package:fluttersdk_dusk/cli.dart",
+      "providerClass": "FluttersdkDuskArtisanProvider",
+      "registeredAt": "2026-05-19T10:00:00.000Z"
+    }
+  ]
+}
+''');
+
+        // 3. Re-run install with --force so the barrel write is attempted (the
+        //    pre-fix bug stomped the canonical barrel with the empty stub).
+        final runner2 = _RecordingRunner(_happyScripted(tempRoot.path));
+        MakeFastCliCommand.processRunner = runner2.call;
+
+        await InstallCommand.scaffoldInto(
+          root: tempRoot.path,
+          force: true,
+          ctx: _ctx(),
+        );
+
+        // 4. Assert the canonical barrel reflects plugins.json (both provider
+        //    constructors present), NOT the empty initial stub.
+        final pluginsGPath =
+            p.join(tempRoot.path, 'lib', 'app', '_plugins.g.dart');
+        final content = File(pluginsGPath).readAsStringSync();
+
+        expect(
+          content,
+          contains('MagicLoggerArtisanProvider()'),
+          reason: 'install must re-run plugins:refresh to preserve the '
+              'canonical state when plugins.json has entries',
+        );
+        expect(content, contains('FluttersdkDuskArtisanProvider()'));
+        expect(content, contains("package:magic_logger/cli.dart"));
+        expect(content, contains("package:fluttersdk_dusk/cli.dart"));
+        // Negative: the empty-stub form must NOT remain.
+        expect(
+          content.contains('return <ArtisanServiceProvider>[];'),
+          isFalse,
+          reason: 'install stomped the canonical barrel with the empty stub',
+        );
+      },
+    );
+
+    test(
+      'fresh install without .artisan/plugins.json keeps the empty initial '
+      'barrel (no plugins:refresh side effect)',
+      () async {
+        // No plugins.json seeded → empty initial stub stays in place.
+        await InstallCommand.scaffoldInto(
+          root: tempRoot.path,
+          force: false,
+          ctx: _ctx(),
+        );
+
+        final pluginsGPath =
+            p.join(tempRoot.path, 'lib', 'app', '_plugins.g.dart');
+        final content = File(pluginsGPath).readAsStringSync();
+
+        expect(content, contains('autoDiscoveredProviders'));
+        // No plugins.json => no entries to render; the file remains the
+        // initial empty stub shape.
+        expect(content.contains('ArtisanProvider()'), isFalse);
+      },
+    );
+
+    test(
       'pubspec dep injection is idempotent (exactly one fluttersdk_artisan '
       'entry after two scaffold runs)',
       () async {

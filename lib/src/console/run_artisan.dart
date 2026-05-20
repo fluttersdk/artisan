@@ -41,9 +41,15 @@ const Set<String> _bypassDelegation = <String>{
   'plugins:refresh',
 };
 
-/// Signature for an injected "does CWD have `bin/artisan.dart`?" check.
+/// Signature for an injected "does CWD have a consumer wrapper?" check.
 ///
-/// Defaults to the real FS lookup; tests inject a deterministic stub.
+/// A consumer wrapper is either `bin/dispatcher.dart` (the canonical name
+/// emitted by `dart run fluttersdk_artisan install`) or `bin/artisan.dart`
+/// (the legacy name still accepted for backward compatibility with
+/// hand-curated wrappers).
+///
+/// Defaults to the real FS lookup ([defaultConsumerWrapperExists]); tests
+/// inject a deterministic stub.
 typedef WrapperExistsCheck = bool Function();
 
 /// Signature for an injected delegation strategy.
@@ -56,15 +62,15 @@ typedef DelegateStrategy = Future<int> Function(List<String> args);
 /// Shared `artisan` bootstrap.
 ///
 /// One entry point consolidates the four behaviors every artisan binary
-/// (substrate `fluttersdk_artisan`, magic's `bin/artisan.dart` wrapper,
-/// magic_logger's `bin/artisan.dart` wrapper, future consumer wrappers)
-/// needs:
+/// (substrate `fluttersdk_artisan`, magic's consumer wrapper, magic_logger's
+/// consumer wrapper, future consumer wrappers) needs:
 ///
 /// 1. **Auto-delegation.** When invoked from a project that ships its own
-///    `bin/artisan.dart` (the consumer wrapper convention), transparently
-///    re-invoke `dart run :artisan <args>` so the consumer's full provider
-///    list owns dispatch. Bypassed for commands that regenerate the files
-///    the wrapper depends on (see [_bypassDelegation]).
+///    consumer wrapper (`bin/dispatcher.dart`, or the legacy
+///    `bin/artisan.dart`), transparently re-invoke `dart run :artisan <args>`
+///    so the consumer's full provider list owns dispatch. Bypassed for
+///    commands that regenerate the files the wrapper depends on (see
+///    [_bypassDelegation]).
 /// 2. **Standalone dispatch.** When no wrapper is present (or the call
 ///    bypasses delegation, or [delegateToConsumer] is `false`), register
 ///    builtins + [baseProviders] + auto-discovered providers and dispatch
@@ -99,7 +105,7 @@ Future<int> runArtisan(
 }) async {
   // 1. Decide whether the consumer wrapper owns this invocation.
   if (delegateToConsumer) {
-    final hasWrapper = (wrapperExists ?? _defaultWrapperExists)();
+    final hasWrapper = (wrapperExists ?? defaultConsumerWrapperExists)();
     final firstArg = args.isEmpty ? '' : args.first;
     final bypassed = _bypassDelegation.contains(firstArg);
     if (hasWrapper && !bypassed) {
@@ -135,12 +141,22 @@ Future<int> runArtisan(
   }
 }
 
-/// Default wrapper presence check: does `<CWD>/bin/artisan.dart` exist?
-bool _defaultWrapperExists() {
-  final wrapper = File(
-    p.join(Directory.current.path, 'bin', 'artisan.dart'),
-  );
-  return wrapper.existsSync();
+/// Default wrapper presence check.
+///
+/// Returns `true` when either `<cwd>/bin/dispatcher.dart` (the canonical name
+/// scaffolded by `dart run fluttersdk_artisan install`) or
+/// `<cwd>/bin/artisan.dart` (the legacy name, still accepted for backward
+/// compatibility) exists. Either filename qualifies the current directory as
+/// a consumer wrapper that auto-delegation should target.
+///
+/// [cwd] defaults to [Directory.current]; tests inject a temp-dir path to
+/// drive the check deterministically without touching the host filesystem.
+bool defaultConsumerWrapperExists({String? cwd}) {
+  final base = cwd ?? Directory.current.path;
+  final dispatcher = File(p.join(base, 'bin', 'dispatcher.dart'));
+  if (dispatcher.existsSync()) return true;
+  final legacy = File(p.join(base, 'bin', 'artisan.dart'));
+  return legacy.existsSync();
 }
 
 /// Default delegation: `dart run :artisan <args>` with inherited stdio.

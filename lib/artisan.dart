@@ -51,8 +51,9 @@ export 'src/state/state_file.dart';
 export 'src/stubs/stub_loader.dart';
 export 'src/vm/vm_service_client.dart';
 
-// Builtin commands (ship with artisan; consumer bin/artisan.dart registers them
-// alongside ArtisanServiceProvider commands from the consumer's appConfig).
+// Builtin commands (ship with artisan; the consumer's bin/dispatcher.dart
+// wrapper registers them alongside ArtisanServiceProvider commands from the
+// consumer's appConfig).
 export 'src/commands/commands_index_writer.dart';
 export 'src/commands/commands_refresh_command.dart';
 export 'src/commands/doctor_command.dart';

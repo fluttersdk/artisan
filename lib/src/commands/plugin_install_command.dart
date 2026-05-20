@@ -200,13 +200,20 @@ class PluginInstallCommand extends ArtisanInstallCommand {
     required String name,
     required String wrapperPath,
   }) {
-    // 1. Wrapper presence, the framework injects into bin/artisan.dart and
-    //    expects the file to exist even on the manifest path (the file IS
-    //    the conventional CLI entry point).
+    // 1. Wrapper presence. The legacy mode-3 flow injects directly into
+    //    the literal `bin/artisan.dart` file (kept for backward
+    //    compatibility); the canonical-scaffold path (handled later in
+    //    `handle`) writes to `.artisan/plugins.json` + regenerates
+    //    `lib/app/_plugins.g.dart` and does not need this file. The
+    //    pre-flight remains gated on the legacy filename because the
+    //    routing decision happens AFTER pre-flight runs.
     if (!File(wrapperPath).existsSync()) {
       ctx.output.error(
-        'bin/artisan.dart not found at $wrapperPath. '
-        'plugin:install needs the consumer wrapper present.',
+        'No consumer wrapper found at $wrapperPath. '
+        'Run `dart run fluttersdk_artisan install` to scaffold the '
+        'canonical wrapper (bin/dispatcher.dart). The legacy mode-3 '
+        'plugin:install flow targets the historical bin/artisan.dart '
+        'filename specifically.',
       );
       return 1;
     }
@@ -282,7 +289,8 @@ class PluginInstallCommand extends ArtisanInstallCommand {
   /// Convention-based registration of the plugin's [ArtisanServiceProvider] in
   /// `.artisan/plugins.json`, then a synchronous regeneration of
   /// `lib/app/_plugins.g.dart` via [PluginsRefreshCommand] so the host's
-  /// `bin/artisan.dart` picks up the plugin's commands on the next invocation.
+  /// `bin/dispatcher.dart` wrapper picks up the plugin's commands on the
+  /// next invocation.
   ///
   /// Naming convention: `package:<name>/cli.dart` is the import URI and
   /// `<PascalCaseName>ArtisanProvider` is the class name. Plugins that follow

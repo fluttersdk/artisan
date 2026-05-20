@@ -7,8 +7,8 @@
 /// are file-system-only (use [FileHelper.findProjectRoot] to locate the
 /// host's `pubspec.yaml`; never query `Magic.Config`); they fit `none`
 /// cleanly. Headless mode lands when `magic` ships a `MagicArtisanRunner`
-/// that the consumer's `bin/artisan.dart` can compose for migrate / db:seed
-/// style commands needing a Magic boot.
+/// that the consumer's `bin/dispatcher.dart` wrapper can compose for
+/// migrate / db:seed style commands needing a Magic boot.
 enum CommandBoot {
   /// Pure CLI. No Magic boot, no Flutter binding, no VM Service connection.
   ///

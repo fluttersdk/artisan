@@ -20,7 +20,7 @@ final RegExp _identifierPattern = RegExp(r'^[A-Z][a-zA-Z0-9_]*$');
 /// commands.
 ///
 /// The generated file is the consumer-side codegen barrel imported by the
-/// project's `bin/artisan.dart` to wire every installed plugin's
+/// project's `bin/dispatcher.dart` wrapper to wire every installed plugin's
 /// [ArtisanServiceProvider] into the in-process command registry without
 /// `dart:mirrors` (AOT-prohibited) or runtime file scanning.
 ///

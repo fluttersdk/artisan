@@ -46,16 +46,34 @@ needs_build() {
   return 1
 }
 
-if needs_build; then
-  # 5. Acquire mkdir-based atomic lock (portable: no flock/shlock).
+# 5. Acquire the mkdir-based atomic lock. Trap-based release covers
+#    EXIT / INT / TERM, but SIGKILL (signal 9) bypasses traps and leaves the
+#    lock dir dangling. The PID-aware staleness check below recovers from
+#    that case: each holder writes its PID to $LOCK_DIR/pid; a competing
+#    acquirer probes that PID via `kill -0` and reclaims the lock when the
+#    owner is dead. POSIX sh; no flock / shlock / bash-isms.
+acquire_lock() {
   mkdir -p "$(dirname "$LOCK_DIR")"
   while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+    if [ -f "$LOCK_DIR/pid" ]; then
+      stored_pid="$(cat "$LOCK_DIR/pid" 2>/dev/null)"
+      if [ -n "$stored_pid" ] && ! kill -0 "$stored_pid" 2>/dev/null; then
+        # Owner is dead. Reclaim the lock dir and retry mkdir.
+        rm -rf "$LOCK_DIR"
+        continue
+      fi
+    fi
     echo "fsa: waiting for another fsa invocation to finish..." >&2
     sleep 1
   done
+  echo $$ > "$LOCK_DIR/pid"
+}
+
+if needs_build; then
+  acquire_lock
 
   # Release lock on exit, interrupt, or termination.
-  trap 'rmdir "$LOCK_DIR" 2>/dev/null' EXIT INT TERM
+  trap 'rm -rf "$LOCK_DIR" 2>/dev/null' EXIT INT TERM
 
   # 6. Re-check staleness inside the lock: another invocation may have built
   #    while we were waiting, making a second compile unnecessary.

@@ -12,9 +12,10 @@ import 'commands_index_writer.dart';
 /// `artisan make:command MyCommand` — scaffolds a new ArtisanCommand subclass.
 ///
 /// Output location is context-aware:
-/// - **Consumer app** (lib/app/ + bin/artisan.dart present): writes to
-///   `lib/app/commands/` and refreshes the auto-discovery index so the
-///   command shows up on the next `artisan list`.
+/// - **Consumer app** (lib/app/ + a consumer wrapper such as
+///   `bin/dispatcher.dart` present): writes to `lib/app/commands/` and
+///   refreshes the auto-discovery index so the command shows up on the next
+///   `artisan list`.
 /// - **Plugin context** (`lib/src/[name]_artisan_provider.dart` present at
 ///   project root): writes to `lib/src/commands/` (alongside the plugin's
 ///   install/uninstall commands) and injects an import + registration line
@@ -112,8 +113,8 @@ class MakeCommandCommand extends ArtisanGeneratorCommand {
       _registerInPluginProvider(ctx, root: root, name: normalized);
     } else {
       // Consumer-app context: refresh the auto-discovery index so the
-      // consumer's bin/artisan.dart picks the new command up without an
-      // extra `commands:refresh` invocation.
+      // consumer's bin/dispatcher.dart wrapper picks the new command up
+      // without an extra `commands:refresh` invocation.
       final commandsDir = Directory(p.join(root, 'lib', 'app', 'commands'));
       writeCommandsIndex(commandsDir);
     }
