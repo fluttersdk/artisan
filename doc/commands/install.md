@@ -90,7 +90,7 @@ A POSIX shell wrapper written by the `make:fast-cli` sub-command, which `install
 
 **Path-dep mode (monorepo)**
 
-When `.dart_tool/package_config.json` contains a `file://` entry for `fluttersdk_artisan` pointing to a sibling directory, `install` writes a `path:` dependency:
+When `.dart_tool/package_config.json` lists `fluttersdk_artisan` with a *relative* `rootUri` (sibling-package monorepo workflow), `install` resolves the path against the consumer root and writes a `path:` dependency:
 
 ```yaml
 dependencies:
@@ -98,18 +98,18 @@ dependencies:
     path: ../fluttersdk_artisan
 ```
 
-Use this mode during local development where the framework lives as a sibling package. The path is resolved relative to the consumer root.
+A `file://` absolute URI or any other absolute `rootUri` (the shape pub-cache produces) skips this branch and falls through to pub.dev mode.
 
 **Pub.dev mode**
 
-When no local `package_config.json` entry is found, `install` injects the caret version form:
+When no local relative-rootUri entry resolves, `install` injects the unconstrained version form so the next `dart pub get` (or `flutter pub get`) pulls the published package:
 
 ```yaml
 dependencies:
-  fluttersdk_artisan: ^0.0.1
+  fluttersdk_artisan: any
 ```
 
-Run `flutter pub get` after `install` completes to resolve the dependency.
+Run `dart pub get` (or `flutter pub get`) after `install` completes to resolve to a concrete version. Tighten the constraint by hand (e.g. `^0.0.1`) once the consumer has chosen a baseline.
 
 The injection is idempotent: if `pubspec.yaml` already contains a `fluttersdk_artisan:` key under `dependencies:`, neither form is written again (regardless of `--force`).
 
@@ -135,7 +135,7 @@ dart run fluttersdk_artisan install --force
 
 At the end of `scaffoldInto`, `install` calls `MakeFastCliCommand.scaffoldInto(root, force, ctx)` in-process. This produces `bin/fsa`, compiles the AOT binary under `.artisan/cli-bundle/`, and patches `.gitignore`. The call happens only after all scaffold writes and pubspec injection succeed, so a partial failure in the scaffold phase does not leave a compiled binary that references a missing dispatcher.
 
-The fast-CLI step is not separately gated: if `dart build cli` is unavailable (Dart SDK below 3.5), `make:fast-cli` logs a warning and returns without writing `bin/fsa`. The scaffold artefacts are still present and usable via `dart run artisan <cmd>`.
+The fast-CLI step is not separately gated: if `dart build cli` fails (e.g. the Dart SDK is too old to support it, the toolchain is missing, or the build itself errors), `make:fast-cli` returns a non-zero exit code and `install` propagates that failure. The scaffold artefacts written before the failure remain on disk so the project is still usable via `dart run fluttersdk_artisan <cmd>` (the slower fallback). Re-running `install --force` after fixing the underlying issue recompiles `bin/fsa` and the AOT cache.
 
 See [make:fast-cli](make-fast-cli.md) for the full performance profile, cache-hit behavior, and POSIX-only caveat.
 

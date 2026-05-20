@@ -52,13 +52,14 @@ These seven are the only commands surfaced as MCP tools today, which makes them 
 
 ## Scaffolding
 
-Three commands that write source files into the consumer project. They are deliberately excluded from the MCP allowlist: source mutation is better routed through the client's own file tools, and the stub system uses placeholder substitution (`{{ name }}`, `{{ pascalName }}`, `{{ commandPrefix }}`) that benefits from interactive prompts.
+Four commands that write source files into the consumer project. They are deliberately excluded from the MCP allowlist: source mutation is better routed through the client's own file tools, and the stub system uses placeholder substitution (`{{ name }}`, `{{ pascalName }}`, `{{ commandPrefix }}`) that benefits from interactive prompts.
 
 | Command | Description | Boot Mode | MCP Tool |
 |---------|-------------|-----------|----------|
 | `make:plugin` | Scaffold a new fluttersdk_artisan plugin skeleton. | none | no |
 | `make:command` | Scaffold a new ArtisanCommand subclass under `lib/app/commands/` (or `lib/src/commands/` when run inside a plugin). | none | no |
-| `install` | Scaffold the canonical native Flutter consumer wrapper (`bin/artisan.dart` plus `lib/app/_plugins.g.dart` plus `lib/app/commands/_index.g.dart`). | none | no |
+| `make:fast-cli` | Scaffold the POSIX `bin/fsa` wrapper and pre-compile the AOT cache under `.artisan/cli-bundle/` for ~50ms startup. | none | no |
+| `install` | Scaffold the canonical native Flutter consumer wrapper (`bin/dispatcher.dart` plus `lib/app/_plugins.g.dart` plus `lib/app/commands/_index.g.dart`) and chain `make:fast-cli` in-process. | none | no |
 
 ## Plugin management
 

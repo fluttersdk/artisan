@@ -41,13 +41,13 @@ make:fast-cli {--force : Overwrite bin/fsa even when it already exists}
 
 ## What It Does
 
-1. **Validates the project structure.** Checks for `pubspec.yaml` and `bin/artisan.dart`; errors with actionable guidance if either is missing.
+1. **Validates the project structure.** Checks for `pubspec.yaml` and `bin/dispatcher.dart`; errors with actionable guidance if either is missing.
 
 2. **Scaffolds the wrapper script.** Writes a POSIX `sh` script at `bin/fsa` that resolves symlinks via a portable `follow_links()` subshell and derives the project root at runtime.
 
 3. **Computes a staleness key.** Captures the SHA256 hash of `pubspec.lock` and the Dart SDK version string, storing both in `.artisan/build.stamp` for later comparison.
 
-4. **Compiles the binary.** Runs `dart build cli -t bin/artisan.dart -o .artisan/cli-bundle`, producing an AOT-native binary at `.artisan/cli-bundle/bundle/bin/artisan`.
+4. **Compiles the binary.** Runs `dart build cli -t bin/dispatcher.dart -o .artisan/cli-bundle`, producing an AOT-native binary at `.artisan/cli-bundle/bundle/bin/dispatcher`.
 
 5. **Patches `.gitignore`.** Appends `.artisan/` if not already present, ensuring the compiled cache is excluded from version control and never tracked. Idempotent.
 
@@ -56,7 +56,7 @@ make:fast-cli {--force : Overwrite bin/fsa even when it already exists}
 ## Output
 
 - **`bin/fsa`** (executable, ~50 LoC): shell wrapper that checks staleness, auto-recompiles if needed, then execs into the binary.
-- **`.artisan/cli-bundle/bundle/bin/artisan`**: AOT-compiled native executable.
+- **`.artisan/cli-bundle/bundle/bin/dispatcher`**: AOT-compiled native executable.
 - **`.artisan/cli-bundle/bundle/lib/*.dylib`** (on macOS; `.so` on Linux): runtime libraries bundled with the binary.
 - **`.artisan/build.stamp`**: one-line file with `<pubspec_lock_sha256>:<dart_sdk_version>`. Lets the wrapper detect when to rebuild.
 
