@@ -1,6 +1,6 @@
 name: fluttersdk_artisan
 description: "Composable Dart CLI framework and stdio MCP server for Flutter. Scaffolding, code generation, transactional plugin installs, hot reload, REPL, and AI agent tooling."
-version: 0.0.2
+version: 0.0.3
 homepage: https://fluttersdk.com/artisan
 repository: https://github.com/fluttersdk/artisan
 issue_tracker: https://github.com/fluttersdk/artisan/issues
@@ -26,7 +26,7 @@ dependencies:
   path: ^1.9.0
   stream_channel: ^2.1.0
   vm_service: ^15.2.0
-  xml: ^7.0.0
+  xml: ^6.5.0
   yaml: ^3.1.3
   yaml_edit: ^2.2.3
 

@@ -8,6 +8,12 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-05-21
+
+### Changed
+
+- **`xml` constraint downgraded `^7.0.0` -> `^6.5.0`** (`pubspec.yaml`): pub.dev resolution now intersects with `image ^4.0.0` (used by `fluttersdk_dusk`'s `ext_screenshot.dart` via `xml ^6.0.1`). The 0.0.2 cut pinned `xml ^7.0.0`, which made `fluttersdk_dusk` unresolvable as a hosted dep alongside `fluttersdk_artisan 0.0.2` because no `image 5.x` exists to satisfy the upper bound. Reverted the 8 `XmlName.parts('localname')` migration sites in `lib/src/helpers/plist_writer.dart` back to `XmlName('localname')` so the file compiles cleanly against xml 6.x (where `.parts` did not yet exist). xml 7 migration is deferred until `image` ships a release on the xml 7 line.
+
 ## [0.0.2] - 2026-05-20
 
 ### Breaking
