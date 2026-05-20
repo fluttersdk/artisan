@@ -302,9 +302,50 @@ class StartCommand extends ArtisanCommand {
     final chromeProcess = await cdpProcessStarter(
       chromeBinary,
       <String>[
+        // CDP wiring (load-bearing for dusk + this start command).
         '--remote-debugging-port=$cdpPort',
         '--remote-allow-origins=*',
         '--user-data-dir=$tmpProfileDir',
+        // Tells Chrome it is automated. Shows the "Chrome is being controlled
+        // by automated test software" banner and implies several behaviors
+        // that quiet first-run noise without us listing each one.
+        '--enable-automation',
+        // First-run flow + default-browser prompt (fresh tmp profile would
+        // trigger Welcome dialog that blocks CDP Page.navigate).
+        '--no-first-run',
+        '--no-default-browser-check',
+        // Save-password + autofill prompts (Flutter web forms trigger these
+        // and the popups can intercept dusk:tap on the underlying widget).
+        '--disable-save-password-bubble',
+        '--password-store=basic',
+        '--use-mock-keychain',
+        '--disable-features=AutofillServerCommunication,PasswordLeakDetection,'
+            'PasswordManagerOnboarding,Translate,MediaRouter,OptimizationHints,'
+            'InterestFeedContentSuggestions,CalculateNativeWinOcclusion,'
+            'GlobalMediaControls,DestroyProfileOnBrowserClose,'
+            'AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync',
+        // Misc noise suppression. None of these change user-observable app
+        // behavior; they only quiet Chrome internals so automation is clean.
+        '--disable-translate',
+        '--disable-sync',
+        '--disable-background-networking',
+        '--disable-default-apps',
+        '--disable-extensions',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-client-side-phishing-detection',
+        '--disable-hang-monitor',
+        '--disable-popup-blocking',
+        '--disable-prompt-on-repost',
+        '--disable-domain-reliability',
+        '--metrics-recording-only',
+        '--no-pings',
+        '--no-service-autorun',
+        // Performance: keep timers + renderer active when window not focused
+        // so dusk actions land on a live frame.
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-ipc-flooding-protection',
         'about:blank',
       ],
       mode: ProcessStartMode.detached,
@@ -357,12 +398,16 @@ class StartCommand extends ArtisanCommand {
       );
     }
 
-    // 8. Scrape DWDS "Debug service listening on" before navigating Chrome
-    //    (connection-refused caching breaks navigate-then-wait flow).
-    final vmServiceUri = await _runVmServiceScrape(logFile);
-
-    // 9. Navigate Chrome to the served URL via CDP Page.navigate.
+    // 8. Wait for the web server to be ready (look for "is being served at"
+    //    line in the log), then navigate Chrome FIRST so the debug service
+    //    has a client to emit the VM Service URI to. Scraping the URI before
+    //    navigation deadlocks: -d web-server only emits "Debug service
+    //    listening on ws://..." AFTER a debugger client connects.
+    await _waitForWebServerReady(logFile);
     await cdpChromeNavigator(cdpPort, 'http://localhost:$webPort/');
+
+    // 9. NOW scrape the VM Service URI emitted by DWDS once Chrome connected.
+    final vmServiceUri = await _runVmServiceScrape(logFile);
 
     // 10. Write state with the new CDP fields so StopCommand can reap Chrome.
     await StateFile.write(<String, dynamic>{
@@ -433,6 +478,22 @@ class StartCommand extends ArtisanCommand {
         '${mkfifoResult.stderr}',
       );
     }
+  }
+
+  /// Wait until the web-server log emits "is being served at" so the URL
+  /// is bound and Chrome's navigation will not race the bind.
+  Future<void> _waitForWebServerReady(File logFile) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 60));
+    while (DateTime.now().isBefore(deadline)) {
+      if (logFile.existsSync()) {
+        final content = logFile.readAsStringSync();
+        if (content.contains('is being served at')) return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    throw StateError(
+      'Timed out after 60s waiting for "is being served at" in ${logFile.path}.',
+    );
   }
 
   /// Runs the VM Service URI scrape, honoring the test seam when set.
@@ -583,21 +644,32 @@ class StartCommand extends ArtisanCommand {
   @visibleForTesting
   static Future<void> Function(int, String) get defaultChromeNavigate =>
       (port, url) async {
+        // Page.navigate requires a TARGET (page) WebSocket, not the
+        // BROWSER-level WS that /json/version exposes. /json lists every
+        // attached target with its own webSocketDebuggerUrl. Pick the first
+        // page-type target (the about:blank tab Chrome opened on launch).
         final client = HttpClient();
         String wsUrl;
         try {
           final req = await client.getUrl(
-            Uri.parse('http://localhost:$port/json/version'),
+            Uri.parse('http://localhost:$port/json'),
           );
           final resp = await req.close();
           if (resp.statusCode != 200) {
             throw StateError(
-              'Chrome /json/version returned ${resp.statusCode} on port $port.',
+              'Chrome /json returned ${resp.statusCode} on port $port.',
             );
           }
           final body = await resp.transform(utf8.decoder).join();
-          final decoded = jsonDecode(body) as Map<String, dynamic>;
-          wsUrl = decoded['webSocketDebuggerUrl'] as String;
+          final targets = jsonDecode(body) as List<dynamic>;
+          final pageTarget =
+              targets.whereType<Map<String, dynamic>>().firstWhere(
+                    (t) => t['type'] == 'page',
+                    orElse: () => throw StateError(
+                      'No page-type target in Chrome /json on port $port.',
+                    ),
+                  );
+          wsUrl = pageTarget['webSocketDebuggerUrl'] as String;
         } finally {
           client.close(force: true);
         }
