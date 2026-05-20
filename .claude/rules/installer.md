@@ -51,7 +51,7 @@ Concurrent readers (open editors, lint daemons) never observe partial state. Tes
 
 `PluginInstallCommand.handle` dispatches in this order:
 1. `install.yaml` resolvable (`resolveInstallYaml(name)` returns non-null) → `_runManifestFlow` → `ManifestInstaller` + Change F `_registerArtisanProvider` (writes `plugins.json` + spawns `PluginsRefreshCommand`).
-2. No manifest + `lib/app/_plugins.g.dart` exists (canonical scaffold from `consumer:scaffold` or `magic:install`) → skip manifest, run `_registerArtisanProvider` directly. Magic-free fast path.
+2. No manifest + `lib/app/_plugins.g.dart` exists (canonical scaffold from `install` or `magic:install`) → skip manifest, run `_registerArtisanProvider` directly. Magic-free fast path.
 3. Neither → `_runLegacyFlow` (`registry.registerProvider(...)` injection anchored to `auto.commands` line in `bin/artisan.dart`).
 
 Never bypass this routing by adding a fourth branch; route via the existing fan-out points.

@@ -12,7 +12,7 @@ Pure Dart 3.4+ CLI framework. Consumed via `dart run fluttersdk_artisan <command
 - [plugin:install](https://fluttersdk.com/artisan/commands/plugin-install.md)
 - [mcp:serve](https://fluttersdk.com/artisan/commands/mcp-serve.md)
 - [make:plugin](https://fluttersdk.com/artisan/commands/make-plugin.md)
-- [consumer:scaffold](https://fluttersdk.com/artisan/commands/consumer-scaffold.md)
+- [install](https://fluttersdk.com/artisan/commands/install.md)
 - [tinker](https://fluttersdk.com/artisan/commands/tinker.md)
 - [MCP overview](https://fluttersdk.com/artisan/mcp/overview.md)
 - [MCP setup](https://fluttersdk.com/artisan/mcp/setup.md)

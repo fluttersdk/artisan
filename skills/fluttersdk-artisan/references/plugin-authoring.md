@@ -52,7 +52,7 @@ packages/my_plugin/
 ```dart
 import 'package:fluttersdk_artisan/artisan.dart';
 
-/// Entry point: the consumer's bin/artisan.dart registers this provider,
+/// Entry point: the consumer's bin/dispatcher.dart registers this provider,
 /// either manually (`registry.registerProvider(MyPluginArtisanProvider());`)
 /// or automatically via the generated lib/app/_plugins.g.dart barrel.
 final class MyPluginArtisanProvider extends ArtisanServiceProvider {
@@ -286,11 +286,11 @@ The `plugin:install` step routes by manifest presence:
 
 - With `install.yaml`: parses the manifest, walks `ManifestInstaller`, registers in `.artisan/plugins.json`, refreshes `lib/app/_plugins.g.dart`.
 - Without manifest + canonical scaffold present: writes to `.artisan/plugins.json` + refresh.
-- Without manifest + no canonical scaffold: legacy injection of import + `registry.registerProvider(...)` into `bin/artisan.dart`.
+- Without manifest + no canonical scaffold: legacy injection of import + `registry.registerProvider(...)` into `bin/dispatcher.dart`.
 
 ## Consumer registration
 
-`consumer:scaffold` produces `bin/artisan.dart` that auto-discovers plugins from `lib/app/_plugins.g.dart`:
+`install` produces `bin/dispatcher.dart` that auto-discovers plugins from `lib/app/_plugins.g.dart`:
 
 ```dart
 import 'package:fluttersdk_artisan/artisan.dart';
@@ -376,4 +376,4 @@ Run with `dart test` in the plugin package root.
 - **`final class` convention**: every public type in the plugin should be `final class X` per project convention. Generated `make:plugin` stubs already use this; manual additions must follow.
 - **`path:` deps in published artifacts**: never. Use `^x.y.z` caret form. Path deps are monorepo-dev-only and will fail at `dart pub publish` validation.
 - **Forgetting `plugins:refresh`**: when hand-editing `.artisan/plugins.json`, the codegen barrel `_plugins.g.dart` is stale until `plugins:refresh` runs. `plugin:install` and `plugin:uninstall` call this automatically.
-- **Hardcoded paths in commands**: never assume the consumer's project root layout beyond what `consumer:scaffold` writes. Use `ctx.projectRoot` or relative paths from cwd.
+- **Hardcoded paths in commands**: never assume the consumer's project root layout beyond what `install` writes. Use `ctx.projectRoot` or relative paths from cwd.

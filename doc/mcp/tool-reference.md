@@ -52,7 +52,7 @@ The same `:` and `-` transformation applies inside the suffix part.
 ### Exclusions from the allowlist
 
 Interactive (`help`), codegen (`make:*`, `*:refresh`), installer (`plugin:*`,
-`consumer:scaffold`), and MCP meta (`mcp:*`) commands are intentionally excluded. They
+`install`), and MCP meta (`mcp:*`) commands are intentionally excluded. They
 either require a TTY, mutate source on disk (better served by the client's own file tools),
 or recurse into the MCP server itself. `tinker` was previously excluded as interactive but
 is now absorbed into the substrate as `artisan_tinker` (the `--eval` one-shot path drives

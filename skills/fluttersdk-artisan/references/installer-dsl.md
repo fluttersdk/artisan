@@ -213,10 +213,10 @@ Run `plugin:uninstall <name> --dry-run` first to preview the reverse plan and id
 
 Two specific helper methods produce code that goes into auto-generated lists, and their indentation is part of the contract because it must match the surrounding generated scaffold:
 
-- `injectProvider(providerClass, package)` emits `      (app) => <ProviderClass>(app),` with 6-space indent (matches the `providers:` block format that `consumer:scaffold` writes).
+- `injectProvider(providerClass, package)` emits `      (app) => <ProviderClass>(app),` with 6-space indent (matches the `providers:` block format that `install` writes).
 - `injectConfigFactory(factoryName)` emits `      () => <factoryName>,` with 6-space indent.
 
-Changing the indent breaks layout for every consumer that ran `consumer:scaffold` before the change. The indent is hard-coded; do not parametrize.
+Changing the indent breaks layout for every consumer that ran `install` before the change. The indent is hard-coded; do not parametrize.
 
 ## Helper-vs-staged ops
 

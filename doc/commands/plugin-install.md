@@ -92,7 +92,7 @@ the project root (`lib/src/commands/plugin_install_command.dart:172-178`).
 `_registerArtisanProvider` runs directly: writes a `PluginEntry` to
 `.artisan/plugins.json` and regenerates `_plugins.g.dart`. No `bin/artisan.dart`
 edit occurs. Covers plugins without a manifest whose consumers used
-`consumer:scaffold`. Naming convention: `my_plugin` maps to
+`install`. Naming convention: `my_plugin` maps to
 `package:my_plugin/cli.dart` and class `MyPluginArtisanProvider`.
 
 ### Mode 3: Legacy bin/artisan.dart Injection

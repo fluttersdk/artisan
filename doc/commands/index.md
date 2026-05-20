@@ -2,7 +2,7 @@
 
 Catalog of every user-facing command shipped by `fluttersdk_artisan`. Twenty-one commands, grouped by intent.
 
-Every command is invoked as `dart run fluttersdk_artisan <name>` (or via the consumer wrapper `dart run artisan <name>` once the project has run `consumer:scaffold` or `magic:install`). Commands are auto-discovered through the registered providers list; nothing wires by hand.
+Every command is invoked as `dart run fluttersdk_artisan <name>` (or via the consumer wrapper `dart run artisan <name>` once the project has run `install` or `magic:install`). Commands are auto-discovered through the registered providers list; nothing wires by hand.
 
 Need a quick reminder of what a command does without leaving the terminal? Run `dart run artisan list` for the full registry grouped by namespace, or `dart run artisan help <name>` for the per-command flag surface. This page exists for the deeper view: the boot mode, the MCP exposure, and the grouping rationale.
 
@@ -30,7 +30,7 @@ Each group section ships a single table with four columns:
 Two shapes appear in the catalog:
 
 - Single verb (`start`, `stop`, `status`, `logs`, `restart`, `reload`, `doctor`, `tinker`, `help`, `list`) for top-level actions on the substrate.
-- Namespaced `<group>:<verb>` (`make:plugin`, `make:command`, `consumer:scaffold`, `plugin:install`, `plugin:uninstall`, `plugins:refresh`, `mcp:serve`, `mcp:install`, `mcp:uninstall`, `commands:refresh`, `hot-restart`) for actions scoped to a subsystem.
+- Namespaced `<group>:<verb>` (`make:plugin`, `make:command`, `install`, `plugin:install`, `plugin:uninstall`, `plugins:refresh`, `mcp:serve`, `mcp:install`, `mcp:uninstall`, `commands:refresh`, `hot-restart`) for actions scoped to a subsystem.
 
 The `hot-restart` command is the one outlier: it lives in the lifecycle group but uses a hyphen instead of a colon, mirroring the `R` keypress sent to `flutter run`.
 
@@ -58,7 +58,7 @@ Three commands that write source files into the consumer project. They are delib
 |---------|-------------|-----------|----------|
 | `make:plugin` | Scaffold a new fluttersdk_artisan plugin skeleton. | none | no |
 | `make:command` | Scaffold a new ArtisanCommand subclass under `lib/app/commands/` (or `lib/src/commands/` when run inside a plugin). | none | no |
-| `consumer:scaffold` | Scaffold the canonical native Flutter consumer wrapper (`bin/artisan.dart` plus `lib/app/_plugins.g.dart` plus `lib/app/commands/_index.g.dart`). | none | no |
+| `install` | Scaffold the canonical native Flutter consumer wrapper (`bin/artisan.dart` plus `lib/app/_plugins.g.dart` plus `lib/app/commands/_index.g.dart`). | none | no |
 
 ## Plugin management
 
@@ -115,7 +115,7 @@ Six commands earn their own pages because their flags, modes, or composition rul
 - [plugin:install](plugin-install)
 - [mcp:serve](mcp-serve)
 - [make:plugin](make-plugin)
-- [consumer:scaffold](consumer-scaffold)
+- [install](install)
 - [tinker](tinker)
 
 Slug rule: the deep-dive URL drops the `:` separator in favor of `-`, so `plugin:install` lives at `commands/plugin-install/` and `mcp:serve` at `commands/mcp-serve/`. The remaining fifteen commands share this index page; reach for `dart run artisan help <name>` for their full flag surface.

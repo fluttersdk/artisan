@@ -25,7 +25,7 @@ body:
         - Console (ArtisanApplication, ArtisanRegistry, signature DSL)
         - Commands (new builtin command)
         - Lifecycle (start / stop / status / logs / restart / reload / hot-restart)
-        - Scaffolding (make:plugin / make:command / consumer:scaffold)
+        - Scaffolding (make:plugin / make:command / install)
         - Plugin Management (plugin:install / plugin:uninstall / plugins:refresh)
         - MCP Server (filter, soft-fail, lazy-reconnect, transport)
         - MCP Tools (new substrate tool, plugin tool surface)

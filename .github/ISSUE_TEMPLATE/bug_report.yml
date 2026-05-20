@@ -22,7 +22,7 @@ body:
       label: Steps to Reproduce
       description: How can we reproduce this bug?
       placeholder: |
-        1. Run `dart run fluttersdk_artisan consumer:scaffold` in a fresh Dart project
+        1. Run `dart run fluttersdk_artisan install` in a fresh Dart project
         2. Run `dart run fluttersdk_artisan plugin:install <plugin_name>`
         3. See error
     validations:
@@ -53,7 +53,7 @@ body:
         - Console (ArtisanApplication, ArtisanRegistry, signature DSL)
         - Commands (21 builtin commands)
         - Lifecycle (start / stop / status / logs / restart / reload / hot-restart)
-        - Scaffolding (make:plugin / make:command / consumer:scaffold)
+        - Scaffolding (make:plugin / make:command / install)
         - Plugin Management (plugin:install / plugin:uninstall / plugins:refresh)
         - MCP Server (mcp:serve / mcp:install / mcp:uninstall, stdio JSON-RPC, filter)
         - MCP Tools (substrate artisan_* or plugin-contributed tools)
