@@ -121,11 +121,18 @@ class StopCommand extends ArtisanCommand {
     int chromePid,
     String? tmpProfileDir,
   ) async {
-    // 1. Deliver SIGTERM. Continue even on failure; liveness probe decides
-    //    whether to escalate.
+    // 1. Deliver SIGTERM. Process.killPid returns false when the signal
+    //    cannot be delivered (process already gone, permission denied);
+    //    continue regardless because the liveness probe drives escalation.
     try {
-      stopKillFunction(chromePid, ProcessSignal.sigterm);
-      ctx.output.success('Chrome SIGTERM sent to pid=$chromePid.');
+      final delivered = stopKillFunction(chromePid, ProcessSignal.sigterm);
+      if (delivered) {
+        ctx.output.success('Chrome SIGTERM sent to pid=$chromePid.');
+      } else {
+        ctx.output
+            .warning('Chrome SIGTERM not delivered to pid=$chromePid (process '
+                'may already be gone).');
+      }
     } catch (_) {
       // Non-fatal; the probe below drives escalation.
     }

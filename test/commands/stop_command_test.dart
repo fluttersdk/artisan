@@ -198,7 +198,11 @@ void main() {
       // No tmpProfileDir in state; dir delete must never be attempted.
       expect(dirDeleteAttempted, isFalse);
       expect(output.content, isNot(contains('tmpProfileDir')));
-      expect(output.content, contains('Chrome SIGTERM'));
+      // killPid returned false; the cleanup branch surfaces a "not delivered"
+      // warning instead of the success line so the operator sees that the
+      // signal landed on no process. The phrase still mentions Chrome SIGTERM.
+      expect(output.content,
+          contains('Chrome SIGTERM not delivered to pid=22222'));
     });
 
     test('tmpProfileDir does not exist on disk: cleanup is a no-op, no error',
@@ -233,6 +237,10 @@ void main() {
         'chromePid': 44444,
         'tmpProfileDir': profileDir.path,
       });
+
+      // Model the happy path: Process.killPid returns true when the signal
+      // was delivered, which is the precondition for the "sent" success line.
+      StopCommand.stopKillFunction = (pid, signal) => true;
 
       final command = StopCommand();
       final output = BufferedOutput();
