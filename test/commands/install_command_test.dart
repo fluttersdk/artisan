@@ -1,13 +1,13 @@
 import 'dart:io';
 
-// Public barrel: must surface InstallCommand. This is the import path the
+// Public barrel: must surface InstallArtisanCommand. This is the import path the
 // magic package (and any third-party plugin) uses to delegate to artisan's
 // install. If the export line in lib/artisan.dart is dropped, the
-// `InstallCommand()` references below fail to compile, catching the
+// `InstallArtisanCommand()` references below fail to compile, catching the
 // regression at the barrel-export boundary.
 import 'package:fluttersdk_artisan/artisan.dart';
 // Private import: only used for the test seam (resetting processRunner on
-// MakeFastCliCommand). InstallCommand itself MUST be reachable via the
+// MakeFastCliCommand). InstallArtisanCommand itself MUST be reachable via the
 // public barrel above.
 import 'package:fluttersdk_artisan/src/commands/make_fast_cli_command.dart';
 import 'package:path/path.dart' as p;
@@ -19,7 +19,7 @@ import 'package:test/test.dart';
 
 /// Records every [Process.run]-style invocation and returns scripted results.
 ///
-/// `InstallCommand.scaffoldInto` does no process work itself; it auto-chains
+/// `InstallArtisanCommand.scaffoldInto` does no process work itself; it auto-chains
 /// `MakeFastCliCommand.scaffoldInto` at the end of its 6 phases. That chained
 /// scaffold runs `chmod`, `dart --version`, `dart build cli`. Recording those
 /// calls is the test seam for verifying the auto-chain fired without spinning
@@ -91,8 +91,8 @@ ArtisanContext _ctx() {
 }
 
 void main() {
-  group('InstallCommand metadata', () {
-    final cmd = InstallCommand();
+  group('InstallArtisanCommand metadata', () {
+    final cmd = InstallArtisanCommand();
 
     test('name is install', () {
       expect(cmd.name, 'install');
@@ -108,7 +108,7 @@ void main() {
     });
   });
 
-  group('InstallCommand.scaffoldInto', () {
+  group('InstallArtisanCommand.scaffoldInto', () {
     late Directory tempRoot;
     late _RecordingRunner runner;
 
@@ -125,7 +125,7 @@ void main() {
     });
 
     test('writes bin/dispatcher.dart with consumer name substituted', () async {
-      final result = await InstallCommand.scaffoldInto(
+      final result = await InstallArtisanCommand.scaffoldInto(
         root: tempRoot.path,
         force: false,
         ctx: _ctx(),
@@ -145,7 +145,7 @@ void main() {
     });
 
     test('writes lib/app/_plugins.g.dart initial barrel', () async {
-      await InstallCommand.scaffoldInto(
+      await InstallArtisanCommand.scaffoldInto(
         root: tempRoot.path,
         force: false,
         ctx: _ctx(),
@@ -160,7 +160,7 @@ void main() {
     });
 
     test('writes lib/app/commands/_index.g.dart initial barrel', () async {
-      await InstallCommand.scaffoldInto(
+      await InstallArtisanCommand.scaffoldInto(
         root: tempRoot.path,
         force: false,
         ctx: _ctx(),
@@ -178,7 +178,7 @@ void main() {
         () async {
       // No .dart_tool/package_config.json seeded → path-dep branch returns
       // null, so the version-constraint branch fires.
-      await InstallCommand.scaffoldInto(
+      await InstallArtisanCommand.scaffoldInto(
         root: tempRoot.path,
         force: false,
         ctx: _ctx(),
@@ -219,7 +219,7 @@ void main() {
 ''',
         );
 
-        await InstallCommand.scaffoldInto(
+        await InstallArtisanCommand.scaffoldInto(
           root: tempRoot.path,
           force: false,
           ctx: _ctx(),
@@ -248,7 +248,7 @@ void main() {
         'description: Nameless project.\n',
       );
 
-      final result = await InstallCommand.scaffoldInto(
+      final result = await InstallArtisanCommand.scaffoldInto(
         root: tempRoot.path,
         force: false,
         ctx: _ctx(),
@@ -259,7 +259,7 @@ void main() {
     test('skips file writes when files exist and force=false (idempotent)',
         () async {
       // First run lands the three files.
-      await InstallCommand.scaffoldInto(
+      await InstallArtisanCommand.scaffoldInto(
         root: tempRoot.path,
         force: false,
         ctx: _ctx(),
@@ -277,7 +277,7 @@ void main() {
       final runner2 = _RecordingRunner(_happyScripted(tempRoot.path));
       MakeFastCliCommand.processRunner = runner2.call;
 
-      await InstallCommand.scaffoldInto(
+      await InstallArtisanCommand.scaffoldInto(
         root: tempRoot.path,
         force: false,
         ctx: _ctx(),
@@ -290,7 +290,7 @@ void main() {
     });
 
     test('force=true overwrites bin/dispatcher.dart', () async {
-      await InstallCommand.scaffoldInto(
+      await InstallArtisanCommand.scaffoldInto(
         root: tempRoot.path,
         force: false,
         ctx: _ctx(),
@@ -306,7 +306,7 @@ void main() {
       final runner2 = _RecordingRunner(_happyScripted(tempRoot.path));
       MakeFastCliCommand.processRunner = runner2.call;
 
-      await InstallCommand.scaffoldInto(
+      await InstallArtisanCommand.scaffoldInto(
         root: tempRoot.path,
         force: true,
         ctx: _ctx(),
@@ -319,7 +319,7 @@ void main() {
     });
 
     test('auto-chains make:fast-cli (dart build cli is invoked)', () async {
-      await InstallCommand.scaffoldInto(
+      await InstallArtisanCommand.scaffoldInto(
         root: tempRoot.path,
         force: false,
         ctx: _ctx(),
@@ -352,7 +352,7 @@ void main() {
     });
 
     test('returns 0 on success', () async {
-      final result = await InstallCommand.scaffoldInto(
+      final result = await InstallArtisanCommand.scaffoldInto(
         root: tempRoot.path,
         force: false,
         ctx: _ctx(),
@@ -365,7 +365,7 @@ void main() {
       'the canonical _plugins.g.dart barrel (does not stomp with empty stub)',
       () async {
         // 1. First install: lands the canonical scaffold + initial empty barrel.
-        await InstallCommand.scaffoldInto(
+        await InstallArtisanCommand.scaffoldInto(
           root: tempRoot.path,
           force: false,
           ctx: _ctx(),
@@ -403,7 +403,7 @@ void main() {
         final runner2 = _RecordingRunner(_happyScripted(tempRoot.path));
         MakeFastCliCommand.processRunner = runner2.call;
 
-        await InstallCommand.scaffoldInto(
+        await InstallArtisanCommand.scaffoldInto(
           root: tempRoot.path,
           force: true,
           ctx: _ctx(),
@@ -438,7 +438,7 @@ void main() {
       'barrel (no plugins:refresh side effect)',
       () async {
         // No plugins.json seeded → empty initial stub stays in place.
-        await InstallCommand.scaffoldInto(
+        await InstallArtisanCommand.scaffoldInto(
           root: tempRoot.path,
           force: false,
           ctx: _ctx(),
@@ -459,7 +459,7 @@ void main() {
       'pubspec dep injection is idempotent (exactly one fluttersdk_artisan '
       'entry after two scaffold runs)',
       () async {
-        await InstallCommand.scaffoldInto(
+        await InstallArtisanCommand.scaffoldInto(
           root: tempRoot.path,
           force: false,
           ctx: _ctx(),
@@ -468,7 +468,7 @@ void main() {
         final runner2 = _RecordingRunner(_happyScripted(tempRoot.path));
         MakeFastCliCommand.processRunner = runner2.call;
 
-        await InstallCommand.scaffoldInto(
+        await InstallArtisanCommand.scaffoldInto(
           root: tempRoot.path,
           force: false,
           ctx: _ctx(),
@@ -488,7 +488,7 @@ void main() {
     test('propagates non-zero exit from make:fast-cli when build fails',
         () async {
       // Override the build script to fail. The auto-chain's non-zero exit
-      // must bubble back through InstallCommand.scaffoldInto.
+      // must bubble back through InstallArtisanCommand.scaffoldInto.
       final failing = _RecordingRunner({
         'chmod +x ${p.join(tempRoot.path, 'bin', 'fsa')}':
             ProcessResult(0, 0, '', ''),
@@ -499,7 +499,7 @@ void main() {
       });
       MakeFastCliCommand.processRunner = failing.call;
 
-      final result = await InstallCommand.scaffoldInto(
+      final result = await InstallArtisanCommand.scaffoldInto(
         root: tempRoot.path,
         force: false,
         ctx: _ctx(),
@@ -510,16 +510,16 @@ void main() {
     });
   });
 
-  group('InstallCommand barrel export', () {
+  group('InstallArtisanCommand barrel export', () {
     test(
-        'InstallCommand is exported from public barrel '
+        'InstallArtisanCommand is exported from public barrel '
         '(package:fluttersdk_artisan/artisan.dart)', () {
-      // Symbol existence check: this test file imports InstallCommand only
+      // Symbol existence check: this test file imports InstallArtisanCommand only
       // via the public barrel at the top (NO direct import from
       // `lib/src/commands/install_command.dart`). If the export line at
       // lib/artisan.dart is dropped, this construction fails to compile,
       // catching the regression at the barrel-export boundary.
-      final cmd = InstallCommand();
+      final cmd = InstallArtisanCommand();
       expect(cmd.name, 'install');
     });
   });
