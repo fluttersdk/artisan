@@ -41,11 +41,16 @@ void main() {
 
       await command.handle(ctx);
 
-      final lines = output.content.trim().split('\n');
-      expect(lines, hasLength(4));
-      for (final line in lines) {
-        expect(line.trim(), anyOf(startsWith('✓'), startsWith('✗')));
-      }
+      // Doctor can emit advisory warning lines (stale .mcp.json, CDP SDK
+      // upgrade) that do not start with ✓/✗; filter to the check rows only
+      // and assert against those. The four hard checks must always show up.
+      final checkLines = output.content
+          .trim()
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.startsWith('✓') || l.startsWith('✗'))
+          .toList();
+      expect(checkLines, hasLength(4));
     });
 
     test('runs end-to-end without throwing', () async {
@@ -206,6 +211,17 @@ void main() {
       test('version 4.0.0 returns true (above minimum)', () async {
         DoctorCommand.doctorFlutterRunner =
             (_, __) async => fakeVersionResult('4.0.0');
+
+        final result = await DoctorCommand.checkFlutterSdkVersionForTest();
+
+        expect(result, isTrue);
+      });
+
+      test(
+          'beta channel string 3.30.0-1.0.pre is accepted (parser strips suffix '
+          'to stay aligned with StartCommand.compareSemver)', () async {
+        DoctorCommand.doctorFlutterRunner =
+            (_, __) async => fakeVersionResult('3.30.0-1.0.pre');
 
         final result = await DoctorCommand.checkFlutterSdkVersionForTest();
 

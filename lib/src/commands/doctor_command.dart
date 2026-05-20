@@ -180,17 +180,23 @@ class DoctorCommand extends ArtisanCommand {
     return true; // equal
   }
 
-  /// Parses a three-segment semver string into an integer list, or returns
-  /// null when the string does not conform to `major.minor.patch`.
+  /// Parses a semver-ish string into a [major, minor, patch] integer list.
+  /// Strips dev/build suffix (everything after the first `-`) to tolerate
+  /// Flutter beta releases like `3.30.0-1.0.pre`, and pads missing trailing
+  /// segments with 0 so `3.30` reads as `3.30.0`. Returns null when no
+  /// numeric segments survive parsing.
+  ///
+  /// Kept in sync with `StartCommand.compareSemver` so the doctor SDK gate
+  /// does not flag versions the start command would accept.
   static List<int>? _parseVersion(String version) {
-    final parts = version.split('.');
-    if (parts.length != 3) return null;
-    final segments = <int>[];
-    for (final part in parts) {
-      final n = int.tryParse(part);
-      if (n == null) return null;
-      segments.add(n);
-    }
+    final core = version.split('-').first;
+    final parts = core.split('.');
+    if (parts.isEmpty) return null;
+    final segments = <int>[
+      for (var i = 0; i < 3; i++)
+        if (i < parts.length) int.tryParse(parts[i]) ?? 0 else 0,
+    ];
+    if (segments.every((s) => s == 0) && core != '0.0.0') return null;
     return segments;
   }
 
