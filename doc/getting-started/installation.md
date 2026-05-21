@@ -54,7 +54,7 @@ This command writes three files into your project:
 
 | File | Purpose |
 |:-----|:--------|
-| `bin/artisan.dart` | The runnable entry point. `dart run artisan <cmd>` dispatches here. |
+| `bin/dispatcher.dart` | The runnable entry point. `dart run :dispatcher <cmd>` (or `./bin/fsa <cmd>` once the AOT bundle is built) dispatches here. |
 | `lib/app/_plugins.g.dart` | Generated plugin provider list. Updated by `plugin:install` and `plugins:refresh`. |
 | `lib/app/commands/_index.g.dart` | Generated command index. Updated by `make:command` and `commands:refresh`. |
 

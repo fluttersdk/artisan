@@ -21,8 +21,8 @@ dart run fluttersdk_artisan install
 
 The scaffold writes three files:
 
-- `bin/artisan.dart`: the CLI entry point you will invoke for every subsequent
-  `dart run artisan` call.
+- `bin/dispatcher.dart`: the CLI entry point you will invoke for every subsequent
+  `dart run :dispatcher` call (or `./bin/fsa <cmd>` once the AOT bundle is built).
 - `lib/app/_plugins.g.dart`: codegen barrel that wires registered plugin providers
   into the consumer wrapper automatically.
 - `lib/app/commands/_index.g.dart`: codegen barrel that auto-discovers commands
@@ -66,7 +66,7 @@ the consumer wrapper via `plugin:install`. The command runs a three-stage resolu
    `lib/app/_plugins.g.dart` is refreshed.
 2. When no manifest is found but the canonical scaffold (`lib/app/_plugins.g.dart`)
    is present, registration writes directly to `.artisan/plugins.json` and refreshes
-   the codegen barrel (no bin/artisan.dart edit needed).
+   the codegen barrel (no `bin/dispatcher.dart` edit needed).
 3. When neither condition is met, the legacy fallback appends an import and a
    `registerProvider(...)` call to `bin/artisan.dart` directly.
 
