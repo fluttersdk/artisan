@@ -18,7 +18,7 @@ plugin-contributed tools to AI clients such as Claude Code, Cursor, and Windsurf
 ## Basic Usage
 
 ```bash
-dart run fluttersdk_artisan mcp:serve
+./bin/fsa mcp:serve
 ```
 
 The server opens a stdio JSON-RPC channel, registers every tool that passes the
@@ -26,18 +26,24 @@ active filter, and blocks until the MCP client disconnects. Exit code is `0` on 
 clean disconnect, `1` on a startup `StateError`.
 
 In normal usage the AI client launches the server automatically from your `.mcp.json`
-entry. The standalone form above is useful for debugging the tool list before wiring.
+entry. The form above uses the fast-compiled binary; the standalone fallback is useful for debugging:
+
+```bash
+dart run :dispatcher mcp:serve
+```
 
 ---
 
 ## Synopsis
 
 ```
-dart run fluttersdk_artisan mcp:serve
-  [--include-package <package_name>]...
-  [--exclude-package <package_name>]...
-  [--include-tool    <tool_name>]...
-  [--exclude-tool    <tool_name>]...
+./bin/fsa mcp:serve [--include-package <package_name>]... [--exclude-package <package_name>]... [--include-tool <tool_name>]... [--exclude-tool <tool_name>]...
+```
+
+or, when `bin/fsa` is absent or on Windows:
+
+```
+dart run :dispatcher mcp:serve [--include-package <package_name>]... [--exclude-package <package_name>]... [--include-tool <tool_name>]... [--exclude-tool <tool_name>]...
 ```
 
 All four flags are **repeatable**. Each can also be set via environment variable or
@@ -171,7 +177,7 @@ live on each plugin's own MCP tool reference site
 ```
 
 ```bash
-dart run fluttersdk_artisan mcp:serve
+./bin/fsa mcp:serve
 ```
 
 Only substrate and Dusk tools register. Telescope is excluded because its package is
@@ -181,7 +187,7 @@ not in the allow list.
 
 ```bash
 export ARTISAN_MCP_PACKAGES_DENY="fluttersdk_telescope"
-dart run fluttersdk_artisan mcp:serve
+./bin/fsa mcp:serve
 ```
 
 All Telescope tools are excluded; all others remain available. The env deny is
@@ -190,7 +196,7 @@ UNIONed with any deny entries already in `.artisan/mcp.json`.
 ### 3. Filter via CLI flags: pin to a minimal tool set
 
 ```bash
-dart run fluttersdk_artisan mcp:serve \
+./bin/fsa mcp:serve \
   --include-tool artisan_start \
   --include-tool artisan_stop \
   --include-tool artisan_tinker

@@ -91,7 +91,7 @@ The output lists all registered commands grouped by namespace. A fresh scaffold 
 | `commands` | `commands:refresh` |
 | (root)    | `install` |
 | `make` | `make:command`, `make:plugin` |
-| `mcp` | `mcp:serve`, `mcp:install`, `mcp:uninstall` |
+| `mcp` | `mcp:serve` (via `./bin/fsa` or `dart run :dispatcher`), `mcp:install`, `mcp:uninstall` |
 | `plugin` | `plugin:install`, `plugin:uninstall` |
 | `plugins` | `plugins:refresh` |
 | `tinker` | `tinker` |

@@ -67,7 +67,9 @@ Structure:
 - imports `package:<name>/app/commands/_index.g.dart as consumer_commands`
 - imports `package:<name>/app/_plugins.g.dart as plugins`
 - defines `_ConsumerCommandsProvider extends ArtisanServiceProvider` registering the consumer barrel
-- `main(List<String> args)` calls `runArtisan(args, baseProviders: [_ConsumerCommandsProvider(), ...plugins.autoDiscoveredProviders()], delegateToConsumer: false)`
+- `main(List<String> args)` calls `runArtisan(args, baseProviders: [_ConsumerCommandsProvider(), ...plugins.autoDiscoveredProviders()], delegateToConsumer: false, collectMcpTools: args.isNotEmpty && args.first == 'mcp:serve')`
+
+The `collectMcpTools` parameter is conditionally enabled only when the command is `mcp:serve`, so plugin providers' MCP tools register for the server without overhead on non-MCP CLI invocations.
 
 ### 2. `lib/app/_plugins.g.dart`
 
