@@ -354,7 +354,7 @@ The working directory must contain a `pubspec.yaml` that depends on `fluttersdk_
 
 When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead.
 
-Remote HTTP transport is NOT supported in V1; the artisan MCP server is stdio-only because it bridges to the local VM Service URI recorded in `~/.artisan/state.json` by `dart run artisan start`.
+Remote HTTP transport is NOT supported in V1; the artisan MCP server is stdio-only because it bridges to the local VM Service URI recorded in `~/.artisan/state.json` by `./bin/fsa start` (or `dart run :dispatcher start` when `bin/fsa` is absent).
 
 ---
 

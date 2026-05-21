@@ -90,11 +90,13 @@ Plugin tools dispatch through the VM Service (not in-process), so they require a
 The MCP server lazy-reconnects on each dispatch call, meaning the agent can call `artisan_start`
 first and the very next plugin tool call picks up the new app automatically.
 
-**Plugin registration is explicit.** The consumer's `bin/artisan.dart` wrapper must list each
-provider in its `artisanProviders` factory list. Consumers invoke `./bin/fsa mcp:serve`
-(post-install via `mcp:install`) or `dart run :dispatcher mcp:serve` (Windows / no-fsa fallback) to
-start the MCP server with plugins collected. The legacy `bin/mcp.dart` entry point is preserved for
-backward compatibility and loads only the substrate commands without plugin tools.
+**Plugin registration is explicit.** The consumer's `bin/dispatcher.dart` wrapper must list each
+provider in the `baseProviders` list it passes to `runArtisan(...)` (auto-discovery via
+`lib/app/_plugins.g.dart` handles this for `plugin:install`-registered packages). Consumers
+invoke `./bin/fsa mcp:serve` (post-install via `mcp:install`) or `dart run :dispatcher mcp:serve`
+(Windows / no-fsa fallback) to start the MCP server with plugins collected. The legacy
+`bin/mcp.dart` entry point is preserved for backward compatibility and loads only the substrate
+commands without plugin tools.
 
 The two sibling packages that ship production plugin tools are:
 

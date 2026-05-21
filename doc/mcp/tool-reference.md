@@ -2,7 +2,7 @@
 
 Catalog of every MCP tool surfaced by `fluttersdk_artisan` directly. The MCP server exposes
 **10 substrate tools** (always available) plus plugin-contributed tools when the matching
-provider is registered in the consumer's `bin/artisan.dart`. Plugin tool catalogs live on
+provider is registered in the consumer's `bin/dispatcher.dart`. Plugin tool catalogs live on
 each plugin's own documentation site (see [Plugin Tools](#plugin-tools) below).
 
 ## Table of Contents
@@ -159,7 +159,7 @@ Maps to artisan command: `list`
 
 Lists every registered artisan command with its signature and description. Output mirrors
 `dart run artisan list`. Useful for discovering commands contributed by plugin providers
-registered in the consumer's `bin/artisan.dart`.
+registered in the consumer's `bin/dispatcher.dart`.
 
 No parameters.
 
@@ -183,7 +183,7 @@ expression runs in the foreground isolate's root library scope and is passed thr
 
 Plugin tools are contributed by sibling packages via `ArtisanServiceProvider.mcpTools()`.
 They surface in the MCP server only when the corresponding provider is registered in the
-consumer's `bin/artisan.dart` and the MCP server is restarted (run `./bin/fsa mcp:serve` or
+consumer's `bin/dispatcher.dart` and the MCP server is restarted (run `./bin/fsa mcp:serve` or
 `dart run :dispatcher mcp:serve` on Windows or when `bin/fsa` is absent).
 
 Each plugin tool dispatches over a `ext.<domain>.*` VM Service extension registered by the
@@ -240,7 +240,7 @@ and union for deny lists.
 
 ### Layer 1: `.artisan/mcp.json`
 
-Place this file in the project root (next to `bin/artisan.dart`):
+Place this file in the project root (next to `bin/dispatcher.dart`):
 
 ```json
 {

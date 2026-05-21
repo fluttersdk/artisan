@@ -100,7 +100,9 @@ Plugin commands surface automatically. After installing `fluttersdk_dusk`, `dart
 ### 3. Wire the MCP server for your AI agent
 
 ```bash
-dart run artisan mcp:install
+./bin/fsa mcp:install
+# or, on Windows / when bin/fsa is absent:
+# dart run fluttersdk_artisan mcp:install
 ```
 
 `mcp:install` writes (or updates) the `mcpServers.fluttersdk` entry in `.mcp.json`. After install, reconnect the MCP client once (for Claude Code: `/mcp reconnect fluttersdk`). The server boots in stdio JSON-RPC mode and exposes 10 substrate tools (`artisan_start`, `artisan_stop`, `artisan_status`, `artisan_logs`, `artisan_restart`, `artisan_reload`, `artisan_hot_restart`, `artisan_doctor`, `artisan_list`, `artisan_tinker`) plus any plugin-contributed tools.
