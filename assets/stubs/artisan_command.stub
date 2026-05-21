@@ -1,6 +1,6 @@
 import 'package:fluttersdk_artisan/artisan.dart';
 
-/// {{ className }} — scaffolded by `dart run fluttersdk_artisan make:command`.
+/// {{ className }}: scaffolded by `dart run fluttersdk_artisan make:command`.
 ///
 /// Lives at `{{ namespace }}/`. Auto-registered via the codegen barrel
 /// `_index.g.dart`; no manual wiring required. Re-run `make:command` with
