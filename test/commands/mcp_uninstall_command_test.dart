@@ -39,7 +39,9 @@ void main() {
     });
   });
 
-  group('McpUninstallCommand handle — new entry shape (fluttersdk_artisan:mcp)',
+  group(
+      'McpUninstallCommand handle: post-fix entry shapes (./bin/fsa mcp:serve, '
+      'dart run :dispatcher mcp:serve) and pre-fix fluttersdk_artisan:mcp',
       () {
     test(
         'removes fluttersdk entry that uses the post-fix fsa shape (./bin/fsa mcp:serve)',
