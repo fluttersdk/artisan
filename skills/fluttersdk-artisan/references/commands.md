@@ -184,7 +184,7 @@ Regenerates `lib/app/_plugins.g.dart` from `.artisan/plugins.json`. Atomic `.tmp
 
 `lib/src/commands/mcp_serve_command.dart:32` (no signature DSL; configure at line 56)
 
-Runs the stdio JSON-RPC MCP server. The entry point used by `bin/mcp.dart` (`dart run fluttersdk_artisan:mcp`); the `mcp:serve` CLI form is mostly for testing.
+Runs the stdio JSON-RPC MCP server. The MCP client spawns the server via `./bin/fsa mcp:serve` (or `dart run :dispatcher mcp:serve` on Windows or when `bin/fsa` is absent); the CLI form is rarely used directly.
 
 | Flag (repeatable) | Purpose |
 |-------------------|---------|
@@ -205,14 +205,28 @@ Idempotently writes the `mcpServers.fluttersdk` entry to `.mcp.json`. Preserves 
 |------|---------|---------|
 | `--path=<file>` | `.mcp.json` | Target file path. |
 
-Canonical entry shape:
+Canonical entry shape (when `bin/fsa` is present on POSIX):
+
+```json
+{
+  "mcpServers": {
+    "fluttersdk": {
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"],
+      "cwd": "."
+    }
+  }
+}
+```
+
+On Windows or when `bin/fsa` is absent:
 
 ```json
 {
   "mcpServers": {
     "fluttersdk": {
       "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"],
+      "args": ["run", ":dispatcher", "mcp:serve"],
       "cwd": "."
     }
   }

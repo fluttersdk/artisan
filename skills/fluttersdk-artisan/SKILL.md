@@ -14,7 +14,7 @@ Composable Dart 3.4+ CLI framework and stdio MCP server. One binary registers ev
 ## 1. Core Laws
 
 1. **One binary, two entry points.** `dart run fluttersdk_artisan <cmd>` runs against the artisan package directly. `dart run <consumer-package>:artisan <cmd>` runs through the consumer's `bin/dispatcher.dart` wrapper produced by `install` (most projects).
-2. **MCP entry is separate**: `dart run fluttersdk_artisan:mcp` is the stdio JSON-RPC entry point used by Claude Code / Cursor / Windsurf, not for human CLI use.
+2. **MCP entry is wired by `mcp:install`**: `mcp:install` writes the `.mcp.json` entry; after that, the MCP client spawns the server via `./bin/fsa mcp:serve` (or `dart run :dispatcher mcp:serve` on Windows or when `bin/fsa` is absent). Not for human CLI use; invoke via the MCP client (Claude Code, Cursor, Windsurf).
 3. **Pub.dev install in docs; install command chooses at runtime**: in any user-facing artifact (README, doc pages, `llms.txt`, install.yaml templates, examples) use `dart pub add fluttersdk_artisan` or `fluttersdk_artisan: ^0.0.1`. The `install` command itself picks the right dep shape at scaffold time: a `path:` entry when `.dart_tool/package_config.json` resolves `fluttersdk_artisan` to a relative `rootUri` (sibling-package monorepo workflow), otherwise `fluttersdk_artisan: any` so the next `pub get` pulls the published package. Never hand-write `path:` syntax in docs.
 4. **Atomic + idempotent**: every persistent file write goes through `.tmp` + rename. Plugin installers use lookahead-anchored regex injection so re-running `plugin:install` is a safe no-op.
 5. **State lives at `~/.artisan/state.json`** for the running app (PID, VM Service URI, device, FIFO stdin pipe). At `.artisan/plugins.json` for installed plugins. At `.artisan/installed/<plugin>.json` for plugin reverse-records. State files belong in `.gitignore`; the package's own `.gitignore` already excludes `.artisan/`.
@@ -122,10 +122,10 @@ Full DSL reference (all 26 sealed `InstallOperation` variants, IMMEDIATE/DEFERRE
 **Quick install** (writes `.mcp.json` entry idempotently):
 
 ```bash
-dart run fluttersdk_artisan mcp:install
+./bin/fsa mcp:install
 ```
 
-Then reconnect the MCP client (Claude Code: `/mcp reconnect fluttersdk`). The server boots in stdio JSON-RPC mode via `dart run fluttersdk_artisan:mcp` and surfaces tools.
+Then reconnect the MCP client (Claude Code: `/mcp reconnect fluttersdk`). The server boots in stdio JSON-RPC mode via `./bin/fsa mcp:serve` (or `dart run :dispatcher mcp:serve` on Windows or when `bin/fsa` is absent) and surfaces tools.
 
 **10 substrate tools (always available):**
 

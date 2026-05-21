@@ -1,35 +1,53 @@
 # MCP server reference
 
-Authoritative source: `lib/src/mcp/mcp_server.dart` (server class), `lib/src/mcp/mcp_server.dart:665-675` (substrate allowlist), `lib/src/mcp/mcp_filter_config.dart` (three-layer filter), `lib/src/commands/mcp_install_command.dart:72-76` (canonical `.mcp.json` shape), `lib/src/state/state_file.dart:13-24` (state.json schema), `bin/mcp.dart` (entry point).
+Authoritative source: `lib/src/mcp/mcp_server.dart` (server class), `lib/src/mcp/mcp_server.dart:665-675` (substrate allowlist), `lib/src/mcp/mcp_filter_config.dart` (three-layer filter), `lib/src/commands/mcp_install_command.dart` (canonical `.mcp.json` branched shape), `lib/src/state/state_file.dart:13-24` (state.json schema), `bin/mcp.dart` (legacy entry point).
 
-The fluttersdk_artisan MCP server is a stdio JSON-RPC server built on `dart_mcp ^0.5.1`. It surfaces 10 substrate tools (the lifecycle quartet, status / logs / doctor / list, and tinker for VM expression eval) plus any plugin-contributed tools the consumer's `bin/dispatcher.dart` registers via `ArtisanServiceProvider.mcpTools()`.
+The fluttersdk_artisan MCP server is a stdio JSON-RPC server built on `dart_mcp ^0.5.1`. It surfaces 10 substrate tools (the lifecycle quartet, status / logs / doctor / list, and tinker for VM expression eval) plus any plugin-contributed tools the consumer's `bin/dispatcher.dart` registers via `ArtisanServiceProvider.mcpTools()`. Post-install, the canonical dispatch path is `./bin/fsa mcp:serve` (POSIX with AOT bundle present) or `dart run :dispatcher mcp:serve` (Windows or no-fsa fallback).
 
 ## Quick install
 
 ```bash
-dart run fluttersdk_artisan mcp:install
+./bin/fsa mcp:install
+# or on Windows / when bin/fsa is absent:
+# dart run fluttersdk_artisan mcp:install
 # Then reconnect the MCP client. For Claude Code: /mcp reconnect fluttersdk
 ```
 
-`mcp:install` is idempotent: re-running replaces the existing `fluttersdk` entry in `.mcp.json`, preserves any other server entries.
+`mcp:install` is idempotent: re-running replaces the existing `fluttersdk` entry in `.mcp.json`, preserves any other server entries. The branched entry shape is auto-detected at install time based on platform and `bin/fsa` availability.
 
 ## Canonical `.mcp.json` entry
 
-The shape written by `mcp:install` at `lib/src/commands/mcp_install_command.dart:72-76`:
+The shape written by `mcp:install` at `lib/src/commands/mcp_install_command.dart`:
+
+**When `bin/fsa` is present and not on Windows:**
 
 ```json
 {
   "mcpServers": {
     "fluttersdk": {
-      "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"],
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"],
       "cwd": "."
     }
   }
 }
 ```
 
-`cwd: "."` means the server inherits the consumer project's working directory; this is required so the server can read `.artisan/state.json`, `.artisan/mcp.json` (filter), and the consumer's `pubspec.yaml`.
+**When `bin/fsa` is absent or on Windows:**
+
+```json
+{
+  "mcpServers": {
+    "fluttersdk": {
+      "command": "dart",
+      "args": ["run", ":dispatcher", "mcp:serve"],
+      "cwd": "."
+    }
+  }
+}
+```
+
+`cwd: "."` means the server inherits the consumer project's working directory; this is required so the server can read `.artisan/state.json`, `.artisan/mcp.json` (filter), and the consumer's `pubspec.yaml`. The `./bin/fsa` variant starts ~50ms (AOT native); the `dart run :dispatcher` variant starts ~3s (Dart VM).
 
 ## 10 substrate tools
 
@@ -165,18 +183,20 @@ Net effect: MCP clients stay connected across the consumer's `start` / `stop` cy
 
 ## Per-client install
 
-`mcp:install` writes `.mcp.json` which Claude Code and Cursor read natively. Other MCP-aware clients require different config files; the canonical entry shape stays the same (`command: dart`, `args: ["run", "fluttersdk_artisan:mcp"]`, `cwd: "."`).
+`mcp:install` writes `.mcp.json` which Claude Code and Cursor read natively. Other MCP-aware clients require different config files; the canonical entry shape branches based on platform and `bin/fsa` availability (see Canonical `.mcp.json` entry above).
 
 ### Cursor
 
-File: `~/.cursor/mcp.json`. Same shape as `.mcp.json`.
+File: `~/.cursor/mcp.json`. Same branched shape as `.mcp.json`.
 
 ### Claude Code
 
 `.mcp.json` at project root (managed by `mcp:install`). Alternatively the CLI:
 
 ```bash
-claude mcp add fluttersdk -- dart run fluttersdk_artisan:mcp
+claude mcp add fluttersdk -- ./bin/fsa mcp:serve
+# or on Windows / when bin/fsa is absent:
+# claude mcp add fluttersdk -- dart run :dispatcher mcp:serve
 ```
 
 For per-project scope: append `--scope project`. For user scope: `--scope user`.
@@ -192,19 +212,21 @@ Same `mcpServers` shape. Restart Claude Desktop after editing (File > Exit, not 
 
 ### VS Code Copilot
 
-File: `.vscode/mcp.json` at project root. Shape:
+File: `.vscode/mcp.json` at project root. Shape (POSIX with `bin/fsa`):
 
 ```json
 {
   "servers": {
     "fluttersdk": {
       "type": "stdio",
-      "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"]
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"]
     }
   }
 }
 ```
+
+On Windows or when `bin/fsa` is absent, use `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}`.
 
 ### Windsurf
 
@@ -227,12 +249,14 @@ Schema differs slightly: `mcp.<name>` instead of `mcpServers.<name>`.
   "mcp": {
     "fluttersdk": {
       "type": "local",
-      "command": ["dart", "run", "fluttersdk_artisan:mcp"],
+      "command": ["./bin/fsa", "mcp:serve"],
       "enabled": true
     }
   }
 }
 ```
+
+On Windows or when `bin/fsa` is absent, use `{"command": ["dart", "run", ":dispatcher", "mcp:serve"], ...}`.
 
 ### Gemini CLI
 
@@ -275,10 +299,10 @@ Schema definition: `lib/src/state/state_file.dart:13-24`. Atomic write via `.tmp
 
 When MCP tools misbehave:
 
-1. **No tools surfacing**: check `dart run fluttersdk_artisan list` output for the artisan binaries (confirm install). Check `.mcp.json` exists with the `fluttersdk` entry. Reconnect the MCP client.
+1. **No tools surfacing**: check `./bin/fsa list` output for the artisan binaries (or `dart run fluttersdk_artisan list` when fsa is absent); confirm install. Check `.mcp.json` exists with the `fluttersdk` entry. Reconnect the MCP client.
 2. **`artisan_start` returns ok but `artisan_tinker` errors "not connected"**: lazy-reconnect should resolve; call `artisan_status` first to verify the app is recorded in state.json.
 3. **Tool count lower than expected**: the filter is active. Check `.artisan/mcp.json`, env vars, and CLI flags (`ARTISAN_MCP_*`). Empty deny lists, null allow lists everywhere = no filter.
-4. **Plugin tools missing**: confirm the consumer's `bin/dispatcher.dart` registers the plugin provider via `registry.registerProvider(...)`. Check `lib/app/_plugins.g.dart` for the auto-discovered list.
-5. **State file stale**: `dart run artisan stop` to clean. Restart the MCP client.
+4. **Plugin tools missing**: confirm the consumer's `bin/dispatcher.dart` registers the plugin provider via `registry.registerProvider(...)`. Check `lib/app/_plugins.g.dart` for the auto-discovered list. Post-install, run `./bin/fsa mcp:install` to update `.mcp.json` if it still carries the pre-fix `fluttersdk_artisan:mcp` args.
+5. **State file stale**: `./bin/fsa stop` (or `dart run fluttersdk_artisan stop`) to clean. Restart the MCP client.
 
 The MCP server writes initialization status to stderr; capture from the MCP client's log panel.
