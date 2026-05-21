@@ -6,6 +6,7 @@ Scaffold the canonical Flutter consumer project structure and install the fast-C
 
 ## Table of contents
 
+- [Prerequisites](#prerequisites)
 - [Basic Usage](#basic-usage)
 - [Synopsis](#synopsis)
 - [What It Writes](#what-it-writes)
@@ -14,6 +15,26 @@ Scaffold the canonical Flutter consumer project structure and install the fast-C
 - [Fast-CLI Auto-Chain](#fast-cli-auto-chain)
 - [Examples](#examples)
 - [Related](#related)
+
+---
+
+<a name="prerequisites"></a>
+## Prerequisites
+
+Add `fluttersdk_artisan` to the project before invoking `install`. The package needs to resolve from `pubspec.yaml` so the substrate CLI is discoverable via `dart run`:
+
+```bash
+dart pub add fluttersdk_artisan
+```
+
+Equivalent manual edit, then `dart pub get`:
+
+```yaml
+dependencies:
+  fluttersdk_artisan: ^0.0.4
+```
+
+`install` itself re-injects the dep at scaffold time (path-dep when `.dart_tool/package_config.json` resolves `fluttersdk_artisan` to a relative `rootUri`, otherwise `fluttersdk_artisan: any`), so the pub-add step is idempotent with the scaffold's own pubspec writes.
 
 ---
 

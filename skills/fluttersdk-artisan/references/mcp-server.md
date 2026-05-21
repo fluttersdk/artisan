@@ -6,7 +6,11 @@ The fluttersdk_artisan MCP server is a stdio JSON-RPC server built on `dart_mcp 
 
 ## Quick install
 
+Prerequisite: substrate package + consumer scaffold land via `dart pub add fluttersdk_artisan` followed by `dart run fluttersdk_artisan install`. `mcp:install` assumes `bin/dispatcher.dart` and (POSIX) `bin/fsa` are already present.
+
 ```bash
+dart pub add fluttersdk_artisan         # if not already in pubspec.yaml
+dart run fluttersdk_artisan install     # if bin/dispatcher.dart not yet scaffolded
 ./bin/fsa mcp:install
 # or on Windows / when bin/fsa is absent:
 # dart run fluttersdk_artisan mcp:install

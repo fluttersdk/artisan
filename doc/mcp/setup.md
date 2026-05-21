@@ -18,7 +18,7 @@ LLM agents working against a running Flutter app are blind without artisan MCP:
 The artisan MCP server bridges the agent to the running app over the VM Service:
 
 - 10 substrate command tools (`artisan_start`, `artisan_stop`, `artisan_status`, `artisan_logs`, `artisan_restart`, `artisan_reload`, `artisan_hot_restart`, `artisan_doctor`, `artisan_list`, `artisan_tinker`).
-- Plugin tools surface automatically once the consumer's `bin/artisan.dart` wrapper registers the provider; see each plugin's MCP tool reference for the current catalog ([fluttersdk_dusk](https://fluttersdk.com/dusk/mcp/tool-reference), [fluttersdk_telescope](https://fluttersdk.com/telescope/mcp/tool-reference)).
+- Plugin tools surface automatically once the consumer's `bin/dispatcher.dart` wrapper registers the provider; see each plugin's MCP tool reference for the current catalog ([fluttersdk_dusk](https://fluttersdk.com/dusk/mcp/tool-reference), [fluttersdk_telescope](https://fluttersdk.com/telescope/mcp/tool-reference)).
 - Tool visibility filters via `.artisan/mcp.json` + env vars + CLI flags (Cargo-style replace for allow, union for deny).
 - Zero release-build impact: every artisan integration gates on `kDebugMode` at the consumer's `main.dart`.
 
@@ -30,7 +30,20 @@ Show me the current MonitorController state. use artisan
 
 ## Installation
 
-The canonical `.mcp.json` entry shape (written by `dart run fluttersdk_artisan mcp:install`):
+### Prerequisites
+
+The MCP server ships with `fluttersdk_artisan`. Add the package + scaffold the consumer wrapper first so `./bin/fsa` and `bin/dispatcher.dart` exist:
+
+```bash
+dart pub add fluttersdk_artisan
+dart run fluttersdk_artisan install
+```
+
+`install` writes `bin/dispatcher.dart` + `bin/fsa` + the codegen barrels (one-time per project; idempotent on re-run). After that, `mcp:install` writes the `.mcp.json` entry the clients below consume.
+
+### Canonical entry shape
+
+The canonical `.mcp.json` entry shape (written by `./bin/fsa mcp:install` or `dart run fluttersdk_artisan mcp:install`):
 
 ```json
 {
