@@ -133,15 +133,13 @@ Future<int> runArtisan(
     // Back-compat: existing tests inject `wrapperExists: () => true` against
     // tempdirs that have no on-disk wrapper. Honor the boolean override and
     // fall back to the canonical 'dispatcher' token in that case.
-    final hasWrapper = wrapperExists != null
-        ? wrapperExists()
-        : resolvedName != null;
+    final hasWrapper =
+        wrapperExists != null ? wrapperExists() : resolvedName != null;
     final firstArg = args.isEmpty ? '' : args.first;
     final bypassed = _bypassDelegation.contains(firstArg);
     if (hasWrapper && !bypassed) {
       final token = resolvedName ?? 'dispatcher';
-      return await (delegate ??
-          _defaultDelegate)(<String>[':$token', ...args]);
+      return await (delegate ?? _defaultDelegate)(<String>[':$token', ...args]);
     }
   }
 
