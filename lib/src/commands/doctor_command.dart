@@ -11,8 +11,8 @@ import '../console/command_boot.dart';
 /// `fluttersdk_mcp` package. Instructs the user to run `mcp:install` to fix.
 const _staleMcpWarning =
     'WARN: Stale MCP entry detected. Pre-upgrade .mcp.json points at the '
-    'removed fluttersdk_mcp package. Run: dart run fluttersdk_artisan:artisan '
-    'mcp:install';
+    'removed fluttersdk_mcp package. Run: ./bin/fsa mcp:install (or: '
+    'dart run fluttersdk_artisan mcp:install) to refresh the entry.';
 
 /// Advisory warning emitted when `.mcp.json` still uses the pre-Bug-B
 /// `fluttersdk_artisan:mcp` args shape. That shape routes through the substrate

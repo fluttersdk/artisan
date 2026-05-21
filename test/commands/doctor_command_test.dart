@@ -7,8 +7,8 @@ import 'package:test/test.dart';
 /// Constant warning message emitted when a stale `.mcp.json` entry is found.
 const _staleMcpWarning =
     'WARN: Stale MCP entry detected. Pre-upgrade .mcp.json points at the '
-    'removed fluttersdk_mcp package. Run: dart run fluttersdk_artisan:artisan '
-    'mcp:install';
+    'removed fluttersdk_mcp package. Run: ./bin/fsa mcp:install (or: '
+    'dart run fluttersdk_artisan mcp:install) to refresh the entry.';
 
 /// Advisory warning emitted when `.mcp.json` still uses the pre-Bug-B
 /// `fluttersdk_artisan:mcp` args shape. Mirrors the production constant in
