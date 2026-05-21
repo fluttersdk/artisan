@@ -114,6 +114,30 @@ void main() {
 
       expect(delegateCalled, isTrue);
     });
+
+    test(
+      '_defaultDelegate args prepend :dispatcher, not :artisan',
+      () async {
+        // Regression guard: after the 0.0.2 rename, the canonical consumer
+        // wrapper is bin/dispatcher.dart. The delegate seam must forward
+        // the :dispatcher token so dart resolves to that file, not the
+        // legacy bin/artisan.dart.
+        List<String>? captured;
+
+        await runArtisan(
+          <String>['list'],
+          wrapperExists: () => true,
+          delegateToConsumer: true,
+          delegate: (args) async {
+            captured = args;
+            return 0;
+          },
+        );
+
+        expect(captured, isNotNull);
+        expect(captured!.first, ':dispatcher');
+      },
+    );
   });
 
   group('runArtisan standalone', () {
