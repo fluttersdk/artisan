@@ -37,12 +37,17 @@ SDK_VER=$(dart --version 2>&1 | awk '{print $4}')
 COMPILE_KEY="$LOCK_HASH:$SDK_VER"
 
 # 4. Determine staleness: binary missing, stamp empty/missing, stamp mismatch,
-#    or pubspec.yaml is newer than pubspec.lock (indicating an un-run pub get).
+#    or pubspec.yaml has been modified since the last successful build.
+#    The pubspec.yaml-vs-STAMP_FILE comparison is correct because the stamp is
+#    written at the end of every successful compile; pubspec.yaml newer than
+#    the stamp means the user edited it after the last build. Comparing against
+#    pubspec.lock instead would trip on every freshly installed consumer
+#    because `dart pub add` updates pubspec.yaml after pub get writes the lock.
 needs_build() {
   [ ! -x "$BINARY" ] && return 0
   [ ! -s "$STAMP_FILE" ] && return 0
   [ "$(cat "$STAMP_FILE")" != "$COMPILE_KEY" ] && return 0
-  [ "$PROJECT_ROOT/pubspec.yaml" -nt "$PROJECT_ROOT/pubspec.lock" ] && return 0
+  [ "$PROJECT_ROOT/pubspec.yaml" -nt "$STAMP_FILE" ] && return 0
   return 1
 }
 

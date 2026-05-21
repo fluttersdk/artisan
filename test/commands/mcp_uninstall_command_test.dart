@@ -39,8 +39,61 @@ void main() {
     });
   });
 
-  group('McpUninstallCommand handle — new entry shape (fluttersdk_artisan:mcp)',
-      () {
+  group(
+      'McpUninstallCommand handle: post-fix entry shapes (./bin/fsa mcp:serve, '
+      'dart run :dispatcher mcp:serve) and pre-fix fluttersdk_artisan:mcp', () {
+    test(
+        'removes fluttersdk entry that uses the post-fix fsa shape (./bin/fsa mcp:serve)',
+        () async {
+      final mcpPath = p.join(tempDir.path, '.mcp.json');
+      // 1. Seed the post-fix fsa entry shape.
+      File(mcpPath).writeAsStringSync(jsonEncode({
+        'mcpServers': {
+          'fluttersdk': {
+            'command': './bin/fsa',
+            'args': ['mcp:serve'],
+            'cwd': '.',
+          },
+        },
+      }));
+
+      final command = McpUninstallCommand();
+      final ctx = _ctx({'path': mcpPath});
+      final code = await command.handle(ctx);
+
+      expect(code, 0);
+      final decoded =
+          jsonDecode(File(mcpPath).readAsStringSync()) as Map<String, dynamic>;
+      final servers = (decoded['mcpServers'] as Map<String, dynamic>?) ?? {};
+      expect(servers, isNot(contains('fluttersdk')));
+    });
+
+    test(
+        'removes fluttersdk entry that uses the post-fix dart fallback shape (dart run :dispatcher mcp:serve)',
+        () async {
+      final mcpPath = p.join(tempDir.path, '.mcp.json');
+      // 1. Seed the post-fix dart-fallback entry shape.
+      File(mcpPath).writeAsStringSync(jsonEncode({
+        'mcpServers': {
+          'fluttersdk': {
+            'command': 'dart',
+            'args': ['run', ':dispatcher', 'mcp:serve'],
+            'cwd': '.',
+          },
+        },
+      }));
+
+      final command = McpUninstallCommand();
+      final ctx = _ctx({'path': mcpPath});
+      final code = await command.handle(ctx);
+
+      expect(code, 0);
+      final decoded =
+          jsonDecode(File(mcpPath).readAsStringSync()) as Map<String, dynamic>;
+      final servers = (decoded['mcpServers'] as Map<String, dynamic>?) ?? {};
+      expect(servers, isNot(contains('fluttersdk')));
+    });
+
     test('removes fluttersdk entry that uses the new artisan args shape',
         () async {
       final mcpPath = p.join(tempDir.path, '.mcp.json');

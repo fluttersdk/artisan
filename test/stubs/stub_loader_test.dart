@@ -136,5 +136,18 @@ void main() {
         expect(content, contains('{{ name }}'));
       },
     );
+
+    test(
+      'dispatcher stub forwards collectMcpTools to runArtisan',
+      () {
+        // The stub must pass collectMcpTools so plugin providers collect their
+        // MCP tool descriptors when the consumer invokes mcp:serve. Without
+        // this arg, runArtisan's split-API never calls registerMcpToolsFor and
+        // tools/list returns an empty array (GitHub issue #7, Bug A).
+        final content = StubLoader.load('dispatcher.dart');
+
+        expect(content, contains('collectMcpTools'));
+      },
+    );
   });
 }

@@ -11,8 +11,18 @@ import '../console/command_boot.dart';
 /// `fluttersdk_mcp` package. Instructs the user to run `mcp:install` to fix.
 const _staleMcpWarning =
     'WARN: Stale MCP entry detected. Pre-upgrade .mcp.json points at the '
-    'removed fluttersdk_mcp package. Run: dart run fluttersdk_artisan:artisan '
-    'mcp:install';
+    'removed fluttersdk_mcp package. Run: ./bin/fsa mcp:install (or: '
+    'dart run fluttersdk_artisan mcp:install) to refresh the entry.';
+
+/// Advisory warning emitted when `.mcp.json` still uses the pre-Bug-B
+/// `fluttersdk_artisan:mcp` args shape. That shape routes through the substrate
+/// standalone, which never loads consumer plugin providers. Instructs the user
+/// to re-run `mcp:install` to upgrade to the branched entry shape.
+const _preFixMcpWarning =
+    'WARN: Pre-fix MCP entry detected. Your .mcp.json still uses the '
+    'fluttersdk_artisan:mcp args shape from before Bug B was fixed. '
+    'Run: ./bin/fsa mcp:install (or: dart run fluttersdk_artisan mcp:install) '
+    'to upgrade to the correct entry shape.';
 
 /// Minimum Flutter SDK version required for the WebSocket hot reload fix that
 /// enables CDP commands (flutter/flutter#170612).
@@ -96,10 +106,13 @@ class DoctorCommand extends ArtisanCommand {
     return allPass ? 0 : 1;
   }
 
-  /// Checks whether `.mcp.json` in [dir] contains a `fluttersdk_mcp:server`
-  /// reference in any `mcpServers` entry args list. Emits [_staleMcpWarning]
-  /// to [ctx] when found. Does nothing when the file is absent or cannot be
-  /// parsed. This is advisory only and never influences the exit code.
+  /// Checks whether `.mcp.json` in [dir] contains a stale or pre-fix
+  /// `mcpServers` entry. Emits [_staleMcpWarning] when `fluttersdk_mcp:server`
+  /// appears in any entry's args (legacy removed-package shape), or emits
+  /// [_preFixMcpWarning] when `fluttersdk_artisan:mcp` appears (the pre-Bug-B
+  /// substrate-standalone shape that never loads consumer plugin providers).
+  /// Does nothing when the file is absent or cannot be parsed.
+  /// This is advisory only and never influences the exit code.
   static void _checkStaleMcpJson(String dir, ArtisanContext ctx) {
     final file = File('$dir/.mcp.json');
     if (!file.existsSync()) return;
@@ -115,12 +128,27 @@ class DoctorCommand extends ArtisanCommand {
     final servers = root['mcpServers'];
     if (servers is! Map<String, dynamic>) return;
 
+    // 1. Scan all server entries for the legacy fluttersdk_mcp:server shape
+    //    (the removed package from before the artisan absorption).
     for (final entry in servers.values) {
       if (entry is! Map<String, dynamic>) continue;
       final args = entry['args'];
       if (args is! List<dynamic>) continue;
       if (args.contains('fluttersdk_mcp:server')) {
         ctx.output.writeln(_staleMcpWarning);
+        return;
+      }
+    }
+
+    // 2. Scan all server entries for the pre-Bug-B fluttersdk_artisan:mcp shape
+    //    (routes through the substrate standalone, which never loads consumer
+    //    plugin providers; upgrading via mcp:install writes the correct shape).
+    for (final entry in servers.values) {
+      if (entry is! Map<String, dynamic>) continue;
+      final args = entry['args'];
+      if (args is! List<dynamic>) continue;
+      if (args.contains('fluttersdk_artisan:mcp')) {
+        ctx.output.writeln(_preFixMcpWarning);
         return;
       }
     }

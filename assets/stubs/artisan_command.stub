@@ -1,0 +1,23 @@
+import 'package:fluttersdk_artisan/artisan.dart';
+
+/// {{ className }}: scaffolded by `dart run fluttersdk_artisan make:command`.
+///
+/// Lives at `{{ namespace }}/`. Auto-registered via the codegen barrel
+/// `_index.g.dart`; no manual wiring required. Re-run `make:command` with
+/// `--force` to regenerate this file from the stub.
+final class {{ className }} extends ArtisanCommand {
+  @override
+  String get signature => '{{ commandName }}';
+
+  @override
+  String get description => 'TODO: describe {{ commandName }}.';
+
+  @override
+  CommandBoot get boot => CommandBoot.none;
+
+  @override
+  Future<int> handle(ArtisanContext ctx) async {
+    ctx.output.success('{{ commandName }} ran.');
+    return 0;
+  }
+}

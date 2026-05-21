@@ -7,8 +7,17 @@ import 'package:test/test.dart';
 /// Constant warning message emitted when a stale `.mcp.json` entry is found.
 const _staleMcpWarning =
     'WARN: Stale MCP entry detected. Pre-upgrade .mcp.json points at the '
-    'removed fluttersdk_mcp package. Run: dart run fluttersdk_artisan:artisan '
-    'mcp:install';
+    'removed fluttersdk_mcp package. Run: ./bin/fsa mcp:install (or: '
+    'dart run fluttersdk_artisan mcp:install) to refresh the entry.';
+
+/// Advisory warning emitted when `.mcp.json` still uses the pre-Bug-B
+/// `fluttersdk_artisan:mcp` args shape. Mirrors the production constant in
+/// `lib/src/commands/doctor_command.dart`; kept in sync manually.
+const _preFixMcpWarning =
+    'WARN: Pre-fix MCP entry detected. Your .mcp.json still uses the '
+    'fluttersdk_artisan:mcp args shape from before Bug B was fixed. '
+    'Run: ./bin/fsa mcp:install (or: dart run fluttersdk_artisan mcp:install) '
+    'to upgrade to the correct entry shape.';
 
 void main() {
   group('DoctorCommand', () {
@@ -101,9 +110,11 @@ void main() {
       });
 
       test(
-          '.mcp.json with new fluttersdk_artisan:mcp entry does NOT emit warning',
+          '.mcp.json with pre-fix fluttersdk_artisan:mcp entry emits pre-fix advisory',
           () async {
-        // Seed a .mcp.json that already references the new package entry.
+        // Seed a .mcp.json with the pre-Bug-B fluttersdk_artisan:mcp args shape.
+        // Post-Step-8 this DOES emit _preFixMcpWarning; _staleMcpWarning still
+        // must NOT appear because that is the legacy fluttersdk_mcp:server shape.
         final mcpJson = File('${tempDir.path}/.mcp.json');
         await mcpJson.writeAsString('''
 {
@@ -123,6 +134,7 @@ void main() {
         await command.handle(ctx);
 
         expect(output.content, isNot(contains(_staleMcpWarning)));
+        expect(output.content, contains(_preFixMcpWarning));
       });
 
       test('no .mcp.json at workingDir emits no stale warning', () async {
@@ -166,6 +178,40 @@ void main() {
         );
 
         expect(codeWithStale, equals(codeWithoutStale));
+      });
+
+      test(
+          'pre-fix fluttersdk_artisan:mcp .mcp.json does not change doctor exit code',
+          () async {
+        // The pre-fix advisory (_preFixMcpWarning) must be advisory-only and
+        // must NOT affect the doctor exit code. Mirror the stale-entry
+        // exit-code-stability pattern above but seed the fluttersdk_artisan:mcp
+        // args shape instead of the legacy fluttersdk_mcp:server shape.
+        final mcpJson = File('${tempDir.path}/.mcp.json');
+        await mcpJson.writeAsString('''
+{
+  "mcpServers": {
+    "artisan": {
+      "command": "dart",
+      "args": ["run", "fluttersdk_artisan:mcp"]
+    }
+  }
+}
+''');
+
+        final withPreFix = DoctorCommand(workingDir: tempDir.path);
+        final withoutPreFix = DoctorCommand(workingDir: tempDir.path);
+
+        // Remove the file between runs to compare advisory-present vs absent.
+        final codeWithPreFix = await withPreFix.handle(
+          ArtisanContext.bare(MapInput(const {}), BufferedOutput()),
+        );
+        await mcpJson.delete();
+        final codeWithoutPreFix = await withoutPreFix.handle(
+          ArtisanContext.bare(MapInput(const {}), BufferedOutput()),
+        );
+
+        expect(codeWithPreFix, equals(codeWithoutPreFix));
       });
     });
 

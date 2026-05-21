@@ -19,6 +19,38 @@ import 'package:test/test.dart';
 /// inspects that PID via `kill -0` to detect a dead owner and reclaim the
 /// lock.
 void main() {
+  group('bin_fsa.sh.stub staleness check condition 4', () {
+    test(
+        'condition 4 compares pubspec.yaml against STAMP_FILE, not pubspec.lock',
+        () {
+      // Regression guard: a prior shape compared pubspec.yaml -nt pubspec.lock
+      // to detect "user edited pubspec.yaml without running pub get". In
+      // practice, `dart pub add` updates pubspec.yaml AFTER pub get writes
+      // pubspec.lock, leaving pubspec.yaml mtime newer than pubspec.lock for
+      // every freshly installed consumer. That tripped the check on every
+      // invocation, forcing a ~5s AOT rebuild every time (the wrapper's
+      // ~50ms cached-bundle target was never met after initial install).
+      //
+      // Correct semantic: rebuild when pubspec.yaml was modified SINCE the
+      // last successful build (stamp write), not relative to pubspec.lock.
+      final stub = StubLoader.load('bin_fsa.sh');
+
+      expect(
+        stub,
+        contains(r'"$PROJECT_ROOT/pubspec.yaml" -nt "$STAMP_FILE"'),
+        reason: 'staleness check must compare pubspec.yaml mtime against '
+            'STAMP_FILE so normal pub-add workflows do not force a rebuild',
+      );
+      expect(
+        stub,
+        isNot(contains(
+            r'"$PROJECT_ROOT/pubspec.yaml" -nt "$PROJECT_ROOT/pubspec.lock"')),
+        reason: 'pre-fix shape compared against pubspec.lock and tripped on '
+            'every freshly-installed consumer',
+      );
+    });
+  });
+
   group('bin_fsa.sh.stub PID-aware lock recovery', () {
     test('stub source contains kill -0 staleness probe', () {
       // The defining marker of the PID-aware recovery is the `kill -0`

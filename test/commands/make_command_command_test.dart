@@ -21,6 +21,23 @@ void main() {
       expect(command.getDefaultNamespace(), 'lib/app/commands');
     });
 
+    test('artisan_command stub asset ships with the substrate', () {
+      // Regression guard: make:command resolves stub by name via StubLoader's
+      // 4-tier resolution. If the asset is missing from assets/stubs/, every
+      // make:command invocation crashes with a FileSystemException at scaffold
+      // time. The 'artisan_command' stub MUST ship in the publish archive.
+      final stub = StubLoader.load('artisan_command');
+
+      expect(stub, isNotEmpty);
+      // Required placeholders driven by ArtisanGeneratorCommand.buildClass
+      // (_replaceClass + _replaceNamespace) and MakeCommandCommand.getReplacements.
+      expect(stub, contains('{{ className }}'));
+      expect(stub, contains('{{ namespace }}'));
+      expect(stub, contains('{{ commandName }}'));
+      // The rendered output must subclass ArtisanCommand.
+      expect(stub, contains('ArtisanCommand'));
+    });
+
     test('inherits from ArtisanGeneratorCommand', () {
       final command = MakeCommandCommand();
 

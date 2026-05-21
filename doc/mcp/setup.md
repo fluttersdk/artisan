@@ -2,7 +2,7 @@
 
 The fluttersdk artisan CLI ships with a built-in [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that exposes your running Flutter app to AI coding assistants. The server speaks stdio JSON-RPC and surfaces tools contributed by every registered `ArtisanServiceProvider` (substrate commands plus Dusk, Telescope, and any custom plugin).
 
-This page documents the per-client install matrix: the exact configuration snippet each MCP-compatible client needs to spawn `dart run fluttersdk_artisan:mcp` against your project. The artisan MCP server is stdio-only in V1 (no remote HTTP endpoint); every client below launches the Dart process locally with the project directory as the working directory.
+This page documents the per-client install matrix: the exact configuration snippet each MCP-compatible client needs to spawn `./bin/fsa mcp:serve` (or `dart run :dispatcher mcp:serve` as a fallback) against your project. The artisan MCP server is stdio-only in V1 (no remote HTTP endpoint); every client below launches the CLI locally with the project directory as the working directory.
 
 ## Without artisan MCP
 
@@ -18,7 +18,7 @@ LLM agents working against a running Flutter app are blind without artisan MCP:
 The artisan MCP server bridges the agent to the running app over the VM Service:
 
 - 10 substrate command tools (`artisan_start`, `artisan_stop`, `artisan_status`, `artisan_logs`, `artisan_restart`, `artisan_reload`, `artisan_hot_restart`, `artisan_doctor`, `artisan_list`, `artisan_tinker`).
-- Plugin tools surface automatically once the consumer's `bin/artisan.dart` wrapper registers the provider; see each plugin's MCP tool reference for the current catalog ([fluttersdk_dusk](https://fluttersdk.com/dusk/mcp/tool-reference), [fluttersdk_telescope](https://fluttersdk.com/telescope/mcp/tool-reference)).
+- Plugin tools surface automatically once the consumer's `bin/dispatcher.dart` wrapper registers the provider; see each plugin's MCP tool reference for the current catalog ([fluttersdk_dusk](https://fluttersdk.com/dusk/mcp/tool-reference), [fluttersdk_telescope](https://fluttersdk.com/telescope/mcp/tool-reference)).
 - Tool visibility filters via `.artisan/mcp.json` + env vars + CLI flags (Cargo-style replace for allow, union for deny).
 - Zero release-build impact: every artisan integration gates on `kDebugMode` at the consumer's `main.dart`.
 
@@ -30,21 +30,36 @@ Show me the current MonitorController state. use artisan
 
 ## Installation
 
-The canonical `.mcp.json` entry shape (written by `dart run fluttersdk_artisan mcp:install`):
+### Prerequisites
+
+The MCP server ships with `fluttersdk_artisan`. Add the package + scaffold the consumer wrapper first so `./bin/fsa` and `bin/dispatcher.dart` exist:
+
+```bash
+dart pub add fluttersdk_artisan
+dart run fluttersdk_artisan install
+```
+
+`install` writes `bin/dispatcher.dart` + `bin/fsa` + the codegen barrels (one-time per project; idempotent on re-run). After that, `mcp:install` writes the `.mcp.json` entry the clients below consume.
+
+### Canonical entry shape
+
+The canonical `.mcp.json` entry shape (written by `./bin/fsa mcp:install` or `dart run fluttersdk_artisan mcp:install`):
 
 ```json
 {
   "mcpServers": {
     "fluttersdk": {
-      "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"],
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"],
       "cwd": "."
     }
   }
 }
 ```
 
-Every client below uses this exact shape (config-file path differs; the `command` + `args` payload does not). The `cwd` field must point at the project root (the directory that contains `pubspec.yaml`).
+When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead.
+
+Every client below uses the canonical shape above, though the `command` + `args` payload adjusts based on platform and fsa availability. The `cwd` field must point at the project root (the directory that contains `pubspec.yaml`).
 
 ---
 
@@ -58,15 +73,17 @@ Paste into `~/.cursor/mcp.json`:
 {
   "mcpServers": {
     "fluttersdk": {
-      "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"],
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"],
       "cwd": "."
     }
   }
 }
 ```
 
-For project-scoped use, write the same snippet to `.cursor/mcp.json` in the project root. The spawned process is equivalent to running `dart run fluttersdk_artisan:mcp` from that directory.
+When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead.
+
+For project-scoped use, write the same snippet to `.cursor/mcp.json` in the project root. The spawned process is equivalent to running `./bin/fsa mcp:serve` from that directory.
 
 ---
 
@@ -75,14 +92,16 @@ For project-scoped use, write the same snippet to `.cursor/mcp.json` in the proj
 Run this command from the project root to add the artisan MCP server:
 
 ```bash
-claude mcp add fluttersdk -- dart run fluttersdk_artisan:mcp
+claude mcp add fluttersdk -- ./bin/fsa mcp:serve
 ```
 
 For project-scoped configuration:
 
 ```bash
-claude mcp add --scope project fluttersdk -- dart run fluttersdk_artisan:mcp
+claude mcp add --scope project fluttersdk -- ./bin/fsa mcp:serve
 ```
+
+(When `bin/fsa` is absent or on Windows, use `dart run :dispatcher mcp:serve` instead.)
 
 You can also write `.mcp.json` directly with the canonical entry shape from the [Installation](#installation) section above.
 
@@ -105,13 +124,15 @@ Add the artisan MCP server configuration. Replace the `cwd` value with the absol
 {
   "mcpServers": {
     "fluttersdk": {
-      "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"],
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"],
       "cwd": "/absolute/path/to/your/flutter/project"
     }
   }
 }
 ```
+
+When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead.
 
 > **Important:** Fully quit Claude Desktop via **File, Exit** (closing the window just minimizes it). Restart it for the new entry to take effect.
 
@@ -126,13 +147,15 @@ Create or edit `.vscode/mcp.json` in your project:
   "servers": {
     "fluttersdk": {
       "type": "stdio",
-      "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"],
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"],
       "cwd": "."
     }
   }
 }
 ```
+
+When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead.
 
 For user-level configuration, add the same entry to your VS Code settings under `chat.mcp.servers`.
 
@@ -146,15 +169,17 @@ Add to your Windsurf MCP configuration:
 {
   "mcpServers": {
     "fluttersdk": {
-      "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"],
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"],
       "cwd": "."
     }
   }
 }
 ```
 
-Reload the Cascade panel after editing the config; Windsurf spawns `dart run fluttersdk_artisan:mcp` on next request.
+When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead.
+
+Reload the Cascade panel after editing the config; Windsurf spawns `./bin/fsa mcp:serve` on next request.
 
 ---
 
@@ -166,13 +191,15 @@ Reload the Cascade panel after editing the config; Windsurf spawns `dart run flu
 {
   "mcpServers": {
     "fluttersdk": {
-      "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"],
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"],
       "cwd": "."
     }
   }
 }
 ```
+
+When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead.
 
 **For AI Assistant:** Go to **Settings, Tools, AI Assistant, MCP** and add the same entry via the "as JSON" option.
 
@@ -186,13 +213,15 @@ Add to your Cline MCP server configuration (typically `~/Library/Application Sup
 {
   "mcpServers": {
     "fluttersdk": {
-      "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"],
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"],
       "cwd": "."
     }
   }
 }
 ```
+
+When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead.
 
 Roo-Code reads the same `mcpServers` shape; point its config file at the snippet above.
 
@@ -207,14 +236,17 @@ Add to your OpenCode configuration file (`~/.config/opencode/opencode.json` or p
   "mcp": {
     "fluttersdk": {
       "type": "local",
-      "command": ["dart", "run", "fluttersdk_artisan:mcp"],
+      "command": ["./bin/fsa"],
+      "args": ["mcp:serve"],
       "enabled": true
     }
   }
 }
 ```
 
-The `local` transport spawns the Dart process directly; OpenCode inherits the working directory from where it was launched.
+When `bin/fsa` is absent or on Windows, `mcp:install` writes `["dart", "run", ":dispatcher", "mcp:serve"]` instead.
+
+The `local` transport spawns the process directly; OpenCode inherits the working directory from where it was launched.
 
 ---
 
@@ -226,15 +258,17 @@ Add to `~/.gemini/settings.json`:
 {
   "mcpServers": {
     "fluttersdk": {
-      "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"],
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"],
       "cwd": "."
     }
   }
 }
 ```
 
-Restart `gemini` after editing; the CLI re-spawns `dart run fluttersdk_artisan:mcp` on the next session.
+When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead.
+
+Restart `gemini` after editing; the CLI re-spawns `./bin/fsa mcp:serve` on the next session.
 
 ---
 
@@ -253,13 +287,15 @@ Restart `gemini` after editing; the CLI re-spawns `dart run fluttersdk_artisan:m
 {
   "mcpServers": {
     "fluttersdk": {
-      "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"],
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"],
       "cwd": "."
     }
   }
 }
 ```
+
+When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead.
 
 > **Tip:** Install the [Dart and Flutter extensions](https://docs.flutter.dev/tools/vs-code) for the best development experience.
 
@@ -276,13 +312,15 @@ Restart `gemini` after editing; the CLI re-spawns `dart run fluttersdk_artisan:m
 {
   "mcpServers": {
     "fluttersdk": {
-      "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"],
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"],
       "cwd": "."
     }
   }
 }
 ```
+
+When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead.
 
 3. Rebuild your workspace:
    - Open the Command Palette (`Shift + Ctrl + P`).
@@ -295,8 +333,10 @@ Restart `gemini` after editing; the CLI re-spawns `dart run fluttersdk_artisan:m
 For any other MCP-compatible client that supports stdio transport, spawn the server with:
 
 ```bash
-dart run fluttersdk_artisan:mcp
+./bin/fsa mcp:serve
 ```
+
+When `bin/fsa` is absent or on Windows, spawn with `dart run :dispatcher mcp:serve` instead.
 
 The working directory must contain a `pubspec.yaml` that depends on `fluttersdk_artisan` (directly or via a path / git dep). Clients that require a JSON entry shape accept the canonical form:
 
@@ -304,15 +344,17 @@ The working directory must contain a `pubspec.yaml` that depends on `fluttersdk_
 {
   "mcpServers": {
     "fluttersdk": {
-      "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"],
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"],
       "cwd": "."
     }
   }
 }
 ```
 
-Remote HTTP transport is NOT supported in V1; the artisan MCP server is stdio-only because it bridges to the local VM Service URI recorded in `~/.artisan/state.json` by `dart run artisan start`.
+When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead.
+
+Remote HTTP transport is NOT supported in V1; the artisan MCP server is stdio-only because it bridges to the local VM Service URI recorded in `~/.artisan/state.json` by `./bin/fsa start` (or `dart run :dispatcher start` when `bin/fsa` is absent).
 
 ---
 

@@ -40,10 +40,43 @@ void main() {
   });
 
   group('McpInstallCommand handle', () {
-    test('empty .mcp.json path writes fluttersdk entry with new args shape',
+    test(
+        'empty .mcp.json writes fluttersdk entry with fsa shape when hasFsa=true, isWindows=false',
         () async {
       final mcpPath = p.join(tempDir.path, '.mcp.json');
-      final command = McpInstallCommand();
+      final command = McpInstallCommand(
+        hasFsa: () => true,
+        isWindows: () => false,
+      );
+      final ctx = _ctx({'path': mcpPath});
+
+      final code = await command.handle(ctx);
+
+      expect(code, 0);
+      final content = File(mcpPath).readAsStringSync();
+      final decoded = jsonDecode(content) as Map<String, dynamic>;
+      final servers = decoded['mcpServers'] as Map<String, dynamic>;
+      expect(servers, contains('fluttersdk'));
+      final entry = servers['fluttersdk'] as Map<String, dynamic>;
+      expect(entry['command'], './bin/fsa');
+      expect(entry['args'], equals(['mcp:serve']));
+      expect(entry['cwd'], '.');
+      // Raw JSON content must reference the fsa invocation, not legacy shapes.
+      expect(content, contains('./bin/fsa'));
+      // Must NOT reference any legacy or rejected entry shapes.
+      expect(content, isNot(contains('fluttersdk_artisan:mcp')));
+      expect(content, isNot(contains('fluttersdk_mcp:server')));
+      expect(content, isNot(contains(':artisan')));
+    });
+
+    test(
+        'empty .mcp.json writes fluttersdk entry with dart fallback shape when hasFsa=false',
+        () async {
+      final mcpPath = p.join(tempDir.path, '.mcp.json');
+      final command = McpInstallCommand(
+        hasFsa: () => false,
+        isWindows: () => false,
+      );
       final ctx = _ctx({'path': mcpPath});
 
       final code = await command.handle(ctx);
@@ -55,10 +88,14 @@ void main() {
       expect(servers, contains('fluttersdk'));
       final entry = servers['fluttersdk'] as Map<String, dynamic>;
       expect(entry['command'], 'dart');
-      expect(entry['args'], equals(['run', 'fluttersdk_artisan:mcp']));
+      expect(entry['args'], equals(['run', ':dispatcher', 'mcp:serve']));
       expect(entry['cwd'], '.');
-      // Must NOT reference the legacy package.
-      expect(content, isNot(contains('fluttersdk_mcp')));
+      // Raw JSON content must reference the dispatcher fallback.
+      expect(content, contains(':dispatcher'));
+      // Must NOT reference any legacy or rejected entry shapes.
+      expect(content, isNot(contains('fluttersdk_artisan:mcp')));
+      expect(content, isNot(contains('fluttersdk_mcp:server')));
+      expect(content, isNot(contains(':artisan')));
     });
 
     test(
@@ -75,7 +112,10 @@ void main() {
         },
       }));
 
-      final command = McpInstallCommand();
+      final command = McpInstallCommand(
+        hasFsa: () => true,
+        isWindows: () => false,
+      );
       final ctx = _ctx({'path': mcpPath});
       final code = await command.handle(ctx);
 
@@ -87,11 +127,12 @@ void main() {
       expect(servers, containsPair('laravel-boost', isA<Map>()));
       expect(servers, contains('fluttersdk'));
       final entry = servers['fluttersdk'] as Map<String, dynamic>;
-      expect(entry['args'], equals(['run', 'fluttersdk_artisan:mcp']));
+      expect(entry['command'], './bin/fsa');
+      expect(entry['args'], equals(['mcp:serve']));
     });
 
     test(
-        'pre-existing fluttersdk_mcp:server entry is replaced by fluttersdk_artisan:mcp with no duplicate',
+        'pre-existing fluttersdk_mcp:server entry is replaced by new fsa shape with no duplicate',
         () async {
       final mcpPath = p.join(tempDir.path, '.mcp.json');
       // 1. Seed the OLD entry shape.
@@ -105,7 +146,10 @@ void main() {
         },
       }));
 
-      final command = McpInstallCommand();
+      final command = McpInstallCommand(
+        hasFsa: () => true,
+        isWindows: () => false,
+      );
       final ctx = _ctx({'path': mcpPath});
       final code = await command.handle(ctx);
 
@@ -116,14 +160,18 @@ void main() {
       // Exactly one fluttersdk entry.
       expect(servers.keys.where((k) => k == 'fluttersdk'), hasLength(1));
       final entry = servers['fluttersdk'] as Map<String, dynamic>;
-      // Must use the NEW args, not the legacy ones.
-      expect(entry['args'], equals(['run', 'fluttersdk_artisan:mcp']));
+      // Must use the NEW fsa args, not the legacy ones.
+      expect(entry['command'], './bin/fsa');
+      expect(entry['args'], equals(['mcp:serve']));
       expect(entry['args'], isNot(contains('fluttersdk_mcp:server')));
     });
 
     test('success output contains /mcp reconnect fluttersdk hint', () async {
       final mcpPath = p.join(tempDir.path, '.mcp.json');
-      final command = McpInstallCommand();
+      final command = McpInstallCommand(
+        hasFsa: () => true,
+        isWindows: () => false,
+      );
       final ctx = _ctx({'path': mcpPath});
 
       await command.handle(ctx);
@@ -153,7 +201,10 @@ void main() {
       // that the command DOES attempt to use '.mcp.json' (path in output).
       // Use a tempDir as CWD substitute by passing it explicitly.
       final mcpPath = p.join(tempDir.path, '.mcp.json');
-      final command = McpInstallCommand();
+      final command = McpInstallCommand(
+        hasFsa: () => true,
+        isWindows: () => false,
+      );
       // Pass path explicitly — same as the default resolves to in production.
       final ctx = _ctx({'path': mcpPath});
 

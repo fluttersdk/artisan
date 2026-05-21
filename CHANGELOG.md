@@ -8,6 +8,17 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-05-21
+
+### Fixed
+
+- **MCP server returns empty tools/list (issue #7, Bug A)**: `dispatcher.dart.stub` now forwards `collectMcpTools: args.isNotEmpty && args.first == 'mcp:serve'` to `runArtisan`, so plugin providers' `mcpTools()` collect into the registry when consumers invoke `./bin/fsa mcp:serve`. Migration: substrate-installed consumers re-run `dart run fluttersdk_artisan install --force` to regenerate `bin/dispatcher.dart`. Magic-installed consumers need a paired magic-side stub update (tracked separately) before `magic:artisan install --force` propagates the fix.
+- **`mcp:install` writes the canonical post-install entry shape (issue #7, Bug B)**: `.mcp.json` entry branches between `./bin/fsa mcp:serve` (POSIX with `bin/fsa` present) and `dart run :dispatcher mcp:serve` (Windows or no-fsa fallback); the previous hardcoded `dart run fluttersdk_artisan:mcp` shape routed through the substrate standalone, which never loads consumer plugin providers. Migration: consumers must re-run `./bin/fsa mcp:install` (or `dart run fluttersdk_artisan mcp:install`).
+- **Auto-delegation now resolves the canonical consumer wrapper**: `_defaultDelegate` at `lib/src/console/run_artisan.dart` previously emitted `dart run :artisan`, which resolves only to `bin/artisan.dart`. Post-0.0.2 the canonical wrapper is `bin/dispatcher.dart`. Fixed by prepending `:dispatcher` upstream of the delegate call (`(delegate ?? _defaultDelegate)([':dispatcher', ...args])`); `_defaultDelegate`'s body simplifies to `['run', ...args]`. Latent since 0.0.2; not caught by tests because the existing delegation tests mocked `delegate:` without asserting on the prefixed args.
+- **`doctor` advisory extended for pre-Bug-B `.mcp.json`**: `doctor` now advisory-warns when `.mcp.json` still contains `fluttersdk_artisan:mcp` args, pointing the user at `./bin/fsa mcp:install` to upgrade. Does not affect exit code.
+- **`./bin/fsa` rebuilt AOT bundle on every invocation**: the staleness check compared `pubspec.yaml` mtime against `pubspec.lock`. `dart pub add` updates `pubspec.yaml` after pub get writes the lock, leaving `pubspec.yaml` mtime newer than `pubspec.lock` for every freshly installed consumer; that tripped the check on every call. Compare against the build stamp file instead (written at the end of every successful compile), so `pubspec.yaml` newer than the stamp means the user actually edited it. Cached invocations now hit the ~50ms target. Discovered during A-Z e2e testing.
+- **`make:command` crashed with "Stub file not found: artisan_command.stub"**: the stub asset never shipped in the publish archive even though `MakeCommandCommand.getStub()` declared it as the canonical scaffold name. Added the missing `assets/stubs/artisan_command.stub` with the canonical `final class ... extends ArtisanCommand` shape honoring `{{ className }}` / `{{ namespace }}` / `{{ commandName }}` placeholders. Discovered during A-Z e2e testing.
+
 ## [0.0.3] - 2026-05-21
 
 ### Changed

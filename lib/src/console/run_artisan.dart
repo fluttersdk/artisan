@@ -52,6 +52,22 @@ const Set<String> _bypassDelegation = <String>{
 /// inject a deterministic stub.
 typedef WrapperExistsCheck = bool Function();
 
+/// Signature for an injected wrapper-name resolver.
+///
+/// Returns the basename (without `.dart`) of the consumer wrapper file
+/// auto-delegation should dispatch against: `'dispatcher'` for the canonical
+/// `bin/dispatcher.dart`, `'artisan'` for legacy `bin/artisan.dart`, or `null`
+/// when no wrapper is present (auto-delegation skips and falls through to the
+/// standalone path).
+///
+/// Defaults to [defaultConsumerWrapperName] which probes the real filesystem;
+/// tests inject a deterministic stub. The previous boolean
+/// [WrapperExistsCheck] seam remains supported for backward compatibility with
+/// existing tests, but new callers should prefer [WrapperNameResolver] so the
+/// delegate token matches the wrapper file actually on disk (legacy
+/// `bin/artisan.dart`-only consumers must keep resolving via `:artisan`).
+typedef WrapperNameResolver = String? Function();
+
 /// Signature for an injected delegation strategy.
 ///
 /// Defaults to `Process.start` against the consumer wrapper with stdio
@@ -67,7 +83,7 @@ typedef DelegateStrategy = Future<int> Function(List<String> args);
 ///
 /// 1. **Auto-delegation.** When invoked from a project that ships its own
 ///    consumer wrapper (`bin/dispatcher.dart`, or the legacy
-///    `bin/artisan.dart`), transparently re-invoke `dart run :artisan <args>`
+///    `bin/artisan.dart`), transparently re-invoke `dart run :dispatcher <args>`
 ///    so the consumer's full provider list owns dispatch. Bypassed for
 ///    commands that regenerate the files the wrapper depends on (see
 ///    [_bypassDelegation]).
@@ -86,13 +102,17 @@ typedef DelegateStrategy = Future<int> Function(List<String> args);
 /// `autoDiscoveredProviders()` function); deferred so a missing or broken
 /// codegen file does not crash callers that pass only [baseProviders].
 ///
-/// [wrapperExists] and [delegate] are seams for tests; production callers
-/// leave them at their defaults.
+/// [wrapperExists], [wrapperName], and [delegate] are seams for tests;
+/// production callers leave them at their defaults. [wrapperName] supersedes
+/// [wrapperExists] when both are injected: the resolver returns the wrapper
+/// filename so the delegate token (`:dispatcher` for canonical,
+/// `:artisan` for legacy) matches the file actually present, preventing
+/// `dart run :dispatcher ...` from failing against a legacy-only consumer.
 ///
 /// When [collectMcpTools] is `true`, each provider's MCP tool descriptors are
 /// registered via [ArtisanRegistry.registerMcpToolsFor] immediately after the
 /// provider's commands are registered. Defaults to `false` so CLI invocations
-/// (e.g. `dart run :artisan list`) pay no MCP overhead. Only the MCP server
+/// (e.g. `dart run :dispatcher list`) pay no MCP overhead. Only the MCP server
 /// entry point (`bin/mcp.dart`) passes `collectMcpTools: true`.
 Future<int> runArtisan(
   List<String> args, {
@@ -101,15 +121,25 @@ Future<int> runArtisan(
   bool delegateToConsumer = true,
   bool collectMcpTools = false,
   WrapperExistsCheck? wrapperExists,
+  WrapperNameResolver? wrapperName,
   DelegateStrategy? delegate,
 }) async {
-  // 1. Decide whether the consumer wrapper owns this invocation.
+  // 1. Decide whether the consumer wrapper owns this invocation. Resolve
+  //    the wrapper FILENAME first (dispatcher vs legacy artisan) so the
+  //    delegate token matches the file actually on disk; an older consumer
+  //    that only ships bin/artisan.dart must keep resolving via :artisan.
   if (delegateToConsumer) {
-    final hasWrapper = (wrapperExists ?? defaultConsumerWrapperExists)();
+    final resolvedName = (wrapperName ?? defaultConsumerWrapperName)();
+    // Back-compat: existing tests inject `wrapperExists: () => true` against
+    // tempdirs that have no on-disk wrapper. Honor the boolean override and
+    // fall back to the canonical 'dispatcher' token in that case.
+    final hasWrapper =
+        wrapperExists != null ? wrapperExists() : resolvedName != null;
     final firstArg = args.isEmpty ? '' : args.first;
     final bypassed = _bypassDelegation.contains(firstArg);
     if (hasWrapper && !bypassed) {
-      return await (delegate ?? _defaultDelegate)(args);
+      final token = resolvedName ?? 'dispatcher';
+      return await (delegate ?? _defaultDelegate)(<String>[':$token', ...args]);
     }
   }
 
@@ -152,18 +182,42 @@ Future<int> runArtisan(
 /// [cwd] defaults to [Directory.current]; tests inject a temp-dir path to
 /// drive the check deterministically without touching the host filesystem.
 bool defaultConsumerWrapperExists({String? cwd}) {
-  final base = cwd ?? Directory.current.path;
-  final dispatcher = File(p.join(base, 'bin', 'dispatcher.dart'));
-  if (dispatcher.existsSync()) return true;
-  final legacy = File(p.join(base, 'bin', 'artisan.dart'));
-  return legacy.existsSync();
+  return defaultConsumerWrapperName(cwd: cwd) != null;
 }
 
-/// Default delegation: `dart run :artisan <args>` with inherited stdio.
+/// Default wrapper-name resolver.
+///
+/// Returns the basename (without `.dart`) of the consumer wrapper auto-
+/// delegation should dispatch against. Probes `bin/dispatcher.dart` first
+/// (canonical post-0.0.2 scaffold output), falls back to `bin/artisan.dart`
+/// (legacy name still accepted for hand-curated wrappers), returns `null`
+/// when neither is present.
+///
+/// Routing the resolved name into the delegate token keeps the
+/// `dart run :<name>` lookup aligned with the file actually on disk:
+/// a legacy-only
+/// consumer dispatches via `:artisan`, a canonical-scaffold consumer via
+/// `:dispatcher`. Without this name-aware resolution the delegate would
+/// always pick `:dispatcher` and break on legacy consumers.
+///
+/// [cwd] defaults to [Directory.current]; tests inject a temp-dir path to
+/// drive the check deterministically without touching the host filesystem.
+String? defaultConsumerWrapperName({String? cwd}) {
+  final base = cwd ?? Directory.current.path;
+  if (File(p.join(base, 'bin', 'dispatcher.dart')).existsSync()) {
+    return 'dispatcher';
+  }
+  if (File(p.join(base, 'bin', 'artisan.dart')).existsSync()) {
+    return 'artisan';
+  }
+  return null;
+}
+
+/// Default delegation: `dart run :dispatcher <args>` with inherited stdio.
 Future<int> _defaultDelegate(List<String> args) async {
   final result = await Process.start(
     Platform.resolvedExecutable,
-    <String>['run', ':artisan', ...args],
+    <String>['run', ...args],
     mode: ProcessStartMode.inheritStdio,
     workingDirectory: Directory.current.path,
   );
