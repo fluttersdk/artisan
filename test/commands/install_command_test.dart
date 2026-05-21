@@ -142,6 +142,11 @@ void main() {
           isTrue);
       expect(content.contains("package:example/app/_plugins.g.dart"), isTrue);
       expect(content.contains('{{ name }}'), isFalse);
+      // The rendered dispatcher must forward collectMcpTools so plugin
+      // providers' tool descriptors surface in tools/list responses (issue #7,
+      // Bug A). Without this arg, runArtisan's split-API never calls
+      // registerMcpToolsFor and the MCP server returns an empty tools array.
+      expect(content, contains('collectMcpTools'));
     });
 
     test('writes lib/app/_plugins.g.dart initial barrel', () async {
