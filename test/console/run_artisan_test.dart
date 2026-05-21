@@ -141,6 +141,76 @@ void main() {
         expect(captured!.first, ':dispatcher');
       },
     );
+
+    test(
+      'legacy bin/artisan.dart-only consumer delegates to :artisan, not :dispatcher',
+      () async {
+        // Regression guard for the Copilot review finding on PR #8:
+        // defaultConsumerWrapperExists returns true for legacy consumers
+        // that only ship bin/artisan.dart (no bin/dispatcher.dart). Before
+        // the fix, the delegate always prepended :dispatcher, which would
+        // fail to resolve on those consumers (no bin/dispatcher.dart file
+        // to invoke). The wrapper-name resolver must detect which file is
+        // actually present and forward the matching token.
+        final tempRoot = Directory.systemTemp.createTempSync('legacy_wrapper_');
+        addTearDown(() {
+          if (tempRoot.existsSync()) tempRoot.deleteSync(recursive: true);
+        });
+        Directory(p.join(tempRoot.path, 'bin')).createSync(recursive: true);
+        File(
+          p.join(tempRoot.path, 'bin', 'artisan.dart'),
+        ).writeAsStringSync('void main() {}\n');
+
+        List<String>? captured;
+
+        await runArtisan(
+          <String>['list'],
+          wrapperName: () => defaultConsumerWrapperName(cwd: tempRoot.path),
+          delegateToConsumer: true,
+          delegate: (args) async {
+            captured = args;
+            return 0;
+          },
+        );
+
+        expect(captured, isNotNull);
+        expect(
+          captured!.first,
+          ':artisan',
+          reason: 'legacy bin/artisan.dart consumers must keep resolving via '
+              ':artisan; only post-rename bin/dispatcher.dart consumers '
+              'flip to :dispatcher',
+        );
+      },
+    );
+
+    test(
+      'no wrapper present skips delegation cleanly',
+      () async {
+        // When neither bin/dispatcher.dart nor bin/artisan.dart exists, the
+        // wrapper-name resolver returns null and auto-delegation falls
+        // through to the standalone path (no delegate invocation).
+        final tempRoot = Directory.systemTemp.createTempSync('no_wrapper_');
+        addTearDown(() {
+          if (tempRoot.existsSync()) tempRoot.deleteSync(recursive: true);
+        });
+
+        var delegateCalled = false;
+
+        final code = await runArtisan(
+          <String>['list'],
+          wrapperName: () => defaultConsumerWrapperName(cwd: tempRoot.path),
+          delegateToConsumer: true,
+          delegate: (args) async {
+            delegateCalled = true;
+            return 0;
+          },
+        );
+
+        expect(delegateCalled, isFalse);
+        expect(code, 0);
+      },
+    );
   });
 
   group('runArtisan standalone', () {
