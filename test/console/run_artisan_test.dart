@@ -21,7 +21,10 @@ void main() {
       );
 
       expect(delegateCalled, isTrue);
-      expect(receivedArgs, equals(<String>['list']));
+      // Delegate receives args with the :dispatcher token prepended so it can
+      // resolve to bin/dispatcher.dart (canonical post-0.0.2 wrapper). The
+      // user-supplied 'list' arg follows the prefix unchanged.
+      expect(receivedArgs, equals(<String>[':dispatcher', 'list']));
       expect(code, 42);
     });
 

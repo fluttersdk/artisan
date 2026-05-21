@@ -67,7 +67,7 @@ typedef DelegateStrategy = Future<int> Function(List<String> args);
 ///
 /// 1. **Auto-delegation.** When invoked from a project that ships its own
 ///    consumer wrapper (`bin/dispatcher.dart`, or the legacy
-///    `bin/artisan.dart`), transparently re-invoke `dart run :artisan <args>`
+///    `bin/artisan.dart`), transparently re-invoke `dart run :dispatcher <args>`
 ///    so the consumer's full provider list owns dispatch. Bypassed for
 ///    commands that regenerate the files the wrapper depends on (see
 ///    [_bypassDelegation]).
@@ -92,7 +92,7 @@ typedef DelegateStrategy = Future<int> Function(List<String> args);
 /// When [collectMcpTools] is `true`, each provider's MCP tool descriptors are
 /// registered via [ArtisanRegistry.registerMcpToolsFor] immediately after the
 /// provider's commands are registered. Defaults to `false` so CLI invocations
-/// (e.g. `dart run :artisan list`) pay no MCP overhead. Only the MCP server
+/// (e.g. `dart run :dispatcher list`) pay no MCP overhead. Only the MCP server
 /// entry point (`bin/mcp.dart`) passes `collectMcpTools: true`.
 Future<int> runArtisan(
   List<String> args, {
@@ -109,7 +109,8 @@ Future<int> runArtisan(
     final firstArg = args.isEmpty ? '' : args.first;
     final bypassed = _bypassDelegation.contains(firstArg);
     if (hasWrapper && !bypassed) {
-      return await (delegate ?? _defaultDelegate)(args);
+      return await (delegate ??
+          _defaultDelegate)(<String>[':dispatcher', ...args]);
     }
   }
 
@@ -159,11 +160,11 @@ bool defaultConsumerWrapperExists({String? cwd}) {
   return legacy.existsSync();
 }
 
-/// Default delegation: `dart run :artisan <args>` with inherited stdio.
+/// Default delegation: `dart run :dispatcher <args>` with inherited stdio.
 Future<int> _defaultDelegate(List<String> args) async {
   final result = await Process.start(
     Platform.resolvedExecutable,
-    <String>['run', ':artisan', ...args],
+    <String>['run', ...args],
     mode: ProcessStartMode.inheritStdio,
     workingDirectory: Directory.current.path,
   );
