@@ -183,7 +183,8 @@ expression runs in the foreground isolate's root library scope and is passed thr
 
 Plugin tools are contributed by sibling packages via `ArtisanServiceProvider.mcpTools()`.
 They surface in the MCP server only when the corresponding provider is registered in the
-consumer's `bin/artisan.dart` and `dart run fluttersdk_artisan:mcp` is restarted.
+consumer's `bin/artisan.dart` and the MCP server is restarted (run `./bin/fsa mcp:serve` or
+`dart run :dispatcher mcp:serve` on Windows or when `bin/fsa` is absent).
 
 Each plugin tool dispatches over a `ext.<domain>.*` VM Service extension registered by the
 plugin inside the running Flutter app.
@@ -278,10 +279,10 @@ Package names match `ArtisanServiceProvider.providerName`: `fluttersdk_artisan` 
 
 ### Layer 3: CLI flags
 
-Pass flags directly to `dart run fluttersdk_artisan:mcp`:
+Pass flags directly to the MCP server invocation:
 
 ```bash
-dart run fluttersdk_artisan:mcp \
+./bin/fsa mcp:serve \
   --include-package=fluttersdk_dusk \
   --exclude-tool=artisan_stop
 ```

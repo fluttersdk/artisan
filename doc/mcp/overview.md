@@ -91,9 +91,10 @@ The MCP server lazy-reconnects on each dispatch call, meaning the agent can call
 first and the very next plugin tool call picks up the new app automatically.
 
 **Plugin registration is explicit.** The consumer's `bin/artisan.dart` wrapper must list each
-provider in its `artisanProviders` factory list. There is no auto-discovery of plugin providers in
-V1: the `bin/mcp.dart` entry point loads only the substrate commands. Consumers register their
-providers once in the wrapper and the MCP server inherits them from the shared registry.
+provider in its `artisanProviders` factory list. Consumers invoke `./bin/fsa mcp:serve`
+(post-install via `mcp:install`) or `dart run :dispatcher mcp:serve` (Windows / no-fsa fallback) to
+start the MCP server with plugins collected. The legacy `bin/mcp.dart` entry point is preserved for
+backward compatibility and loads only the substrate commands without plugin tools.
 
 The two sibling packages that ship production plugin tools are:
 
@@ -149,7 +150,8 @@ Fields (from `lib/src/state/state_file.dart`):
         |
         | stdio JSON-RPC  (initialize / tools/call)
         |
-  dart run fluttersdk_artisan:mcp
+  ./bin/fsa mcp:serve
+  (or: dart run :dispatcher mcp:serve)
         |
    McpServer (mcp:serve)
         |
