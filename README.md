@@ -100,7 +100,7 @@ Plugin commands surface automatically. After installing `fluttersdk_dusk`, `dart
 ### 3. Wire the MCP server for your AI agent
 
 ```bash
-dart run fluttersdk_artisan mcp:install
+dart run artisan mcp:install
 ```
 
 `mcp:install` writes (or updates) the `mcpServers.fluttersdk` entry in `.mcp.json`. After install, reconnect the MCP client once (for Claude Code: `/mcp reconnect fluttersdk`). The server boots in stdio JSON-RPC mode and exposes 10 substrate tools (`artisan_start`, `artisan_stop`, `artisan_status`, `artisan_logs`, `artisan_restart`, `artisan_reload`, `artisan_hot_restart`, `artisan_doctor`, `artisan_list`, `artisan_tinker`) plus any plugin-contributed tools.
@@ -262,12 +262,15 @@ After `mcp:install` writes the client config entry, every MCP-capable agent can 
 {
   "mcpServers": {
     "fluttersdk": {
-      "command": "dart",
-      "args": ["run", "fluttersdk_artisan:mcp"]
+      "command": "./bin/fsa",
+      "args": ["mcp:serve"],
+      "cwd": "."
     }
   }
 }
 ```
+
+When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead.
 
 When `~/.artisan/state.json` is absent at `initialize` time (no Flutter app running), the server stays online with the 10 substrate tools available and 0 plugin tools registered. On the next `tools/call` requiring VM Service, the server lazy-reconnects via a memoized in-flight future so MCP clients survive the natural dev cycle of starting and stopping the Flutter app without reconnecting.
 
