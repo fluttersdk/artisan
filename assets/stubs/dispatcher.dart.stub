@@ -32,6 +32,7 @@ Future<void> main(List<String> args) async {
         ...plugins.autoDiscoveredProviders(),
       ],
       delegateToConsumer: false,
+      collectMcpTools: args.isNotEmpty && args.first == 'mcp:serve',
     ),
   );
 }
