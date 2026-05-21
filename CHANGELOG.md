@@ -8,6 +8,13 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **MCP server returns empty tools/list (issue #7, Bug A)**: `dispatcher.dart.stub` now forwards `collectMcpTools: args.isNotEmpty && args.first == 'mcp:serve'` to `runArtisan`, so plugin providers' `mcpTools()` collect into the registry when consumers invoke `./bin/fsa mcp:serve`. Migration: substrate-installed consumers re-run `dart run fluttersdk_artisan install --force` to regenerate `bin/dispatcher.dart`. Magic-installed consumers need a paired magic-side stub update (tracked separately) before `magic:artisan install --force` propagates the fix.
+- **`mcp:install` writes the canonical post-install entry shape (issue #7, Bug B)**: `.mcp.json` entry branches between `./bin/fsa mcp:serve` (POSIX with `bin/fsa` present) and `dart run :dispatcher mcp:serve` (Windows or no-fsa fallback); the previous hardcoded `dart run fluttersdk_artisan:mcp` shape routed through the substrate standalone, which never loads consumer plugin providers. Migration: consumers must re-run `./bin/fsa mcp:install` (or `dart run fluttersdk_artisan mcp:install`).
+- **Auto-delegation now resolves the canonical consumer wrapper**: `_defaultDelegate` at `lib/src/console/run_artisan.dart` previously emitted `dart run :artisan`, which resolves only to `bin/artisan.dart`. Post-0.0.2 the canonical wrapper is `bin/dispatcher.dart`. Fixed by prepending `:dispatcher` upstream of the delegate call (`(delegate ?? _defaultDelegate)([':dispatcher', ...args])`); `_defaultDelegate`'s body simplifies to `['run', ...args]`. Latent since 0.0.2; not caught by tests because the existing delegation tests mocked `delegate:` without asserting on the prefixed args.
+- **`doctor` advisory extended for pre-Bug-B `.mcp.json`**: `doctor` now advisory-warns when `.mcp.json` still contains `fluttersdk_artisan:mcp` args, pointing the user at `./bin/fsa mcp:install` to upgrade. Does not affect exit code.
+
 ## [0.0.3] - 2026-05-21
 
 ### Changed
