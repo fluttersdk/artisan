@@ -272,6 +272,57 @@ void main() {
       expect(out, isNot(contains('Bootstrap with: artisan')));
     });
 
+    test(
+        'install purges .artisan/cli-bundle and .artisan/build.stamp '
+        'after successful registration', () async {
+      // Issue #9 GAP A: after `plugin:install` regenerates lib/app/_plugins.g.dart
+      // (or the legacy bin/artisan.dart wrapper) the next `./bin/fsa` invocation
+      // must rebuild the AOT bundle. Purging .artisan/cli-bundle/ and
+      // .artisan/build.stamp forces the staleness check to rebuild.
+      final root = Directory.systemTemp.createTempSync('plinst_cachepurge_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'magic_logger');
+
+      // 1. Pre-create the cache artefacts that the post-install hook must purge.
+      final cacheDir = Directory(p.join(root.path, '.artisan', 'cli-bundle'))
+        ..createSync(recursive: true);
+      File(p.join(cacheDir.path, 'sentinel')).writeAsStringSync('');
+      File(p.join(root.path, '.artisan', 'build.stamp'))
+          .writeAsStringSync('deadbeef:3.4.0');
+
+      final cmd = _TestablePluginInstallCommand(fakeProjectRoot: root.path);
+      final ctx = _ctxWith(
+        const <String, dynamic>{
+          'force': false,
+          'no-bootstrap': true,
+          'dry-run': false,
+          'non-interactive': false,
+          'use-yaml-only': false,
+          'bootstrap-command': null,
+          'provider': null,
+        },
+        positional: const ['magic_logger'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0);
+
+      // 2. Both cache artefacts must be gone after a successful install.
+      expect(
+        Directory(p.join(root.path, '.artisan', 'cli-bundle')).existsSync(),
+        isFalse,
+        reason:
+            'install must purge .artisan/cli-bundle/ so the next ./bin/fsa rebuilds',
+      );
+      expect(
+        File(p.join(root.path, '.artisan', 'build.stamp')).existsSync(),
+        isFalse,
+        reason:
+            'install must purge .artisan/build.stamp so needs_build() trips on next call',
+      );
+    });
+
     test('errors when plugin missing from pubspec.yaml', () async {
       final root = Directory.systemTemp.createTempSync('plinst_nodep_');
       addTearDown(() => root.deleteSync(recursive: true));
