@@ -72,6 +72,8 @@ Allowlist at `lib/src/mcp/mcp_server.dart:665-675`. Tool names use the `artisan_
 
 `artisan_tinker` is the only substrate tool needing `CommandBoot.connected`. The dispatcher detects the boot mode, ensures `_vmClient` is connected (lazy-reconnect if absent), builds `ArtisanContext.connected`, and dispatches.
 
+`dusk_evaluate` is a plugin tool with `extensionMethod: 'ext.dusk.evaluate'` but the dispatcher special-cases it by tool name and routes through `VmServiceClient.evaluate(isolateId, expression)` directly, because the dusk-side host handler returns a no-op sentinel by design. Surfaces 3 result branches plus the RPCError code 113 compile-error case (see `lib/src/mcp/mcp_server.dart` `_dispatchEvaluate` for the four-branch handling).
+
 ## Plugin-contributed tools
 
 A plugin contributes tools by overriding `ArtisanServiceProvider.mcpTools()`:

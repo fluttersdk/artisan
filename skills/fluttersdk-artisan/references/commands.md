@@ -159,6 +159,8 @@ dart run artisan plugin:install awesome_plugin --dry-run
 dart run artisan plugin:install awesome_plugin --provider=AwesomePluginCustomProvider
 ```
 
+Side effect: invalidates `.artisan/cli-bundle/` and `.artisan/build.stamp` so `./bin/fsa` rebuilds on next invocation.
+
 ### `plugin:uninstall`
 
 `lib/src/commands/plugin_uninstall_command.dart:47` (signature DSL at line 54)
@@ -172,11 +174,15 @@ dart run artisan plugin:uninstall awesome_plugin --dry-run
 dart run artisan plugin:uninstall awesome_plugin
 ```
 
+Side effect: invalidates `.artisan/cli-bundle/` and `.artisan/build.stamp` so `./bin/fsa` rebuilds on next invocation.
+
 ### `plugins:refresh`
 
 `lib/src/commands/plugins_refresh_command.dart:49` (signature DSL at line 77)
 
 Regenerates `lib/app/_plugins.g.dart` from `.artisan/plugins.json`. Atomic `.tmp` + rename. Idempotent (byte-identical output on consecutive runs). `make:command` and `plugin:install` call this internally; manual invocation only needed after hand-editing `.artisan/plugins.json`.
+
+Side effect: invalidates `.artisan/cli-bundle/` and `.artisan/build.stamp` so `./bin/fsa` rebuilds on next invocation.
 
 ## MCP (3)
 
