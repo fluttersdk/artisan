@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:dart_mcp/server.dart';
 import 'package:dart_mcp/stdio.dart';
 import 'package:stream_channel/stream_channel.dart';
+import 'package:vm_service/vm_service.dart'
+    show ErrorRef, InstanceRef, RPCError, SentinelException;
 
 import '../console/artisan_command.dart';
 import '../console/artisan_context.dart';
@@ -280,6 +282,13 @@ final class McpServer extends MCPServer with ToolsSupport {
       );
     }
 
+    // Special-case: dusk_evaluate routes through vm.evaluate (issue #9
+    // GAP F); the dusk-side ext.dusk.evaluate handler is a no-op sentinel
+    // by design. Reuses the just-validated vmClient + isolateId.
+    if (request.name == 'dusk_evaluate') {
+      return _dispatchEvaluate(request, vmClient, isolateId);
+    }
+
     try {
       final args = request.arguments?.cast<String, dynamic>() ??
           const <String, dynamic>{};
@@ -296,6 +305,92 @@ final class McpServer extends MCPServer with ToolsSupport {
         isError: true,
         content: [TextContent(text: '### Error\n$e')],
       );
+    }
+  }
+
+  /// Routes `dusk_evaluate` MCP tool calls through VM Service `evaluate`
+  /// (issue #9 GAP F). The dusk-side `ext.dusk.evaluate` handler returns
+  /// a no-op sentinel because the actual evaluation requires the
+  /// `vm.evaluate` RPC, which only artisan's connected MCP server can
+  /// invoke. Surfaces the success path (InstanceRef), the runtime
+  /// exception path (ErrorRef returned as value), the compile-error
+  /// path (RPCError code 113), and the stale-isolate path
+  /// (SentinelException thrown by the wrapper).
+  Future<CallToolResult> _dispatchEvaluate(
+    CallToolRequest request,
+    VmServiceClient vmClient,
+    String isolateId,
+  ) async {
+    final args =
+        request.arguments?.cast<String, dynamic>() ?? const <String, dynamic>{};
+    final expression = args['expression'] as String?;
+    if (expression == null || expression.isEmpty) {
+      return CallToolResult(
+        isError: true,
+        content: [
+          TextContent(
+            text: '### Error\nMissing required argument: '
+                '`expression` (non-empty string).',
+          ),
+        ],
+      );
+    }
+    try {
+      final result = await vmClient.evaluate(isolateId, expression);
+      // 1. ErrorRef: runtime exception during evaluation; returned as
+      //    a value, not thrown.
+      if (result is ErrorRef) {
+        return CallToolResult(
+          isError: true,
+          content: [
+            TextContent(
+              text: '### Error\nRuntime exception: '
+                  '${result.message ?? '(no message)'}',
+            ),
+          ],
+        );
+      }
+      // 2. InstanceRef: happy-path success.
+      final value = (result is InstanceRef)
+          ? (result.valueAsString ?? result.toString())
+          : result.toString();
+      return CallToolResult(
+        content: [
+          TextContent(
+            text: jsonEncode(<String, dynamic>{
+              'expression': expression,
+              'result': value,
+            }),
+          ),
+        ],
+      );
+    } on SentinelException catch (e) {
+      // 3. Stale isolate: the cached isolate id was collected
+      //    (hot-restart minted a new isolate); the wrapper throws.
+      return CallToolResult(
+        isError: true,
+        content: [
+          TextContent(
+            text: '### Error\nIsolate sentinel encountered '
+                '(kind: ${e.sentinel.kind}).\n\nRun `artisan restart` to '
+                'mint a fresh isolate, then retry the evaluation.',
+          ),
+        ],
+      );
+    } on RPCError catch (e) {
+      // 4. Compile error from the VM's expression compiler.
+      if (e.code == 113) {
+        final details = (e.data?['details'] as String?) ?? e.message;
+        return CallToolResult(
+          isError: true,
+          content: [
+            TextContent(
+              text: '### Error\nExpression compilation error: $details',
+            ),
+          ],
+        );
+      }
+      rethrow;
     }
   }
 
