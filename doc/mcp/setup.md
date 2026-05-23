@@ -358,6 +358,14 @@ Remote HTTP transport is NOT supported in V1; the artisan MCP server is stdio-on
 
 ---
 
+## Server Identity
+
+The artisan MCP server advertises itself as `serverInfo: {"name": "fluttersdk_artisan_mcp", "version": "<package version>"}` in the `initialize` response. The `name` field is fixed regardless of the installed plugin set. Clients such as Claude Code, Cursor, Windsurf, and others derive tool prefixes (like `mcp__fluttersdk__artisan_start`) from the `.mcp.json` key (typically `fluttersdk`), not from `serverInfo.name`. The MCP specification treats `serverInfo.name` as a display hint, not a stable identifier for tool prefix derivation.
+
+The `version` field in `serverInfo` tracks the package version at release time, manually synced as part of the release cut process. See the MCP specification at https://modelcontextprotocol.io/specification/2025-03-26/basic/lifecycle for the full lifecycle semantics. This addresses issue #9 NIT 7, which called out the version drift problem.
+
+---
+
 ## Add a Rule
 
 To make the agent reach for artisan MCP without an explicit `use artisan` prompt, add a rule to your AI client:
