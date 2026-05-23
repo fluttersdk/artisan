@@ -8,6 +8,14 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-05-23
+
+### Fixed
+
+- **`./bin/fsa` AOT bundle staleness missed `lib/app/_plugins.g.dart` mtime (issue #9 GAP A)**: after `plugin:install` regenerated `lib/app/_plugins.g.dart`, subsequent `./bin/fsa` invocations kept running the stale cached bundle, so newly registered plugin commands silently did not surface. Fixed by two complementary changes: (a) appended condition-5 (`_plugins.g.dart -nt STAMP_FILE`) to `bin_fsa.sh.stub`'s `needs_build()` shell function so the shim self-heals on any plugin operation regardless of who mutated the file, and (b) added `CliBundleCache.purge(projectRoot)` to the legacy `plugin:install` success path, `plugin:uninstall` success path, and `plugins:refresh` success path so the cache invalidates as a direct side effect of artisan-managed plugin lifecycle events. Manifest-flow `plugin:install` delegates to `plugins:refresh` transitively, so a single purge call covers both. Migration: re-run `make:fast-cli --force` to pick up the new shim. No CI or publish changes.
+- **MCP `dusk_evaluate` returned a sentinel string instead of evaluating (issue #9 GAP F)**: the host-side `ext.dusk.evaluate` handler in `fluttersdk_dusk` returns a no-op sentinel by design; the actual evaluation must run through `vm.evaluate`. `lib/src/mcp/mcp_server.dart` `_dispatch` now special-cases `dusk_evaluate` by tool name and routes through `VmServiceClient.evaluate(isolateId, expression)` directly, with 3-branch error handling per the VM Service spec (`InstanceRef` happy path; `ErrorRef` runtime exception surfaced as `isError: true`; `Sentinel` stale-isolate with actionable hint; `RPCError` code 113 compile error with details extracted). Coordinated bump pairing: `fluttersdk_dusk` 0.0.2 plans to bump the artisan constraint to `^0.0.5`.
+- **MCP `serverInfo.version` no longer drifts (issue #9 NIT 7)**: the hardcoded `version: '0.0.1'` in `lib/src/mcp/mcp_server.dart` lagged the pubspec across four releases. This release manually syncs the literal to `'0.0.5'` as part of the release-cut commit. A future patch may switch to a build-time `_kArtisanVersion` constant to eliminate manual drift recurrence (deferred per scope). The `serverInfo.name` literal `fluttersdk_artisan_mcp` stays as-is; the MCP spec treats `serverInfo.name` as a display hint, and Claude Code derives tool prefixes from the `.mcp.json` key, not from the server-advertised name. See `doc/mcp/setup.md#server-identity` for the rationale.
+
 ## [0.0.4] - 2026-05-21
 
 ### Fixed

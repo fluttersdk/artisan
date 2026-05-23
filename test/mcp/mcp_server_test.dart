@@ -5,6 +5,8 @@ import 'package:dart_mcp/client.dart';
 import 'package:fluttersdk_artisan/artisan.dart';
 import 'package:stream_channel/stream_channel.dart';
 import 'package:test/test.dart';
+import 'package:vm_service/vm_service.dart'
+    show ErrorRef, InstanceRef, RPCError, Response, SentinelException;
 
 /// In-memory stub of [VmServiceClient] that records calls and replays canned
 /// responses keyed by extension method name.
@@ -65,6 +67,29 @@ class _StubVmServiceClient extends VmServiceClient {
       throw StateError('stub has no canned response for $method');
     }
     return responses[method] as T;
+  }
+
+  /// Every `evaluate` invocation captured in arrival order. The Step 4 RED
+  /// tests assert on this tuple to confirm the new `dusk_evaluate` dispatch
+  /// path routes the request's `expression` argument through to
+  /// `VmServiceClient.evaluate` with the resolved isolate id.
+  final List<({String isolateId, String expression})> evaluateCalls = [];
+
+  /// Per-test script that produces the canned [Response] for the next
+  /// [evaluate] call. Tests assign this to control the branch under test
+  /// (InstanceRef success, ErrorRef value, SentinelException throw, or
+  /// RPCError(113) throw). Default: a no-op `InstanceRef` that triggers the
+  /// unconfigured-script failure mode.
+  Response Function(String isolateId, String expression)? _evaluateScript;
+
+  @override
+  Future<Response> evaluate(String isolateId, String expression) async {
+    evaluateCalls.add((isolateId: isolateId, expression: expression));
+    final script = _evaluateScript;
+    if (script == null) {
+      throw StateError('stub has no _evaluateScript configured');
+    }
+    return script(isolateId, expression);
   }
 }
 
@@ -576,6 +601,245 @@ void main() {
       // Stub was never reached because dart_mcp short-circuited on the
       // missing required arg.
       expect(harness.stub.calls, isEmpty);
+    });
+
+    test(
+        'dusk_evaluate routes through vm.evaluate and returns the '
+        'InstanceRef value as JSON', () async {
+      final registry = ArtisanRegistry()
+        ..registerMcpToolsFor(
+          _FakeMcpProvider(
+            providerName: 'fluttersdk_dusk',
+            tools: [
+              _tool('dusk_evaluate', extensionMethod: 'ext.dusk.evaluate'),
+            ],
+          ),
+        );
+
+      final harness = await _TestHarness.build(
+        registry: registry,
+        filter: McpFilterConfig.empty(),
+      );
+      addTearDown(harness.dispose);
+      harness.stub._evaluateScript = (_, __) => InstanceRef(
+            kind: 'Int',
+            valueAsString: '3',
+            id: 'objects/int-3',
+          );
+
+      final callResult = await harness.connection.callTool(
+        CallToolRequest(
+          name: 'dusk_evaluate',
+          arguments: const {'expression': '1 + 2'},
+        ),
+      );
+
+      expect(harness.stub.evaluateCalls.single,
+          (isolateId: 'isolate-stub', expression: '1 + 2'));
+      expect(callResult.isError, anyOf(isNull, isFalse));
+      final text = (callResult.content.single as TextContent).text;
+      expect(jsonDecode(text), {'expression': '1 + 2', 'result': '3'});
+    });
+
+    test(
+        'dusk_evaluate surfaces ErrorRef result as isError with a '
+        'Runtime exception message', () async {
+      final registry = ArtisanRegistry()
+        ..registerMcpToolsFor(
+          _FakeMcpProvider(
+            providerName: 'fluttersdk_dusk',
+            tools: [
+              _tool('dusk_evaluate', extensionMethod: 'ext.dusk.evaluate'),
+            ],
+          ),
+        );
+
+      final harness = await _TestHarness.build(
+        registry: registry,
+        filter: McpFilterConfig.empty(),
+      );
+      addTearDown(harness.dispose);
+      harness.stub._evaluateScript = (_, __) => ErrorRef(
+            kind: 'UnhandledException',
+            message: 'NoSuchMethodError: foo',
+            id: 'objects/error-1',
+          );
+
+      final callResult = await harness.connection.callTool(
+        CallToolRequest(
+          name: 'dusk_evaluate',
+          arguments: const {'expression': '1 + 2'},
+        ),
+      );
+
+      expect(harness.stub.evaluateCalls.single,
+          (isolateId: 'isolate-stub', expression: '1 + 2'));
+      expect(callResult.isError, isTrue);
+      final text = (callResult.content.single as TextContent).text;
+      expect(text, contains('### Error'));
+      expect(text, contains('Runtime exception'));
+      expect(text, contains('NoSuchMethodError: foo'));
+    });
+
+    test(
+        'dusk_evaluate maps SentinelException to isError with an '
+        'Isolate sentinel hint', () async {
+      final registry = ArtisanRegistry()
+        ..registerMcpToolsFor(
+          _FakeMcpProvider(
+            providerName: 'fluttersdk_dusk',
+            tools: [
+              _tool('dusk_evaluate', extensionMethod: 'ext.dusk.evaluate'),
+            ],
+          ),
+        );
+
+      final harness = await _TestHarness.build(
+        registry: registry,
+        filter: McpFilterConfig.empty(),
+      );
+      addTearDown(harness.dispose);
+      harness.stub._evaluateScript = (_, __) => throw SentinelException.parse(
+            'evaluate',
+            <String, dynamic>{'kind': 'Collected', 'type': '@Sentinel'},
+          );
+
+      final callResult = await harness.connection.callTool(
+        CallToolRequest(
+          name: 'dusk_evaluate',
+          arguments: const {'expression': '1 + 2'},
+        ),
+      );
+
+      expect(harness.stub.evaluateCalls.single,
+          (isolateId: 'isolate-stub', expression: '1 + 2'));
+      expect(callResult.isError, isTrue);
+      final text = (callResult.content.single as TextContent).text;
+      expect(text, contains('### Error'));
+      expect(text, contains('Isolate sentinel'));
+      // Actionable hint pointing the user at the recovery command. The exact
+      // wording locks in Step 7; assert only on the stable substring.
+      expect(text, contains('artisan'));
+    });
+
+    test(
+        'dusk_evaluate translates RPCError code 113 into a compile-error '
+        'message', () async {
+      final registry = ArtisanRegistry()
+        ..registerMcpToolsFor(
+          _FakeMcpProvider(
+            providerName: 'fluttersdk_dusk',
+            tools: [
+              _tool('dusk_evaluate', extensionMethod: 'ext.dusk.evaluate'),
+            ],
+          ),
+        );
+
+      final harness = await _TestHarness.build(
+        registry: registry,
+        filter: McpFilterConfig.empty(),
+      );
+      addTearDown(harness.dispose);
+      harness.stub._evaluateScript = (_, __) => throw RPCError(
+            'evaluate',
+            113,
+            'Expression compilation error',
+            <String, dynamic>{'details': 'Unterminated string literal'},
+          );
+
+      final callResult = await harness.connection.callTool(
+        CallToolRequest(
+          name: 'dusk_evaluate',
+          arguments: const {'expression': '1 + 2'},
+        ),
+      );
+
+      expect(harness.stub.evaluateCalls.single,
+          (isolateId: 'isolate-stub', expression: '1 + 2'));
+      expect(callResult.isError, isTrue);
+      final text = (callResult.content.single as TextContent).text;
+      expect(text, contains('### Error'));
+      expect(text, contains('Expression compilation error'));
+      expect(text, contains('Unterminated string literal'));
+    });
+
+    test(
+        'dusk_evaluate translates non-113 RPCError into an isError result '
+        'instead of bubbling as a protocol-level failure', () async {
+      // The dispatch contract states errors surface as `isError: true`
+      // rather than RPC failures. A non-113 RPCError (e.g. method-not-found,
+      // permission-denied) must follow that contract, not bubble up.
+      final registry = ArtisanRegistry()
+        ..registerMcpToolsFor(
+          _FakeMcpProvider(
+            providerName: 'fluttersdk_dusk',
+            tools: [
+              _tool('dusk_evaluate', extensionMethod: 'ext.dusk.evaluate'),
+            ],
+          ),
+        );
+
+      final harness = await _TestHarness.build(
+        registry: registry,
+        filter: McpFilterConfig.empty(),
+      );
+      addTearDown(harness.dispose);
+      harness.stub._evaluateScript = (_, __) => throw RPCError(
+            'evaluate',
+            -32601,
+            'Method not found',
+          );
+
+      final callResult = await harness.connection.callTool(
+        CallToolRequest(
+          name: 'dusk_evaluate',
+          arguments: const {'expression': '1 + 2'},
+        ),
+      );
+
+      expect(harness.stub.evaluateCalls.single,
+          (isolateId: 'isolate-stub', expression: '1 + 2'));
+      expect(callResult.isError, isTrue);
+      final text = (callResult.content.single as TextContent).text;
+      expect(text, contains('### Error'));
+      expect(text, contains('VM Service RPC error'));
+      expect(text, contains('-32601'));
+      expect(text, contains('Method not found'));
+    });
+
+    test(
+        'dusk_evaluate translates an unexpected exception into an isError '
+        'result instead of bubbling as a protocol-level failure', () async {
+      final registry = ArtisanRegistry()
+        ..registerMcpToolsFor(
+          _FakeMcpProvider(
+            providerName: 'fluttersdk_dusk',
+            tools: [
+              _tool('dusk_evaluate', extensionMethod: 'ext.dusk.evaluate'),
+            ],
+          ),
+        );
+
+      final harness = await _TestHarness.build(
+        registry: registry,
+        filter: McpFilterConfig.empty(),
+      );
+      addTearDown(harness.dispose);
+      harness.stub._evaluateScript =
+          (_, __) => throw StateError('isolate root library unavailable');
+
+      final callResult = await harness.connection.callTool(
+        CallToolRequest(
+          name: 'dusk_evaluate',
+          arguments: const {'expression': '1 + 2'},
+        ),
+      );
+
+      expect(callResult.isError, isTrue);
+      final text = (callResult.content.single as TextContent).text;
+      expect(text, contains('### Error'));
+      expect(text, contains('Unexpected error during dusk_evaluate'));
+      expect(text, contains('isolate root library unavailable'));
     });
   });
 }

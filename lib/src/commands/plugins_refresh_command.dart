@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import '../console/artisan_command.dart';
 import '../console/artisan_context.dart';
 import '../console/command_boot.dart';
+import '../helpers/cli_bundle_cache.dart';
 import '../helpers/file_helper.dart';
 import '../installer/plugins_registry_file.dart';
 import '../installer/virtual_fs.dart';
@@ -115,7 +116,11 @@ class PluginsRefreshCommand extends ArtisanCommand {
     final source = _renderSource(_sortedForOutput(entries));
     _atomicWrite(outputPath, source);
 
-    // 6. Summarise so the operator sees what landed.
+    // 6. Purge the AOT cli-bundle so the next ./bin/fsa invocation rebuilds
+    //    against the freshly-generated _plugins.g.dart (issue #9 GAP A).
+    CliBundleCache.purge(root);
+
+    // 7. Summarise so the operator sees what landed.
     ctx.output.success(
       'Refreshed ${entries.length} plugin(s) → ${p.join('lib', 'app', '_plugins.g.dart')}',
     );

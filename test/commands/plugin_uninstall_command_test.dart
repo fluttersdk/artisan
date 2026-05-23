@@ -237,6 +237,57 @@ void main() {
               'registry.registerProvider(DemoPluginArtisanProvider())')));
     });
 
+    test(
+        'uninstall purges .artisan/cli-bundle and .artisan/build.stamp '
+        'after successful removal', () async {
+      // Issue #9 GAP A: after `plugin:uninstall` strips the plugin's wrapper
+      // import + register lines, the AOT cache must be invalidated so the next
+      // `./bin/fsa` rebuilds without the removed plugin's command surface.
+      final root = Directory.systemTemp.createTempSync('plun_cachepurge_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedInstalledProject(
+        root,
+        pluginName: 'demo_plugin',
+        providerName: 'DemoPluginArtisanProvider',
+      );
+      final manifestPath = p.join(root.path, 'demo_install.yaml');
+      _writeInstallYaml(manifestPath, 'demo_plugin');
+
+      // 1. Pre-create the cache artefacts that the post-uninstall hook must purge.
+      final cacheDir = Directory(p.join(root.path, '.artisan', 'cli-bundle'))
+        ..createSync(recursive: true);
+      File(p.join(cacheDir.path, 'sentinel')).writeAsStringSync('');
+      File(p.join(root.path, '.artisan', 'build.stamp'))
+          .writeAsStringSync('deadbeef:3.4.0');
+
+      final cmd = _TestablePluginUninstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+      );
+      final ctx = _ctxWith(
+        _baseOpts(overrides: const {'force': true}),
+        positional: const ['demo_plugin'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0);
+
+      // 2. Both cache artefacts must be gone after a successful uninstall.
+      expect(
+        Directory(p.join(root.path, '.artisan', 'cli-bundle')).existsSync(),
+        isFalse,
+        reason:
+            'uninstall must purge .artisan/cli-bundle/ so the next ./bin/fsa rebuilds',
+      );
+      expect(
+        File(p.join(root.path, '.artisan', 'build.stamp')).existsSync(),
+        isFalse,
+        reason:
+            'uninstall must purge .artisan/build.stamp so needs_build() trips on next call',
+      );
+    });
+
     test('--force skips the interactive confirm prompt', () async {
       final root = Directory.systemTemp.createTempSync('plun_force_');
       addTearDown(() => root.deleteSync(recursive: true));

@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:fluttersdk_artisan/artisan.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 /// Helper that fakes a `lib/app/` directory inside an [InMemoryFs] by
@@ -324,6 +326,72 @@ void main() {
       expect(code, 0);
       expect(output.content, contains('1'));
       expect(output.content, contains('lib/app/_plugins.g.dart'));
+    });
+
+    test(
+        'refresh purges .artisan/cli-bundle and .artisan/build.stamp after '
+        'regenerating _plugins.g.dart (real-FS path)', () async {
+      // Issue #9 GAP A: the cache-purge runs against real-FS (dart:io), not
+      // the InMemoryFs seam, because ./bin/fsa probes real disk for the stamp.
+      // This test bypasses _cmd(InMemoryFs, ...) and constructs the command
+      // against a real-FS tempDir so the assertions are non-vacuous.
+      final tempDir = Directory.systemTemp.createTempSync('refresh_purge_');
+      addTearDown(() {
+        if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+      });
+
+      // 1. Seed lib/app/.keep so the production directoryExists check passes
+      //    against real disk (no InMemoryFs probe in this test).
+      final libAppDir = Directory(p.join(tempDir.path, 'lib', 'app'))
+        ..createSync(recursive: true);
+      File(p.join(libAppDir.path, '.keep')).writeAsStringSync('');
+
+      // 2. Seed an empty plugins.json so the refresh generates an empty
+      //    _plugins.g.dart and reaches the post-write cache-purge hook.
+      final artisanDir = Directory(p.join(tempDir.path, '.artisan'))
+        ..createSync(recursive: true);
+      File(p.join(artisanDir.path, 'plugins.json')).writeAsStringSync(
+        jsonEncode(<String, dynamic>{
+          'version': 1,
+          'plugins': <dynamic>[],
+        }),
+      );
+
+      // 3. Pre-create the cache artefacts the post-refresh hook must purge.
+      final cacheDir = Directory(p.join(artisanDir.path, 'cli-bundle'))
+        ..createSync(recursive: true);
+      File(p.join(cacheDir.path, 'sentinel')).writeAsStringSync('');
+      File(p.join(artisanDir.path, 'build.stamp'))
+          .writeAsStringSync('deadbeef:3.4.0');
+
+      // 4. Construct against real FS (no fs:, defaults to RealFs; the
+      //    directoryExists default probes Directory.existsSync).
+      final command = PluginsRefreshCommand(projectRoot: tempDir.path);
+
+      final code = await command.handle(_ctx());
+      expect(code, 0);
+
+      // 5. Refresh still regenerated the codegen barrel.
+      expect(
+        File(p.join(tempDir.path, 'lib', 'app', '_plugins.g.dart'))
+            .existsSync(),
+        isTrue,
+        reason: 'refresh must still produce lib/app/_plugins.g.dart',
+      );
+
+      // 6. Both cache artefacts must be gone so the next ./bin/fsa rebuilds.
+      expect(
+        Directory(p.join(tempDir.path, '.artisan', 'cli-bundle')).existsSync(),
+        isFalse,
+        reason:
+            'refresh must purge .artisan/cli-bundle/ so the next ./bin/fsa rebuilds',
+      );
+      expect(
+        File(p.join(tempDir.path, '.artisan', 'build.stamp')).existsSync(),
+        isFalse,
+        reason:
+            'refresh must purge .artisan/build.stamp so needs_build() trips on next call',
+      );
     });
   });
 }

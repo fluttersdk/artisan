@@ -51,6 +51,35 @@ void main() {
     });
   });
 
+  group('bin_fsa.sh.stub staleness check condition 5', () {
+    test(
+        'condition 5 compares lib/app/_plugins.g.dart against STAMP_FILE so '
+        'plugin install invalidates the AOT bundle', () {
+      // Regression guard for issue #9 GAP A: when plugin:install or
+      // plugins:refresh regenerates lib/app/_plugins.g.dart, the bin/fsa
+      // staleness check must detect the mtime drift and invalidate the
+      // cached AOT bundle so the next invocation rebuilds with the new
+      // plugin providers. Without this condition, newly installed plugins
+      // silently fail to surface in the tool list (the stale AOT still
+      // references the old provider set).
+      final stub = StubLoader.load('bin_fsa.sh');
+
+      expect(
+        stub,
+        contains(r'"$PROJECT_ROOT/lib/app/_plugins.g.dart" -nt "$STAMP_FILE"'),
+        reason: 'condition 5 must invalidate the AOT bundle when '
+            'plugin:install regenerates lib/app/_plugins.g.dart',
+      );
+      expect(
+        stub,
+        isNot(contains(
+            r'"$PROJECT_ROOT/lib/app/_plugins.g.dart" -nt "$PROJECT_ROOT/pubspec.lock"')),
+        reason: 'the comparison target must be STAMP_FILE, mirroring the '
+            'condition-4 fix shape',
+      );
+    });
+  });
+
   group('bin_fsa.sh.stub PID-aware lock recovery', () {
     test('stub source contains kill -0 staleness probe', () {
       // The defining marker of the PID-aware recovery is the `kill -0`

@@ -6,6 +6,7 @@ import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 
 import '../console/artisan_context.dart';
+import '../helpers/cli_bundle_cache.dart';
 import '../helpers/file_helper.dart';
 import '../installer/artisan_install_command.dart';
 import '../installer/dry_run_renderer.dart';
@@ -204,6 +205,9 @@ class PluginUninstallCommand extends ArtisanInstallCommand {
           pluginName: name,
           providerClassName: manifest.magic.provider,
         );
+        // 9. Purge the AOT cli-bundle so the next ./bin/fsa invocation rebuilds
+        //    against the updated lib/app/_plugins.g.dart (issue #9 GAP A).
+        CliBundleCache.purge(root);
         return 0;
       case DryRun():
         // Unreachable in practice; ManifestInstaller.uninstall has no

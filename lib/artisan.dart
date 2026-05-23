@@ -31,6 +31,7 @@ export 'src/console/shell_quote.dart';
 export 'src/console/string_helper.dart';
 
 // Helpers (ported as-is from magic_cli).
+export 'src/helpers/cli_bundle_cache.dart';
 export 'src/helpers/config_editor.dart';
 export 'src/helpers/console_style.dart';
 export 'src/helpers/env_editor.dart';

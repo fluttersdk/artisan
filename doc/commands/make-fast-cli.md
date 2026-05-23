@@ -72,6 +72,24 @@ The wrapper script itself is the source of truth for staleness detection. When t
 
 ---
 
+## Staleness Detection
+
+The wrapper's `needs_build()` function triggers a rebuild when any of these conditions hold:
+
+1. **Binary missing.** The compiled executable at `.artisan/cli-bundle/bundle/bin/dispatcher` does not exist.
+
+2. **Stamp file missing or empty.** The `.artisan/build.stamp` file is absent or has zero size.
+
+3. **Stamp file content mismatches.** The stored compile key (format: `<sha256-of-pubspec.lock>:<dart-sdk-version>`) differs from the current key, meaning either the lock or the SDK changed.
+
+4. **`pubspec.yaml` modified since last build.** The mtime of `pubspec.yaml` is newer than the stamp file's mtime, detected via the `-nt` (newer than) operator.
+
+5. **`lib/app/_plugins.g.dart` modified since last build.** The mtime of `lib/app/_plugins.g.dart` is newer than the stamp file's mtime. This condition was added in 0.0.5 to invalidate the cache when `plugin:install` or `plugins:refresh` regenerates the file (issue #9 GAP A).
+
+Any match triggers a recompile inside the lock-acquire section. The re-check inside the lock prevents redundant builds when multiple invocations race.
+
+---
+
 ## Performance
 
 ### Cache hit (wrapper runs existing binary)
