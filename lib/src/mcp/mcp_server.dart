@@ -390,7 +390,29 @@ final class McpServer extends MCPServer with ToolsSupport {
           ],
         );
       }
-      rethrow;
+      // 5. Other RPCError codes: surface as isError instead of bubbling
+      //    out as a protocol-level failure (the dispatch contract promises
+      //    "errors surface as `isError: true` rather than RPC failures").
+      return CallToolResult(
+        isError: true,
+        content: [
+          TextContent(
+            text: '### Error\nVM Service RPC error (code ${e.code}): '
+                '${e.message}',
+          ),
+        ],
+      );
+    } catch (e) {
+      // 6. Unexpected exception: same contract: surface as isError
+      //    rather than letting it bubble out.
+      return CallToolResult(
+        isError: true,
+        content: [
+          TextContent(
+            text: '### Error\nUnexpected error during dusk_evaluate: $e',
+          ),
+        ],
+      );
     }
   }
 

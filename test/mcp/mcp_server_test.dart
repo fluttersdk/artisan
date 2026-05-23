@@ -762,6 +762,85 @@ void main() {
       expect(text, contains('Expression compilation error'));
       expect(text, contains('Unterminated string literal'));
     });
+
+    test(
+        'dusk_evaluate translates non-113 RPCError into an isError result '
+        'instead of bubbling as a protocol-level failure', () async {
+      // The dispatch contract states errors surface as `isError: true`
+      // rather than RPC failures. A non-113 RPCError (e.g. method-not-found,
+      // permission-denied) must follow that contract, not bubble up.
+      final registry = ArtisanRegistry()
+        ..registerMcpToolsFor(
+          _FakeMcpProvider(
+            providerName: 'fluttersdk_dusk',
+            tools: [
+              _tool('dusk_evaluate', extensionMethod: 'ext.dusk.evaluate'),
+            ],
+          ),
+        );
+
+      final harness = await _TestHarness.build(
+        registry: registry,
+        filter: McpFilterConfig.empty(),
+      );
+      addTearDown(harness.dispose);
+      harness.stub._evaluateScript = (_, __) => throw RPCError(
+            'evaluate',
+            -32601,
+            'Method not found',
+          );
+
+      final callResult = await harness.connection.callTool(
+        CallToolRequest(
+          name: 'dusk_evaluate',
+          arguments: const {'expression': '1 + 2'},
+        ),
+      );
+
+      expect(harness.stub.evaluateCalls.single,
+          (isolateId: 'isolate-stub', expression: '1 + 2'));
+      expect(callResult.isError, isTrue);
+      final text = (callResult.content.single as TextContent).text;
+      expect(text, contains('### Error'));
+      expect(text, contains('VM Service RPC error'));
+      expect(text, contains('-32601'));
+      expect(text, contains('Method not found'));
+    });
+
+    test(
+        'dusk_evaluate translates an unexpected exception into an isError '
+        'result instead of bubbling as a protocol-level failure', () async {
+      final registry = ArtisanRegistry()
+        ..registerMcpToolsFor(
+          _FakeMcpProvider(
+            providerName: 'fluttersdk_dusk',
+            tools: [
+              _tool('dusk_evaluate', extensionMethod: 'ext.dusk.evaluate'),
+            ],
+          ),
+        );
+
+      final harness = await _TestHarness.build(
+        registry: registry,
+        filter: McpFilterConfig.empty(),
+      );
+      addTearDown(harness.dispose);
+      harness.stub._evaluateScript =
+          (_, __) => throw StateError('isolate root library unavailable');
+
+      final callResult = await harness.connection.callTool(
+        CallToolRequest(
+          name: 'dusk_evaluate',
+          arguments: const {'expression': '1 + 2'},
+        ),
+      );
+
+      expect(callResult.isError, isTrue);
+      final text = (callResult.content.single as TextContent).text;
+      expect(text, contains('### Error'));
+      expect(text, contains('Unexpected error during dusk_evaluate'));
+      expect(text, contains('isolate root library unavailable'));
+    });
   });
 }
 
