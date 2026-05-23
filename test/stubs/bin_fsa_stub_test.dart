@@ -54,8 +54,7 @@ void main() {
   group('bin_fsa.sh.stub staleness check condition 5', () {
     test(
         'condition 5 compares lib/app/_plugins.g.dart against STAMP_FILE so '
-        'plugin install invalidates the AOT bundle',
-        () {
+        'plugin install invalidates the AOT bundle', () {
       // Regression guard for issue #9 GAP A: when plugin:install or
       // plugins:refresh regenerates lib/app/_plugins.g.dart, the bin/fsa
       // staleness check must detect the mtime drift and invalidate the

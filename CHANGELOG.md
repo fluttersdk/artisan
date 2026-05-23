@@ -8,6 +8,8 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-05-23
+
 ### Fixed
 
 - **`./bin/fsa` AOT bundle staleness missed `lib/app/_plugins.g.dart` mtime (issue #9 GAP A)**: after `plugin:install` regenerated `lib/app/_plugins.g.dart`, subsequent `./bin/fsa` invocations kept running the stale cached bundle, so newly registered plugin commands silently did not surface. Fixed by two complementary changes: (a) appended condition-5 (`_plugins.g.dart -nt STAMP_FILE`) to `bin_fsa.sh.stub`'s `needs_build()` shell function so the shim self-heals on any plugin operation regardless of who mutated the file, and (b) added `CliBundleCache.purge(projectRoot)` to the legacy `plugin:install` success path, `plugin:uninstall` success path, and `plugins:refresh` success path so the cache invalidates as a direct side effect of artisan-managed plugin lifecycle events. Manifest-flow `plugin:install` delegates to `plugins:refresh` transitively, so a single purge call covers both. Migration: re-run `make:fast-cli --force` to pick up the new shim. No CI or publish changes.
