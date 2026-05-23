@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../console/artisan_context.dart';
 import '../console/string_helper.dart';
+import '../helpers/cli_bundle_cache.dart';
 import '../helpers/config_editor.dart';
 import '../helpers/file_helper.dart';
 import '../installer/artisan_install_command.dart';
@@ -416,7 +417,11 @@ class PluginInstallCommand extends ArtisanInstallCommand {
       );
     }
 
-    // 3. Optional: chain to the plugin's own install command.
+    // 3. Purge the AOT cli-bundle so the next ./bin/fsa invocation rebuilds
+    //    against the updated bin/artisan.dart wrapper (issue #9 GAP A).
+    CliBundleCache.purge(getProjectRoot());
+
+    // 4. Optional: chain to the plugin's own install command.
     if (isSkipBootstrap(ctx)) {
       ctx.output.info('Skipping plugin bootstrap command (--no-bootstrap).');
       return 0;
