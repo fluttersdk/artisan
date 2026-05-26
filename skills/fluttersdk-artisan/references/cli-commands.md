@@ -19,7 +19,7 @@ The allowlist excludes a command for one of five reasons:
 
 ```
 USE: ./bin/fsa <cmd>
-WHEN: inside a consumer with `./bin/fsa` present (current uptizm-app).
+WHEN: inside a consumer with `./bin/fsa` present (the canonical scaffold after `install`).
 WHY: ~110ms warm startup (native AOT).
 
 USE: dart run artisan <cmd>
@@ -434,6 +434,7 @@ The 10 MCP-allowlisted commands appear at the root: `start`, `stop`,
 `status`, `logs`, `restart`, `reload`, `hot-restart`, `doctor`, `list`,
 `tinker`.
 
-Total: 21 substrate builtins. With `fluttersdk_dusk` (29-32 commands;
-count varies by build) + `fluttersdk_telescope` (9 commands) registered,
-`./bin/fsa list` shows ~60 commands in the outer uptizm-app.
+Total: 21 substrate builtins. Plugin commands add to the count when
+installed (`fluttersdk_dusk`, `fluttersdk_telescope`, third-party
+plugins); the exact total varies by installed set and is reported in
+the `Available commands (N):` header at the top of `list` output.

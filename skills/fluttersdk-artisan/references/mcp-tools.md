@@ -613,17 +613,17 @@ Available commands (60):
 >
 > Compiles `eval` in the scope of the app's root library and returns the
 > result as text. Has full access to anything imported by
-> `lib/main.dart`: controllers, models, framework facades, top-level
-> functions. The expression may be a simple lookup
-> (`User.current.name`), a method call
-> (`MonitorController.instance.refresh()`), or a multi-line statement.
+> `lib/main.dart`: top-level functions, singletons, services. The
+> expression may be a simple lookup
+> (`WidgetsBinding.instance.lifecycleState`), a method call
+> (`MyService.instance.refresh()`), or any single Dart expression
+> including `await`.
 >
 > Usage:
 > - Use to INSPECT live app state without rebuilding the UI (current
 >   user, active controllers, cache contents).
-> - Use to TRIGGER an action programmatically (call a controller method,
->   fire a facade event, mutate a singleton) without going through the
->   UI surface.
+> - Use to TRIGGER an action programmatically (call a method, fire an
+>   event, mutate a singleton) without going through the UI surface.
 > - Requires an artisan-managed running app: call `artisan_start` first
 >   so `~/.artisan/state.json` records the VM Service URI.
 > - Errors (compile, runtime, breakpoints) surface as the evaluate RPC's
@@ -637,7 +637,7 @@ Available commands (60):
   "properties": {
     "eval": {
       "type": "string",
-      "description": "Dart expression to evaluate in the running app's root library (e.g. `User.current.name`, `MonitorController.instance.refresh()`, `1+1`). The expression runs synchronously in the foreground isolate and the formatted result returns as text. Required."
+      "description": "Dart expression to evaluate in the running app's root library (e.g. `WidgetsBinding.instance.lifecycleState`, `MyService.instance.refresh()`, `1+1`). The expression runs in the foreground isolate, `await` is auto-wrapped, and the formatted result returns as text. Required."
     }
   },
   "required": ["eval"]
@@ -655,7 +655,7 @@ Available commands (60):
 
 ```
 # `artisan tinker` exit 0
-<MonitorListState#a3f9>
+<MyState#a3f9>
 ```
 
 (Append `.toString()` inside the expression for readable state. See
@@ -703,13 +703,16 @@ Not connected to a running Flutter app. Run `dart run fluttersdk_artisan start` 
 **Agent recipes**:
 
 ```
-artisan_tinker { eval: "Magic.find<MonitorController>().rxState.value.toString()" }
-artisan_tinker { eval: "await Magic.find<MonitorController>().refresh()" }
-artisan_tinker { eval: "Config.get('app.name')" }
-artisan_tinker { eval: "Cache.get('monitors:team_123')" }
-artisan_tinker { eval: "(Magic.find<MonitorController>()..refresh()).rxState.value.toString()" }    # cascade for side-effect + read
-artisan_tinker { eval: "Event.dispatch(MyEvent()), 'event dispatched'" }                             # comma operator for void side-effect
+artisan_tinker { eval: "WidgetsBinding.instance.lifecycleState.toString()" }
+artisan_tinker { eval: "MyService.instance.state.toString()" }
+artisan_tinker { eval: "await MyService.instance.refresh()" }
+artisan_tinker { eval: "(MyService.instance..reset()).state.toString()" }     # cascade: side-effect + read
+artisan_tinker { eval: "MyService.instance.notify('event'), 'dispatched'" }   # comma operator for void side-effect
 ```
+
+Generic placeholders (`MyService`, `MyState`) stand in for whatever the
+host app's singleton naming is. When the optional `magic` package is
+installed the equivalent expressions use `Magic.find<T>()` for resolution.
 
 Deep recipe pack, scope rules, error path branching:
 `${CLAUDE_SKILL_DIR}/references/tinker-eval.md`.
@@ -718,16 +721,15 @@ Deep recipe pack, scope rules, error path branching:
 
 Plugin tools are NOT substrate tools; they live in plugin packages and
 are collected by the MCP server only when the dispatcher wrapper loads
-the consumer's `lib/app/_plugins.g.dart`. The current outer `uptizm-app`
-wiring surfaces:
+the consumer's `lib/app/_plugins.g.dart`. Common companion plugins:
 
-| Plugin | Count | Skill (the agent-facing reference) |
+| Plugin | Prefix | Skill |
 |---|---|---|
-| `fluttersdk_dusk` | 31 | `/Users/anilcan/Code/uptizmv2/uptizm-app/references/fluttersdk_dusk/skills/fluttersdk-dusk/SKILL.md` |
-| `fluttersdk_telescope` | 9 | `/Users/anilcan/Code/uptizmv2/uptizm-app/references/fluttersdk_telescope/skills/fluttersdk-telescope/SKILL.md` |
+| `fluttersdk_dusk` (E2E driver) | `dusk_*` | the `fluttersdk-dusk` skill, bundled with the dusk package |
+| `fluttersdk_telescope` (runtime inspector) | `telescope_*` | the `fluttersdk-telescope` skill, bundled with the telescope package |
 
 The artisan skill does not duplicate the per-plugin tool reference; load
-the matching plugin skill when calling its tools.
+the matching plugin's skill when calling its tools.
 
 ## Cross-cutting: dispatch + error envelopes
 

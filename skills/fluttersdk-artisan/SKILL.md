@@ -122,13 +122,13 @@ Substrate tools always available (allowlist at
 | Inspect | `artisan_status`, `artisan_logs`, `artisan_doctor`, `artisan_list` | `none` | JSON state (`status`), captured stdout (`logs`), preflight gates (`doctor`), command catalog (`list`). |
 | Evaluate | `artisan_tinker { eval: "..." }` | `connected` | One Dart expression compiled in the root library's scope, evaluated on the main isolate. |
 
-Plugin tools surface when the dispatcher wrapper is wired (current
-`uptizm-app` outer state):
+Plugin tools surface when the dispatcher wrapper is wired and the
+relevant plugin packages are installed:
 
-| Plugin | Prefix | Count | Skill |
-|---|---|---|---|
-| `fluttersdk_dusk` | `dusk_*` | 31 | `/Users/anilcan/Code/uptizmv2/uptizm-app/references/fluttersdk_dusk/skills/fluttersdk-dusk/SKILL.md` |
-| `fluttersdk_telescope` | `telescope_*` | 9 | `/Users/anilcan/Code/uptizmv2/uptizm-app/references/fluttersdk_telescope/skills/fluttersdk-telescope/SKILL.md` |
+| Plugin (when installed) | Prefix | Skill |
+|---|---|---|
+| `fluttersdk_dusk` | `dusk_*` | the `fluttersdk-dusk` skill, bundled with the dusk package |
+| `fluttersdk_telescope` | `telescope_*` | the `fluttersdk-telescope` skill, bundled with the telescope package |
 
 Confirm the live tool count after MCP boot by reading the server's stderr
 (logged as `[fluttersdk_artisan_mcp] initialized with N tools
@@ -166,11 +166,11 @@ Branch on `status`:
    Writes state.json; blocks until VM Service URI captured (90s timeout).
 2. artisan_status
    Confirm vmServiceUri present + alive: true.
-3. artisan_tinker { eval: "Magic.find<MonitorController>().rxState.value.toString()" }
+3. artisan_tinker { eval: "WidgetsBinding.instance.lifecycleState.toString()" }
 4. <reason about state>
-5. artisan_tinker { eval: "await Magic.find<MonitorController>().refresh()" }
+5. artisan_tinker { eval: "await SharedPreferences.getInstance().then((p) => p.getKeys().toList())" }
    The `await` is auto-wrapped in (() async => ...)().
-6. artisan_tinker { eval: "Magic.find<MonitorController>().rxState.value.toString()" }
+6. artisan_tinker { eval: "MyController.instance.state.toString()" }
 ```
 
 Step 1's `device` defaults to whatever `flutter devices` returns first;
@@ -267,10 +267,11 @@ dart run fluttersdk_artisan install        # scaffolds bin/dispatcher.dart + _pl
 ./bin/fsa list                              # confirm the substrate command set is registered
 ```
 
-Then reconnect the MCP client. With `fluttersdk_dusk` and
-`fluttersdk_telescope` already in the pubspec (current `uptizm-app`
-state), `./bin/fsa list` will show their namespaces automatically because
-`lib/app/_plugins.g.dart` already imports both providers.
+Then reconnect the MCP client. If `fluttersdk_dusk` or
+`fluttersdk_telescope` are already in the pubspec, `./bin/fsa list` shows
+their `dusk:` / `telescope:` namespaces automatically because
+`lib/app/_plugins.g.dart` imports their providers; if not, install them
+via `dart pub add fluttersdk_dusk && ./bin/fsa plugin:install fluttersdk_dusk`.
 
 ## 7. References (load on trigger)
 
@@ -278,7 +279,7 @@ state), `./bin/fsa list` will show their namespaces automatically because
 |---|---|
 | Calling any `artisan_*` MCP tool: per-tool input schema, return shape, error envelope, example | `${CLAUDE_SKILL_DIR}/references/mcp-tools.md` |
 | Invoking any of the 11 CLI-only commands from Bash: flags, defaults, output shapes, exit codes | `${CLAUDE_SKILL_DIR}/references/cli-commands.md` |
-| Writing an `artisan_tinker` expression: constraints, the `await` wrapper, recipes for Magic-stack apps, what NOT to send | `${CLAUDE_SKILL_DIR}/references/tinker-eval.md` |
+| Writing an `artisan_tinker` expression: constraints, the `await` wrapper, generic recipes plus optional Magic recipes, what NOT to send | `${CLAUDE_SKILL_DIR}/references/tinker-eval.md` |
 | Recovering from a state failure (missing state.json, dead FIFO, stale lock, wrong MCP wiring, AOT staleness, VM Service unreachable) | `${CLAUDE_SKILL_DIR}/references/state-and-recovery.md` |
 
 Standing reminders for the rest of the session: cite

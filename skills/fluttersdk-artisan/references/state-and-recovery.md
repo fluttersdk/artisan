@@ -127,7 +127,8 @@ package itself.
 | Plugin tools | NONE | substrate + every plugin's `mcpTools()` |
 | Use case | Debugging the artisan substrate itself | Production dev loop in a real consumer app |
 
-The current outer `uptizm-app` `.mcp.json` wires the dispatcher path:
+The canonical `.mcp.json` shape (written by `./bin/fsa mcp:install`)
+wires the dispatcher path:
 
 ```json
 {
@@ -140,8 +141,10 @@ The current outer `uptizm-app` `.mcp.json` wires the dispatcher path:
 }
 ```
 
-This surfaces 10 substrate + 31 dusk + 9 telescope = ~50 tools (the exact
-count depends on the dusk version; read the stderr boot line `[fluttersdk_artisan_mcp] initialized with N tools (...)`).
+This surfaces the 10 substrate tools plus every installed plugin's
+contributed tools. Read the stderr boot line
+`[fluttersdk_artisan_mcp] initialized with N tools (...)` for the
+exact count in your consumer.
 
 ## Diagnosing missing plugin tools
 
