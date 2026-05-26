@@ -37,6 +37,7 @@ dependencies:
 
   fluttersdk_artisan:
     path: ..
+    version: 0.0.5
 
   awesome_plugin:
     path: ./packages/awesome_plugin
