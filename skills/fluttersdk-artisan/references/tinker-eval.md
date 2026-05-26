@@ -3,8 +3,8 @@
 `artisan_tinker { eval: "<expr>" }` evaluates a Dart expression inside
 the running Flutter app's main isolate via the VM Service `evaluate`
 RPC. This file teaches the agent the constraints, the auto-await
-wrapper, the four error paths, the scope rules, and a recipe pack
-tuned for Magic-stack apps.
+wrapper, the four error paths, the scope rules, and a recipe pack:
+generic Flutter recipes first, optional `magic` package recipes after.
 
 The handler is `lib/src/commands/tinker_command.dart:35`. The VM
 client is `lib/src/vm/vm_service_client.dart`. The MCP dispatch path is
@@ -76,11 +76,11 @@ final wrapped = expression.contains('await')
 This means:
 
 ```
-eval: "await Magic.find<MonitorController>().refresh()"
+eval: "await SharedPreferences.getInstance()"
        ↓
-wrapped: "(() async => await Magic.find<MonitorController>().refresh())()"
+wrapped: "(() async => await SharedPreferences.getInstance())()"
        ↓
-returned: Future<void> instance reference
+returned: SharedPreferences instance reference
 ```
 
 `vm_service.evaluate()` returns the `Future` instance; artisan's
@@ -116,12 +116,12 @@ Caveats:
   one user isolate (plus a background service isolate); `.first`
   consistently resolves to the UI isolate.
 
-For Magic-stack apps, the practical scope is everything the
-`Magic.init()` boot chain registered: the singleton container, every
-facade (`Magic`, `Http`, `Auth`, `Cache`, `Echo`, `Event`, `Gate`,
-`Session`, `Storage`, `Crypt`, `Vault`, `Pick`, `Launch`, `MagicRoute`,
-`Log`, `Lang`, `Config`, `Env`, `Carbon`), every registered model, and
-every controller resolved via `Magic.find<T>()`.
+In practice the scope is the singleton container of whatever
+state-management pattern the host app uses: a top-level service object,
+a `Provider`-rooted notifier, a `GetIt`-resolved singleton, a `Riverpod`
+container reference, or the `magic` package's `Magic.find<T>()` facade
+when that package is installed. Anything the root library imports is in
+scope; anything behind a private library or unexported symbol is not.
 
 ## Return value formatting
 
@@ -136,7 +136,7 @@ every controller resolved via `Magic.find<T>()`.
 | Int / Double | `<numeric literal>` |
 | String | `'<quoted>'` |
 | Primitive Pointer / Float32x4 / etc. | `<valueAsString>` |
-| Complex object | `<ClassName#id>` (e.g. `<MonitorListState#a3f9>`) |
+| Complex object | `<ClassName#id>` (e.g. `<MyState#a3f9>`) |
 | Magic `Model` (via integration caster) | multi-line table with attributes |
 | Future (from `await` wrap) | resolved value (artisan awaits before formatting) |
 
@@ -145,17 +145,17 @@ For non-primitive values that the default formatter renders as
 expression to get readable output:
 
 ```
-artisan_tinker { eval: "Magic.find<MonitorController>().rxState.value" }
-  -> <MonitorListState#a3f9>
+artisan_tinker { eval: "MyController.instance.state" }
+  -> <MyState#a3f9>
 
-artisan_tinker { eval: "Magic.find<MonitorController>().rxState.value.toString()" }
-  -> 'MonitorListState(monitors: [...], total: 12)'
+artisan_tinker { eval: "MyController.instance.state.toString()" }
+  -> 'MyState(loaded: true, count: 12)'
 ```
 
-This is the single most important tinker idiom. Default `toString()`
-implementations in Dart are noisy (`Instance of 'MonitorListState'`),
-so production controllers in this repo override `toString()` to dump
-meaningful state.
+This is the single most important tinker idiom. Default `toString()` in
+Dart is noisy (`Instance of 'MyState'`); override `toString()` on your
+state types so tinker dumps something readable. The override is
+debug-only friendly because tinker is debug-only.
 
 ## Error paths (four distinct shapes)
 
@@ -232,101 +232,81 @@ Substring contract: `Not connected to a running Flutter app`.
 Recovery: call `artisan_start`, then retry. Lazy-reconnect picks up the
 new state.json on the next call.
 
-## Recipe pack (Magic-stack apps)
+## Recipe pack
 
-### Inspect controller state
+Replace every placeholder (`MyController`, `MyService`, `MyEvent`,
+`MyApp`) with the host app's actual class names. The patterns are
+state-management-agnostic: any singleton, top-level service, or
+container-resolved instance works.
 
-```
-artisan_tinker { eval: "Magic.find<MonitorController>().rxState.value.toString()" }
-artisan_tinker { eval: "Magic.find<MonitorController>().rxStatus.value.toString()" }
-```
+### Generic Flutter recipes
 
-### Trigger a controller method
-
-```
-artisan_tinker { eval: "await Magic.find<MonitorController>().refresh()" }
-```
-
-The `await` is auto-wrapped. Returns the method's return value (often
-`null` for `Future<void>`).
-
-### Read state BEFORE and AFTER an action
+Work in any Flutter app, no third-party packages required.
 
 ```
-artisan_tinker { eval: "Magic.find<MonitorController>().rxState.value.toString()" }
-artisan_tinker { eval: "await Magic.find<MonitorController>().refresh()" }
-artisan_tinker { eval: "Magic.find<MonitorController>().rxState.value.toString()" }
+# Runtime introspection
+artisan_tinker { eval: "WidgetsBinding.instance.lifecycleState.toString()" }
+artisan_tinker { eval: "PaintingBinding.instance.imageCache.currentSize" }
+artisan_tinker { eval: "WidgetsBinding.instance.platformDispatcher.locale.toString()" }
+
+# Inspect a singleton (replace MyService with the real name)
+artisan_tinker { eval: "MyService.instance.value" }
+artisan_tinker { eval: "MyService.instance.state.toString()" }
+
+# Trigger a method, observe via auto-await wrap
+artisan_tinker { eval: "await MyService.instance.refresh()" }
+
+# SharedPreferences round-trip
+artisan_tinker { eval: "await SharedPreferences.getInstance().then((p) => p.getKeys().toList())" }
 ```
 
-### Side-effect then read with cascade
+### Read-then-write with cascade
 
 ```
-artisan_tinker { eval: "(Magic.find<MonitorController>()..refresh()).rxState.value.toString()" }
+artisan_tinker { eval: "(MyService.instance..reset()).state.toString()" }
 ```
 
 The cascade returns the receiver; the wrapping parens give it expression
-position; `.rxState.value.toString()` reads it. Synchronous side-effect
-only (cascade does not await).
+position; `.state.toString()` reads the new state. Synchronous side
+effects only, cascade does not await.
 
-### Side-effect with comma operator
+### Force a value with comma operator
 
 ```
-artisan_tinker { eval: "Event.dispatch(MyEvent()), 'event dispatched'" }
+artisan_tinker { eval: "MyService.instance.notify('boot'), 'notified'" }
 ```
 
 The comma operator evaluates both sides, returns the rightmost. Useful
-for void side-effects whose return value is `null` (which would render
-as `null` without the second clause; the literal string makes the
-result self-describing).
+when the side effect returns `void` / `null`; the literal string makes
+the result self-describing.
 
-### Read a config value
+### Read BEFORE and AFTER an action
 
 ```
+artisan_tinker { eval: "MyService.instance.state.toString()" }
+artisan_tinker { eval: "await MyService.instance.refresh()" }
+artisan_tinker { eval: "MyService.instance.state.toString()" }
+```
+
+### Recipes when the `magic` package is installed
+
+The optional `magic` sibling package adds container-resolved facades.
+When `package:magic/magic.dart` is imported by the host app's root
+library, these expressions are in scope:
+
+```
+artisan_tinker { eval: "Magic.find<MyController>().state.toString()" }
+artisan_tinker { eval: "await Magic.find<MyController>().refresh()" }
 artisan_tinker { eval: "Config.get('app.name')" }
-artisan_tinker { eval: "Env.get('APP_KEY')" }
-```
-
-### Check the current user
-
-```
 artisan_tinker { eval: "Auth.user?.toString()" }
-artisan_tinker { eval: "Auth.check()" }
-```
-
-### Read a cached HTTP response
-
-```
-artisan_tinker { eval: "Cache.get('monitors:team_123')?.toString()" }
-```
-
-### Inspect the live route
-
-```
-artisan_tinker { eval: "MagicRoute.currentTitle" }
+artisan_tinker { eval: "Cache.get('some_key')?.toString()" }
 artisan_tinker { eval: "MagicRoute.currentPath" }
+artisan_tinker { eval: "Event.dispatch(MyEvent()), 'dispatched'" }
+artisan_tinker { eval: "Gate.allows('action', someInstance).toString()" }
 ```
 
-### Dispatch an app event
-
-```
-artisan_tinker { eval: "Event.dispatch(AppBooted()), 'dispatched'" }
-```
-
-### Probe a gate
-
-```
-artisan_tinker { eval: "Gate.allows('monitors.destroy', Magic.find<MonitorController>().rxState.value?.monitors.first).toString()" }
-```
-
-### Inspect form data in a stateful view
-
-```
-artisan_tinker { eval: "Magic.find<MagicFormData>().data.toString()" }
-```
-
-(Only when the view stored the form data in the container; many views
-keep it local to their `State` class, in which case `dusk_observe`
-with the `magicFormField:` enricher is the right tool.)
+When the `magic` package is absent these expressions raise
+`Expression compilation error` (the symbols are not in scope).
 
 ## When NOT to use tinker
 
@@ -360,10 +340,9 @@ with the `magicFormField:` enricher is the right tool.)
   (rarely is in production), `eval: "sqrt(4)"` works directly. If not,
   add the import to a debug-only file and hot-reload.
 - **Forgetting `.toString()` on complex objects**: `eval:
-  "Magic.find<MonitorController>().rxState.value"` returns
-  `<MonitorListState#a3f9>` (the default `valueAsString` for non-primitives
-  is the class-name-and-id sentinel). Append `.toString()` for readable
-  state.
+  "MyService.instance.state"` returns `<MyState#a3f9>` (the default
+  `valueAsString` for non-primitives is the class-name-and-id sentinel).
+  Append `.toString()` for readable state.
 - **Using tinker as a sleep / poll loop**: tinker is one-shot. Loop in
   the agent layer, not in the expression.
 
@@ -379,7 +358,7 @@ Differences:
 | Auto-await wrap | yes | no (caller must wrap manually) |
 | Default formatter | `Tinker.casters` chain (Magic-aware) | raw `InstanceRef` JSON |
 | Failure shape | `Runtime exception` / `Expression compilation error` text | structured JSON with error type |
-| Best for | live state inspection + action triggering in Magic-stack apps | low-level evaluate where the raw `InstanceRef` JSON matters |
+| Best for | live state inspection + action triggering | low-level evaluate where the raw `InstanceRef` JSON matters |
 
 Default: prefer `artisan_tinker` for inspect / mutate, `dusk_evaluate`
 when you need the structured JSON envelope or when running a non-Magic
