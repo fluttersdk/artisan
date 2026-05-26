@@ -642,11 +642,11 @@ final class McpServer extends MCPServer with ToolsSupport {
             '\n'
             'Compiles `eval` in the scope of the app\'s root library and '
             'returns the result as text. Has full access to anything '
-            'imported by `lib/main.dart`: controllers, models, framework '
-            'facades, top-level functions. The expression may be a simple '
-            'lookup (`User.current.name`), a method call '
-            '(`MonitorController.instance.refresh()`), or a multi-line '
-            'statement.\n'
+            'imported by `lib/main.dart`: top-level functions, '
+            'singletons, services. The expression may be a simple lookup '
+            '(`WidgetsBinding.instance.lifecycleState`), a method call '
+            '(`MyService.instance.refresh()`), or any single Dart '
+            'expression including `await`.\n'
             '\n'
             'Usage:\n'
             '- Use to INSPECT live app state without rebuilding the UI '
@@ -743,9 +743,10 @@ final class McpServer extends MCPServer with ToolsSupport {
             'eval': <String, dynamic>{
               'type': 'string',
               'description': 'Dart expression to evaluate in the running '
-                  'app\'s root library (e.g. `User.current.name`, '
-                  '`MonitorController.instance.refresh()`, `1+1`). The '
-                  'expression runs synchronously in the foreground isolate '
+                  'app\'s root library (e.g. '
+                  '`WidgetsBinding.instance.lifecycleState`, '
+                  '`MyService.instance.refresh()`, `1+1`). The expression '
+                  'runs in the foreground isolate, `await` is auto-wrapped, '
                   'and the formatted result returns as text. Required.',
             },
           },
