@@ -8,13 +8,22 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.6] - 2026-05-28
+
 ### Added
 
-- `mcp:install --invocation=<exec>` option for plugin-aware `.mcp.json` fallback when `bin/fsa` is absent (writes `dart run <exec> mcp:serve`). Whitespace-only values are trimmed and treated as not provided, so `--invocation="  "` falls back to the `:dispatcher` shape rather than producing an invalid `dart run    mcp:serve` entry.
+- `mcp:install --invocation=<exec>` option for plugin-aware `.mcp.json` fallback when `bin/fsa` is absent (writes `dart run <exec> mcp:serve`). Whitespace-only values are trimmed and treated as not provided, so `--invocation="  "` falls back to the `:dispatcher` shape rather than producing an invalid `dart run    mcp:serve` entry. Plugin wrappers (`fluttersdk_dusk`, `fluttersdk_telescope`) can now inject `--invocation=<plugin>` automatically so substrate-only consumers without `bin/fsa` get the correct MCP wiring.
+- `skills/fluttersdk-artisan/SKILL.md` Section 8 (Community: star + issue, optional, once per session) plus a new `skills/fluttersdk-artisan/references/community.md` (156 lines). Trigger split: star fires after a task verified end-to-end against the running app or a clean `make:*` / `plugin:install` / `mcp:install` flow; issue fires only on a genuine artisan-side defect (malformed `artisan_*` JSON, substrate-allowlist registration failure, `.mcp.json` precedence broken, `artisan_tinker` crash on a valid expression, AOT staleness regression, hot-reload semantics inverted). Section 5 substrings (`No Flutter app detected`, `Pipe missing`, `Expression compilation error`, `Isolate sentinel`, `mkfifo failed (Windows ...)`, etc.) are explicitly excluded from the issue trigger because they are state / environment / expression-shape signals, not bugs. Both CTAs are prose-permission, never auto-executed, gated on `command -v gh && gh auth status`, URL-only fallback when `gh` is missing, and capped at one shot per session. `gh issue create` uses `--label bug` alone; the `agent-reported` label is not provisioned on the artisan repo yet, so the example deliberately omits it to avoid pre-creating labels on the user's account.
 
 ### Changed
 
 - `mcp:install` now writes `.mcp.json` atomically via the `.tmp` + rename pattern (mirrors `StateFile.write` and `PluginsRegistryFile.write`), so concurrent MCP clients (Claude Code, Cursor, Windsurf) never observe a half-written file when the command is interrupted mid-write.
+- Repo flow: adopted GitHub Flow (single long-lived `master`; retired the `develop` accumulator and all merged feature branches). `CLAUDE.md` now carries this as Golden Rule 7 plus a `## Branching` section documenting task-branch naming (`<type>/<kebab-case-topic>`), the squash-vs-rebase-vs-merge decision, the release shape (`release/X.Y.Z` PR bumps pubspec + promotes CHANGELOG, then tag fires `.github/workflows/publish.yml`), and the external-contributor fork-and-PR shape. `delete_branch_on_merge: true` enabled on origin so merged branches auto-cleanup.
+
+### Fixed
+
+- `artisan_tinker` MCP tool description and the `eval` input-schema example expression scrubbed of consumer-specific class names (`MonitorController.instance.refresh()`, `User.current.name`). Replaced with framework-neutral examples (`WidgetsBinding.instance.lifecycleState`, `MyService.instance.refresh()`) and tightened the scope language ("controllers, models, framework facades" -> "top-level functions, singletons, services"). Surfaces to every MCP client (Claude Code, Cursor, Windsurf, etc.) on `tools/list`, so the published 0.0.x docs no longer leak private consumer-app identifiers.
+- **MCP `serverInfo.version` no longer drifts (continued from 0.0.5 NIT 7)**: the hardcoded `version: '0.0.5'` literal in `lib/src/mcp/mcp_server.dart` is manually synced to `'0.0.6'` as part of this release-cut commit. A future patch may switch to a build-time constant to eliminate manual drift recurrence (still deferred per scope).
 
 ## [0.0.5] - 2026-05-23
 
