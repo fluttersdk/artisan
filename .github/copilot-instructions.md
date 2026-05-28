@@ -28,6 +28,14 @@ Pure Dart 3.4+ CLI framework. NO Flutter runtime dependency: the package is cons
 4. **README sync**. When a change is significant enough for the package landing page (new command group, new MCP tool surface, new install flow, breaking change), update `README.md` and `llms.txt`. Use descriptive link labels pointing at `https://fluttersdk.com/artisan/...` paths.
 5. **CHANGELOG always under `[Unreleased]`**. Every behavioral or interface change lands an entry under `## [Unreleased]` in `CHANGELOG.md`. Categories: `Added` / `Changed` / `Fixed` / `Removed`. Promote to a dated section on `dart pub publish`.
 6. **Green gate plus TDD**. `dart format lib/ test/ bin/` produces zero diff, `dart analyze` returns zero issues, `dart test` returns all green. TDD red-green-refactor for behavioral changes: write the failing test first, then the implementation that turns it green. Reverting the implementation must turn the test red again.
+7. **GitHub Flow**. One long-lived branch: `master` (the canonical line every release is cut from). Cut every task branch from `master`, push the work, open a PR back into `master`. Releases ship by bumping `pubspec.yaml`, promoting `## [Unreleased]` in `CHANGELOG.md`, merging the bump PR, then tagging the commit on `master`; the tag is what publishes to pub.dev. No `develop` accumulator. See the Branching section below for the full flow.
+
+## Branching
+
+- One long-lived branch: `master`. Direct pushes blocked; everything lands via PR. Matches the flutter, dart-lang/sdk, dart-lang/pub, and Anthropic-ecosystem convention. `master` is the only canonical line; the CI workflow lists `main` alongside `master` purely for GitHub-default-branch portability and is not a second working branch (do not create or target `main`).
+- Task branches: cut from `master`, named with a `<type>/<kebab-case-topic>` prefix where `<type>` is one of `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, or `release` (examples: `feat/mcp-install-invocation-flag`, `fix/lock-staleness-pid-reclaim`, `docs/skills-tinker-eval-recipes`). One topic per branch, PR back into `master`. Squash for tightly scoped PRs whose review-fixup commits are noise; rebase or merge commit when the commits each carry standalone signal.
+- Release: open a `release/X.Y.Z` PR from a topic branch that bumps `pubspec.yaml` `version:` and promotes `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` with the footer link. Merge, then `git tag X.Y.Z && git push origin X.Y.Z`. The tag triggers `.github/workflows/publish.yml` to push to pub.dev and cut the GitHub Release.
+- External contributors fork the repo and PR against `master` using the same shape.
 
 ## Architecture
 
