@@ -8,6 +8,10 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- `mcp:install --invocation=<exec>` option for plugin-aware `.mcp.json` fallback when `bin/fsa` is absent (writes `dart run <exec> mcp:serve`).
+
 ## [0.0.5] - 2026-05-23
 
 ### Fixed

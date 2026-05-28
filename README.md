@@ -272,7 +272,7 @@ After `mcp:install` writes the client config entry, every MCP-capable agent can 
 }
 ```
 
-When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead.
+When `bin/fsa` is absent or on Windows, `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead. Pass `--invocation=<executable>` to override the fallback entry point: `mcp:install` then writes `{"command": "dart", "args": ["run", "<executable>", "mcp:serve"]}`, which is the correct shape when the consumer's entry point is a plugin wrapper rather than the generic `:dispatcher` (for example, `dart run fluttersdk_artisan mcp:install --invocation=fluttersdk_dusk`). Precedence: `bin/fsa` wins when present, then `--invocation`, then the `:dispatcher` default.
 
 When `~/.artisan/state.json` is absent at `initialize` time (no Flutter app running), the server stays online with the 10 substrate tools available and 0 plugin tools registered. On the next `tools/call` requiring VM Service, the server lazy-reconnects via a memoized in-flight future so MCP clients survive the natural dev cycle of starting and stopping the Flutter app without reconnecting.
 
