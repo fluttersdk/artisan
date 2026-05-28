@@ -213,4 +213,112 @@ void main() {
       expect(code, 0);
     });
   });
+
+  group('McpInstallCommand --invocation option', () {
+    test(
+        '--invocation=fluttersdk_dusk with hasFsa=false writes dart run fluttersdk_dusk mcp:serve shape',
+        () async {
+      final mcpPath = p.join(tempDir.path, '.mcp.json');
+      final command = McpInstallCommand(
+        hasFsa: () => false,
+        isWindows: () => false,
+      );
+      final ctx = _ctx({'path': mcpPath, 'invocation': 'fluttersdk_dusk'});
+
+      final code = await command.handle(ctx);
+
+      expect(code, 0);
+      final content = File(mcpPath).readAsStringSync();
+      final decoded = jsonDecode(content) as Map<String, dynamic>;
+      final servers = decoded['mcpServers'] as Map<String, dynamic>;
+      expect(servers, contains('fluttersdk'));
+      final entry = servers['fluttersdk'] as Map<String, dynamic>;
+      expect(entry['command'], 'dart');
+      expect(entry['args'], equals(['run', 'fluttersdk_dusk', 'mcp:serve']));
+      expect(entry['cwd'], '.');
+      // Must NOT fall back to the :dispatcher shape.
+      expect(content, isNot(contains(':dispatcher')));
+    });
+
+    test(
+        '--invocation=fluttersdk_telescope with hasFsa=false isWindows=true writes dart run fluttersdk_telescope mcp:serve shape',
+        () async {
+      final mcpPath = p.join(tempDir.path, '.mcp.json');
+      final command = McpInstallCommand(
+        hasFsa: () => false,
+        isWindows: () => true,
+      );
+      final ctx = _ctx({'path': mcpPath, 'invocation': 'fluttersdk_telescope'});
+
+      final code = await command.handle(ctx);
+
+      expect(code, 0);
+      final content = File(mcpPath).readAsStringSync();
+      final decoded = jsonDecode(content) as Map<String, dynamic>;
+      final servers = decoded['mcpServers'] as Map<String, dynamic>;
+      expect(servers, contains('fluttersdk'));
+      final entry = servers['fluttersdk'] as Map<String, dynamic>;
+      expect(entry['command'], 'dart');
+      expect(
+          entry['args'], equals(['run', 'fluttersdk_telescope', 'mcp:serve']));
+      expect(entry['cwd'], '.');
+      // Must NOT fall back to the :dispatcher shape.
+      expect(content, isNot(contains(':dispatcher')));
+    });
+
+    test(
+        '--invocation="  " (whitespace-only) with hasFsa=false falls back to :dispatcher shape',
+        () async {
+      // Whitespace-only --invocation must trim to empty and route to the
+      // :dispatcher branch rather than producing an invalid `dart run
+      //    mcp:serve` entry. Reverting the trim guard in handle() turns
+      // this assertion red.
+      final mcpPath = p.join(tempDir.path, '.mcp.json');
+      final command = McpInstallCommand(
+        hasFsa: () => false,
+        isWindows: () => false,
+      );
+      final ctx = _ctx({'path': mcpPath, 'invocation': '   '});
+
+      final code = await command.handle(ctx);
+
+      expect(code, 0);
+      final content = File(mcpPath).readAsStringSync();
+      final decoded = jsonDecode(content) as Map<String, dynamic>;
+      final servers = decoded['mcpServers'] as Map<String, dynamic>;
+      final entry = servers['fluttersdk'] as Map<String, dynamic>;
+      expect(entry['command'], 'dart');
+      expect(entry['args'], equals(['run', ':dispatcher', 'mcp:serve']));
+      expect(entry['cwd'], '.');
+      // Must NOT write the whitespace as the executable name.
+      expect(entry['args'], isNot(contains('   ')));
+      expect(entry['args'], isNot(contains('')));
+    });
+
+    test(
+        '--invocation=fluttersdk_dusk with hasFsa=true writes fsa shape (fastcli wins over invocation)',
+        () async {
+      final mcpPath = p.join(tempDir.path, '.mcp.json');
+      final command = McpInstallCommand(
+        hasFsa: () => true,
+        isWindows: () => false,
+      );
+      final ctx = _ctx({'path': mcpPath, 'invocation': 'fluttersdk_dusk'});
+
+      final code = await command.handle(ctx);
+
+      expect(code, 0);
+      final content = File(mcpPath).readAsStringSync();
+      final decoded = jsonDecode(content) as Map<String, dynamic>;
+      final servers = decoded['mcpServers'] as Map<String, dynamic>;
+      expect(servers, contains('fluttersdk'));
+      final entry = servers['fluttersdk'] as Map<String, dynamic>;
+      // fastcli shape wins; invocation flag is ignored when bin/fsa present.
+      expect(entry['command'], './bin/fsa');
+      expect(entry['args'], equals(['mcp:serve']));
+      expect(entry['cwd'], '.');
+      // Must NOT write the dart-run-invocation shape.
+      expect(content, isNot(contains('fluttersdk_dusk')));
+    });
+  });
 }
