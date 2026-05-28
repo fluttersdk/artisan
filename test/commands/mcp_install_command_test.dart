@@ -267,6 +267,35 @@ void main() {
     });
 
     test(
+        '--invocation="  " (whitespace-only) with hasFsa=false falls back to :dispatcher shape',
+        () async {
+      // Whitespace-only --invocation must trim to empty and route to the
+      // :dispatcher branch rather than producing an invalid `dart run
+      //    mcp:serve` entry. Reverting the trim guard in handle() turns
+      // this assertion red.
+      final mcpPath = p.join(tempDir.path, '.mcp.json');
+      final command = McpInstallCommand(
+        hasFsa: () => false,
+        isWindows: () => false,
+      );
+      final ctx = _ctx({'path': mcpPath, 'invocation': '   '});
+
+      final code = await command.handle(ctx);
+
+      expect(code, 0);
+      final content = File(mcpPath).readAsStringSync();
+      final decoded = jsonDecode(content) as Map<String, dynamic>;
+      final servers = decoded['mcpServers'] as Map<String, dynamic>;
+      final entry = servers['fluttersdk'] as Map<String, dynamic>;
+      expect(entry['command'], 'dart');
+      expect(entry['args'], equals(['run', ':dispatcher', 'mcp:serve']));
+      expect(entry['cwd'], '.');
+      // Must NOT write the whitespace as the executable name.
+      expect(entry['args'], isNot(contains('   ')));
+      expect(entry['args'], isNot(contains('')));
+    });
+
+    test(
         '--invocation=fluttersdk_dusk with hasFsa=true writes fsa shape (fastcli wins over invocation)',
         () async {
       final mcpPath = p.join(tempDir.path, '.mcp.json');

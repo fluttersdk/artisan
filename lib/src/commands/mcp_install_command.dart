@@ -11,9 +11,11 @@ import '../helpers/file_helper.dart';
 /// `artisan mcp:install` — idempotently adds the fluttersdk MCP server entry
 /// to the project's `.mcp.json` (Claude Code / Cursor / Windsurf config).
 ///
-/// Entry shape is chosen by a three-branch precedence rule:
+/// Entry shape is chosen by a three-branch precedence rule. The first
+/// branch only applies on POSIX hosts (macOS, Linux); Windows always
+/// skips the `bin/fsa` shape because the shim is a POSIX shell script.
 ///
-/// 1. POSIX with `bin/fsa` present (fast path, ~110ms startup):
+/// 1. POSIX host with `bin/fsa` present (fast path, ~110ms startup):
 /// ```json
 /// {
 ///   "mcpServers": {
@@ -26,8 +28,9 @@ import '../helpers/file_helper.dart';
 /// }
 /// ```
 ///
-/// 2. `bin/fsa` absent and `--invocation=<executable>` supplied (plugin
-/// executable path, e.g. `fluttersdk_dusk`, ~3s startup):
+/// 2. POSIX without `bin/fsa`, or any Windows host, plus
+/// `--invocation=<executable>` supplied (plugin executable path,
+/// e.g. `fluttersdk_dusk`, ~3s startup):
 /// ```json
 /// {
 ///   "mcpServers": {
@@ -40,8 +43,8 @@ import '../helpers/file_helper.dart';
 /// }
 /// ```
 ///
-/// 3. `bin/fsa` absent and `--invocation` omitted (`:dispatcher` fallback,
-/// ~3s startup):
+/// 3. POSIX without `bin/fsa`, or any Windows host, without
+/// `--invocation` (`:dispatcher` fallback, ~3s startup):
 /// ```json
 /// {
 ///   "mcpServers": {
@@ -104,7 +107,10 @@ class McpInstallCommand extends ArtisanCommand {
   @override
   Future<int> handle(ArtisanContext ctx) async {
     final path = (ctx.input.option('path') as String?) ?? '.mcp.json';
-    final invocation = ctx.input.option('invocation') as String?;
+    // Trim the raw value so a whitespace-only `--invocation="  "` collapses
+    // to an empty string and falls through to the `:dispatcher` branch
+    // rather than producing an invalid `dart run    mcp:serve` entry.
+    final invocation = (ctx.input.option('invocation') as String?)?.trim();
     final file = File(path);
 
     // 1. Load existing config or start fresh.
@@ -146,10 +152,15 @@ class McpInstallCommand extends ArtisanCommand {
     }
     config['mcpServers'] = servers;
 
-    // 3. Write atomically (single write; no partial-read window on success).
-    await file.writeAsString(
+    // 3. Write atomically via `.tmp` + rename so concurrent MCP clients
+    //    (Claude Code, Cursor, Windsurf) never observe a half-written
+    //    `.mcp.json`. Mirrors the pattern used by StateFile.write and
+    //    PluginsRegistryFile.write throughout this repo.
+    final tmp = File('${file.path}.tmp');
+    await tmp.writeAsString(
       '${const JsonEncoder.withIndent('  ').convert(config)}\n',
     );
+    await tmp.rename(file.path);
 
     ctx.output.success(
       'Wrote fluttersdk MCP server entry to $path.\n\n'

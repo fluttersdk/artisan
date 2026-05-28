@@ -22,7 +22,7 @@ void main() {
       //    collectMcpTools: true.
       final registry = ArtisanRegistry();
       registry.registerAll(
-        _substrateCommands(registry),
+        _substrateCommands(),
         providerName: 'fluttersdk_artisan',
       );
       final provider = _FakeProvider();
@@ -59,12 +59,12 @@ void main() {
       //    collectMcpTools: false (default). registerMcpToolsFor is never called.
       final registry = ArtisanRegistry();
       registry.registerAll(
-        _substrateCommands(registry),
+        _substrateCommands(),
         providerName: 'fluttersdk_artisan',
       );
       final provider = _FakeProvider();
       registry.registerProvider(provider);
-      // collectMcpTools: false — intentionally omit registerMcpToolsFor.
+      // collectMcpTools: false (default), intentionally omit registerMcpToolsFor.
 
       // 2. Spin up an in-memory MCP channel pair.
       final harness = await _McpHarness.build(registry: registry);
@@ -160,8 +160,7 @@ class _McpHarness {
 /// Returns the minimum substrate commands needed to verify that artisan_*
 /// tools surface via McpServer's synthesis path. Avoids spinning up the full
 /// 22-command builtin list (which would pull in live-FS commands).
-List<ArtisanCommand> _substrateCommands(ArtisanRegistry registry) =>
-    <ArtisanCommand>[
+List<ArtisanCommand> _substrateCommands() => <ArtisanCommand>[
       _StubCommand('start', 'Boot flutter run -d <device> detached.'),
       _StubCommand('doctor', 'Run environment preflight checks.'),
     ];

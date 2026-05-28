@@ -10,7 +10,11 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ### Added
 
-- `mcp:install --invocation=<exec>` option for plugin-aware `.mcp.json` fallback when `bin/fsa` is absent (writes `dart run <exec> mcp:serve`).
+- `mcp:install --invocation=<exec>` option for plugin-aware `.mcp.json` fallback when `bin/fsa` is absent (writes `dart run <exec> mcp:serve`). Whitespace-only values are trimmed and treated as not provided, so `--invocation="  "` falls back to the `:dispatcher` shape rather than producing an invalid `dart run    mcp:serve` entry.
+
+### Changed
+
+- `mcp:install` now writes `.mcp.json` atomically via the `.tmp` + rename pattern (mirrors `StateFile.write` and `PluginsRegistryFile.write`), so concurrent MCP clients (Claude Code, Cursor, Windsurf) never observe a half-written file when the command is interrupted mid-write.
 
 ## [0.0.5] - 2026-05-23
 
