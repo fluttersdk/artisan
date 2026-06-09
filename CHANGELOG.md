@@ -8,6 +8,8 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-06-09
+
 ### Added
 
 - `start --cdp-port` now fails fast with a clear, actionable error when the web port is already bound, instead of timing out after 90s. The error message names the busy port and suggests running `fsa stop` or selecting a different port via `--port` (issue #25).
