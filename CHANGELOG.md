@@ -14,7 +14,7 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
-- `start --cdp-port` now reaps the spawned Chrome process, flutter web-server, FIFO pipe, and temporary profile directory when launch fails after the port probe (issue #25). Previously, failed CDP sessions could leave orphaned processes and lingering files. Cleanup is best-effort; cleanup failures are logged but do not mask the original error.
+- `start --cdp-port` now reaps the spawned Chrome process, flutter web-server, FIFO pipe, and temporary profile directory when launch fails after the port probe (issue #25). Previously, failed CDP sessions could leave orphaned processes and lingering files. Cleanup is best-effort; cleanup failures are ignored and never mask the original error.
 
 ## [0.0.6] - 2026-05-28
 

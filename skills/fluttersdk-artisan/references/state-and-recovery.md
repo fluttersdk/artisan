@@ -278,17 +278,19 @@ Cause: `artisan_start` on Windows.
 
 V1 limitation. Surface to the user; there is no agent-side recovery.
 
-### `Port <N> is already bound` (or similar) (CDP path)
+### `Port <web-port> is already in use` (CDP path)
 
-Cause: `artisan_start --cdp-port=<N>` detects that the web port is
-already in use and fails fast before spawning any processes.
+Cause: `artisan_start --cdp-port=<N> --port=<web-port>` detects that the
+web port (the `--port` value, not the CDP port) is already in use and fails
+fast before spawning any processes. The error names the busy web port and
+suggests running `fsa stop` or selecting a different `--port`.
 
 Recovery:
 
 ```bash
-lsof -ti tcp:<N>                    # find the squatter
-kill <squatter pid>                 # or pick a different port
-./bin/fsa start --cdp-port=<new-cdp-port> --port=<new-web-port>
+lsof -ti tcp:<web-port>             # find the squatter on the web port
+kill <squatter pid>                 # or pick a different --port
+./bin/fsa start --cdp-port=<N> --port=<new-web-port>
 ```
 
 The port probe runs before Chrome and the flutter web-server launch, so
