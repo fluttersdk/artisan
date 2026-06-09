@@ -8,6 +8,14 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- `start --cdp-port` now fails fast with a clear, actionable error when the web port is already bound, instead of timing out after 90s. The error message names the busy port and suggests running `fsa stop` or selecting a different port via `--port` (issue #25).
+
+### Fixed
+
+- `start --cdp-port` now reaps the spawned Chrome process, flutter web-server, FIFO pipe, and temporary profile directory when launch fails after the port probe (issue #25). Previously, failed CDP sessions could leave orphaned processes and lingering files. Cleanup is best-effort; cleanup failures are ignored and never mask the original error.
+
 ## [0.0.6] - 2026-05-28
 
 ### Added
