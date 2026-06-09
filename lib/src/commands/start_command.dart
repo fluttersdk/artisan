@@ -57,6 +57,15 @@ typedef CdpFifoMaker = Future<void> Function(String path);
 /// be exercised without a real flutter process writing to the log.
 typedef CdpWebServerReadyWaiter = Future<void> Function(File logFile);
 
+/// Probes whether [port] is available for binding on loopback.
+/// Returns `true` when the port is free, `false` when already in use.
+typedef CdpPortProbe = Future<bool> Function(int port);
+
+/// Sends [signal] to the process identified by [pid]. Mirrors
+/// [Process.killPid]; swapped in tests to record best-effort reap calls on
+/// the failure-cleanup path without touching real processes.
+typedef CdpKillPid = bool Function(int pid, [ProcessSignal signal]);
+
 /// Bridges [CdpProcessStarter]'s nullable [ProcessStartMode?] to
 /// [Process.start]'s non-nullable parameter with a default.
 Future<Process> _defaultProcessStart(
@@ -88,22 +97,24 @@ Future<Process> _defaultProcessStart(
 ///    activates `--web-experimental-hot-reload` for `-d web-server` per
 ///    flutter/flutter#170612).
 /// 2. Resolves a Chrome binary path (macOS bundle or Linux PATH).
-/// 3. Pre-launches Chrome detached with `--remote-debugging-port=N`,
+/// 3. Probes the web port ([defaultPortProbe]) to confirm it is free.
+///    If the port is busy the command exits 1 immediately and spawns nothing.
+/// 4. Pre-launches Chrome detached with `--remote-debugging-port=N`,
 ///    `--remote-allow-origins=*`, and a dedicated `--user-data-dir`.
-/// 4. Probes the debug port to confirm Chrome is reachable.
-/// 5. Runs `flutter run -d web-server --web-port=<port> --web-experimental-hot-reload`
+/// 5. Probes the debug port to confirm Chrome is reachable.
+/// 6. Runs `flutter run -d web-server --web-port=<port> --web-experimental-hot-reload`
 ///    (silent remap from `--device=chrome` because the chrome target would
 ///    auto-launch its own conflicting Chrome).
-/// 6. Waits for the web-server log line "is being served at" so the URL
+/// 7. Waits for the web-server log line "is being served at" so the URL
 ///    is bound before any client attempts to connect.
-/// 7. Navigates the pre-launched Chrome to the served URL via CDP
+/// 8. Navigates the pre-launched Chrome to the served URL via CDP
 ///    Page.navigate. DWDS only emits "Debug service listening on ..."
 ///    AFTER a debugger client connects, so the navigate must happen
 ///    BEFORE the VM Service scrape; scraping first would deadlock the
 ///    handshake (see commit 871d0a7).
-/// 8. Scrapes the VM Service URI from the flutter run log (DWDS prints
+/// 9. Scrapes the VM Service URI from the flutter run log (DWDS prints
 ///    the "Debug service listening on ..." line once Chrome connected).
-/// 9. Writes `chromePid`, `cdpPort`, and `tmpProfileDir` to the state file
+/// 10. Writes `chromePid`, `cdpPort`, and `tmpProfileDir` to the state file
 ///    so [StopCommand] can reap Chrome on teardown.
 ///
 /// D6 Chrome reaper (POSIX, chrome target only) defers to V1.x; V1 ships
@@ -164,6 +175,37 @@ class StartCommand extends ArtisanCommand {
   /// marker; tests inject an instant-return fake.
   @visibleForTesting
   static CdpWebServerReadyWaiter? cdpWebServerReadyWaiter;
+
+  /// Test seam: web port availability probe. Returns `true` when the port
+  /// is free to bind; `false` when already in use. Defaults to
+  /// [defaultPortProbe], which attempts [ServerSocket.bind] and immediately
+  /// closes the socket. Swap in tests to simulate a busy port.
+  @visibleForTesting
+  static CdpPortProbe cdpPortProbe = defaultPortProbe;
+
+  /// Test seam: process-kill-by-pid (default [Process.killPid]). Used by the
+  /// failure-cleanup path to SIGTERM the flutter holder + child when launch
+  /// throws after the PIDs were captured.
+  @visibleForTesting
+  static CdpKillPid cdpKillPid = Process.killPid;
+
+  /// Default [CdpPortProbe] implementation. Binds [ServerSocket] on
+  /// [InternetAddress.loopbackIPv4] and immediately closes it.
+  /// Returns `true` when the port is free; `false` on [SocketException]
+  /// (port already in use).
+  @visibleForTesting
+  static Future<bool> defaultPortProbe(int port) async {
+    try {
+      final socket = await ServerSocket.bind(
+        InternetAddress.loopbackIPv4,
+        port,
+      );
+      await socket.close();
+      return true;
+    } on SocketException {
+      return false;
+    }
+  }
 
   @override
   void configure(ArgParser parser) {
@@ -332,7 +374,19 @@ class StartCommand extends ArtisanCommand {
       return 1;
     }
 
-    // 4. Launch Chrome detached with debug port + dedicated user-data-dir.
+    // 4. Probe web port availability before spawning anything. A busy port
+    //    means flutter will fail immediately after Chrome is up, so fail fast
+    //    here and spawn nothing.
+    final webPortFree = await cdpPortProbe(webPort);
+    if (!webPortFree) {
+      ctx.output.error(
+        'Port $webPort is already in use. Run `fsa stop` to free it or '
+        'pass a different --port value.',
+      );
+      return 1;
+    }
+
+    // 5. Launch Chrome detached with debug port + dedicated user-data-dir.
     final tmpRoot = cdpTmpProfileDirRoot ?? '/tmp';
     final tmpProfileDir = '$tmpRoot/dusk-chrome-$cdpPort';
     final chromeProcess = await cdpProcessStarter(
@@ -387,7 +441,7 @@ class StartCommand extends ArtisanCommand {
       mode: ProcessStartMode.detached,
     );
 
-    // 5. Probe Chrome to confirm it opened the debug port; on failure kill it
+    // 6. Probe Chrome to confirm it opened the debug port; on failure kill it
     //    so we never leak a runaway Chrome with no parent supervision.
     try {
       await cdpChromeProber(cdpPort, const Duration(seconds: 10));
@@ -399,7 +453,7 @@ class StartCommand extends ArtisanCommand {
       return 1;
     }
 
-    // 6. Build flutter argv: always -d web-server here (chrome target would
+    // 7. Build flutter argv: always -d web-server here (chrome target would
     //    auto-launch its own conflicting Chrome).
     final logFile = File('${_logDir()}/flutter-dev.log');
     await logFile.parent.create(recursive: true);
@@ -419,56 +473,143 @@ class StartCommand extends ArtisanCommand {
       '--dart-define=AI_TEST=1',
     ];
 
-    // 7. Spawn flutter with the existing FIFO wrapper pattern.
-    final process = await _spawnFlutterWrapper(
-      flutterArgs: flutterArgs,
-      fifoPath: fifoPath,
-      logFile: logFile,
-    );
-
-    final pids = await _scrapeTwoPids(process);
-    final holderPid = pids['HOLDER'];
-    final childPid = pids['FLUTTER'];
-    if (holderPid == null || childPid == null) {
-      throw StateError(
-        'Failed to capture child PIDs from start wrapper: $pids',
+    // The flutter wrapper handle + captured PIDs are held nullable so the
+    // failure-cleanup catch can reap whatever was already spawned, regardless
+    // of which step (PID capture, navigate, scrape) threw.
+    Process? flutterProcess;
+    int? holderPid;
+    int? childPid;
+    try {
+      // 8. Spawn flutter with the existing FIFO wrapper pattern.
+      flutterProcess = await _spawnFlutterWrapper(
+        flutterArgs: flutterArgs,
+        fifoPath: fifoPath,
+        logFile: logFile,
       );
+
+      final pids = await _scrapeTwoPids(flutterProcess);
+      holderPid = pids['HOLDER'];
+      childPid = pids['FLUTTER'];
+      if (holderPid == null || childPid == null) {
+        throw StateError(
+          'Failed to capture child PIDs from start wrapper: $pids',
+        );
+      }
+
+      // 9. Wait for the web server to be ready (look for "is being served at"
+      //    line in the log), then navigate Chrome FIRST so the debug service
+      //    has a client to emit the VM Service URI to. Scraping the URI before
+      //    navigation deadlocks: -d web-server only emits "Debug service
+      //    listening on ws://..." AFTER a debugger client connects.
+      await _runWebServerReadyWait(logFile);
+      await cdpChromeNavigator(cdpPort, 'http://localhost:$webPort/');
+
+      // 10. NOW scrape the VM Service URI emitted by DWDS once Chrome connected.
+      final vmServiceUri = await _runVmServiceScrape(logFile);
+
+      // 11. Write state with the new CDP fields so StopCommand can reap Chrome.
+      await StateFile.write(<String, dynamic>{
+        'pid': childPid,
+        'stdinPipe': fifoPath,
+        'stdinHolderPid': holderPid,
+        'vmServiceUri': vmServiceUri,
+        'webPort': webPort,
+        'vmServicePort': vmServicePort,
+        'startedAt': DateTime.now().toUtc().toIso8601String(),
+        'profile': profileStatic ? 'static' : 'debug',
+        'projectRoot': Directory.current.path,
+        'device': device,
+        'chromePid': chromeProcess.pid,
+        'tmpProfileDir': tmpProfileDir,
+        'cdpPort': cdpPort,
+      });
+
+      ctx.output.success('chrome pid=${chromeProcess.pid} (cdpPort=$cdpPort)');
+      ctx.output.success('flutter run pid=$childPid');
+      ctx.output.success('vmServiceUri=$vmServiceUri');
+      ctx.output.success('state=${StateFile.path}');
+      ctx.output.success('log=${logFile.path}');
+      return 0;
+    } catch (error) {
+      // 12. Best-effort reap of everything launched above so a post-Chrome
+      //     failure leaks no Chrome, no flutter web-server, no FIFO, no tmp
+      //     profile dir. Every action is individually guarded and swallows so
+      //     one cleanup failure cannot abort the rest; the error surfaced to
+      //     the operator is the ORIGINAL throw, never a cleanup error. This is
+      //     best-effort SIGTERM only (no SIGKILL grace loop): the OS reaps
+      //     detached children and `fsa stop` is the deliberate full reaper.
+      _reapAfterCdpFailure(
+        flutterProcess: flutterProcess,
+        holderPid: holderPid,
+        childPid: childPid,
+        chromeProcess: chromeProcess,
+        fifoPath: fifoPath,
+        tmpProfileDir: tmpProfileDir,
+      );
+      ctx.output.error('CDP start failed after launch: $error');
+      return 1;
+    }
+  }
+
+  /// Best-effort reap of every child the CDP branch spawned, invoked only from
+  /// the failure-cleanup catch in [_handleCdpBranch]. Mirrors the kill + rm
+  /// cascade of `StopCommand._reapChrome` but without a SIGKILL grace loop:
+  /// this is the failure path, the handles are still held, and `fsa stop`
+  /// remains the deliberate full reaper.
+  ///
+  /// Every action is wrapped in its own `try`/swallow so a single failure
+  /// (process already gone, missing FIFO, locked profile dir) never aborts the
+  /// remaining cleanup and never replaces the original error surfaced upstream.
+  void _reapAfterCdpFailure({
+    required Process? flutterProcess,
+    required int? holderPid,
+    required int? childPid,
+    required Process chromeProcess,
+    required String fifoPath,
+    required String tmpProfileDir,
+  }) {
+    // 1. SIGTERM the flutter child + holder. When the PIDs were captured, reap
+    //    by pid (the detached holder + child outlive the wrapper handle);
+    //    otherwise fall back to killing the wrapper Process handle directly.
+    if (childPid != null || holderPid != null) {
+      for (final pid in <int?>[childPid, holderPid]) {
+        if (pid == null) continue;
+        try {
+          cdpKillPid(pid, ProcessSignal.sigterm);
+        } catch (_) {
+          // Non-fatal: the process may already be gone.
+        }
+      }
+    } else if (flutterProcess != null) {
+      try {
+        flutterProcess.kill();
+      } catch (_) {
+        // Non-fatal.
+      }
     }
 
-    // 8. Wait for the web server to be ready (look for "is being served at"
-    //    line in the log), then navigate Chrome FIRST so the debug service
-    //    has a client to emit the VM Service URI to. Scraping the URI before
-    //    navigation deadlocks: -d web-server only emits "Debug service
-    //    listening on ws://..." AFTER a debugger client connects.
-    await _runWebServerReadyWait(logFile);
-    await cdpChromeNavigator(cdpPort, 'http://localhost:$webPort/');
+    // 2. SIGTERM Chrome via the held handle.
+    try {
+      chromeProcess.kill();
+    } catch (_) {
+      // Non-fatal.
+    }
 
-    // 9. NOW scrape the VM Service URI emitted by DWDS once Chrome connected.
-    final vmServiceUri = await _runVmServiceScrape(logFile);
+    // 3. Delete the FIFO file.
+    try {
+      final fifo = File(fifoPath);
+      if (fifo.existsSync()) fifo.deleteSync();
+    } catch (_) {
+      // Non-fatal: a stale FIFO is harmless.
+    }
 
-    // 10. Write state with the new CDP fields so StopCommand can reap Chrome.
-    await StateFile.write(<String, dynamic>{
-      'pid': childPid,
-      'stdinPipe': fifoPath,
-      'stdinHolderPid': holderPid,
-      'vmServiceUri': vmServiceUri,
-      'webPort': webPort,
-      'vmServicePort': vmServicePort,
-      'startedAt': DateTime.now().toUtc().toIso8601String(),
-      'profile': profileStatic ? 'static' : 'debug',
-      'projectRoot': Directory.current.path,
-      'device': device,
-      'chromePid': chromeProcess.pid,
-      'tmpProfileDir': tmpProfileDir,
-      'cdpPort': cdpPort,
-    });
-
-    ctx.output.success('chrome pid=${chromeProcess.pid} (cdpPort=$cdpPort)');
-    ctx.output.success('flutter run pid=$childPid');
-    ctx.output.success('vmServiceUri=$vmServiceUri');
-    ctx.output.success('state=${StateFile.path}');
-    ctx.output.success('log=${logFile.path}');
-    return 0;
+    // 4. Delete the tmp profile dir (mirrors _reapChrome's rm).
+    try {
+      final dir = Directory(tmpProfileDir);
+      if (dir.existsSync()) dir.deleteSync(recursive: true);
+    } catch (_) {
+      // Non-fatal: a stale profile directory is not worth surfacing.
+    }
   }
 
   /// Spawns the FIFO-wrapped flutter run process. Common to both the default

@@ -218,6 +218,8 @@ void main() {
       StartCommand.cdpTmpProfileDirRoot = null;
       StartCommand.cdpFifoMaker = null;
       StartCommand.cdpWebServerReadyWaiter = null;
+      StartCommand.cdpPortProbe = StartCommand.defaultPortProbe;
+      StartCommand.cdpKillPid = Process.killPid;
       if (tempHome.existsSync()) {
         await tempHome.delete(recursive: true);
       }
@@ -345,6 +347,48 @@ void main() {
 
       expect(code, 1);
       expect(output.content, contains('Chrome binary not found'));
+    });
+
+    test('busy webPort: returns 1, names port in error, Chrome never spawned',
+        () async {
+      StartCommand.cdpProcessRunner = _fakeProcessRunner(
+        flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
+      );
+      StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+      // Inject a probe that reports the web port as busy.
+      StartCommand.cdpPortProbe = (port) async => false;
+
+      var chromeLaunched = false;
+      StartCommand.cdpProcessStarter = (
+        String exec,
+        List<String> args, {
+        String? workingDirectory,
+        ProcessStartMode? mode,
+      }) async {
+        chromeLaunched = true;
+        return _NoopProcess();
+      };
+
+      final command = StartCommand();
+      final output = BufferedOutput();
+      final ctx = ArtisanContext.bare(
+        MapInput(<String, dynamic>{
+          'device': 'chrome',
+          'port': '3100',
+          'dds': false,
+          'profile-static': false,
+          'cdp-port': '9223',
+        }),
+        output,
+      );
+
+      final code = await command.handle(ctx);
+
+      expect(code, 1, reason: 'busy port must exit 1');
+      expect(output.content, contains('3100'),
+          reason: 'error message must name the busy port');
+      expect(chromeLaunched, isFalse,
+          reason: 'Chrome must not be launched when the web port is busy');
     });
 
     test('returns 1 + kills Chrome when CDP debug port probe fails', () async {
@@ -656,6 +700,146 @@ void main() {
           timeline, ['ready:start', 'ready:done', 'navigate', 'scrape:start']);
     });
 
+    test(
+        'navigate throws after launch: returns 1, reaps Chrome + flutter pids '
+        '+ deletes FIFO + tmp profile dir', () async {
+      StartCommand.cdpTmpProfileDirRoot = tempProfileRoot.path;
+      StartCommand.cdpProcessRunner = _fakeProcessRunner(
+        flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
+      );
+      StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+
+      var chromeKilled = false;
+      Process? flutterHandle;
+      StartCommand.cdpProcessStarter = (
+        String exec,
+        List<String> args, {
+        String? workingDirectory,
+        ProcessStartMode? mode,
+      }) async {
+        if (exec == '/fake/chrome') {
+          return _SpyProcess(pid: 7777, onKill: (_) => chromeKilled = true);
+        }
+        flutterHandle = _FakeFlutterProcess(holderPid: 100, flutterPid: 200);
+        return flutterHandle!;
+      };
+
+      StartCommand.cdpChromeProber = (port, timeout) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_) async {};
+      StartCommand.cdpFifoMaker = (path) async {
+        File(path).writeAsStringSync('');
+      };
+
+      // The navigate step throws AFTER both children launched and PIDs scraped.
+      StartCommand.cdpChromeNavigator = (port, url) async {
+        throw StateError('Page.navigate failed');
+      };
+
+      final killedPids = <int>[];
+      StartCommand.cdpKillPid = (pid, [signal = ProcessSignal.sigterm]) {
+        killedPids.add(pid);
+        return true;
+      };
+
+      final command = StartCommand();
+      final output = BufferedOutput();
+      final ctx = ArtisanContext.bare(
+        MapInput(<String, dynamic>{
+          'device': 'chrome',
+          'port': '3100',
+          'dds': false,
+          'profile-static': false,
+          'cdp-port': '9223',
+        }),
+        output,
+      );
+
+      final code = await command.handle(ctx);
+
+      expect(code, 1, reason: 'navigate failure must exit 1');
+      expect(output.content, contains('Page.navigate failed'),
+          reason: 'surfaced error must be the original throw, not a cleanup '
+              'error');
+      expect(chromeKilled, isTrue, reason: 'Chrome must be reaped');
+      expect(killedPids, containsAll(<int>[100, 200]),
+          reason: 'both flutter holder + child pids must be SIGTERMed');
+      final fifoPath = '${tempHome.path}/.artisan/flutter-dev.fifo';
+      expect(File(fifoPath).existsSync(), isFalse,
+          reason: 'FIFO must be deleted on failure');
+      expect(Directory('${tempProfileRoot.path}/dusk-chrome-9223').existsSync(),
+          isFalse,
+          reason: 'tmp profile dir must be removed on failure');
+    });
+
+    test(
+        'vmServiceUri scrape throws after launch: returns 1, reaps Chrome + '
+        'flutter pids + deletes FIFO + tmp profile dir', () async {
+      StartCommand.cdpTmpProfileDirRoot = tempProfileRoot.path;
+      StartCommand.cdpProcessRunner = _fakeProcessRunner(
+        flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
+      );
+      StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+
+      var chromeKilled = false;
+      StartCommand.cdpProcessStarter = (
+        String exec,
+        List<String> args, {
+        String? workingDirectory,
+        ProcessStartMode? mode,
+      }) async {
+        if (exec == '/fake/chrome') {
+          return _SpyProcess(pid: 4242, onKill: (_) => chromeKilled = true);
+        }
+        return _FakeFlutterProcess(holderPid: 300, flutterPid: 400);
+      };
+
+      StartCommand.cdpChromeProber = (port, timeout) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_) async {};
+      StartCommand.cdpChromeNavigator = (port, url) async {};
+      StartCommand.cdpFifoMaker = (path) async {
+        File(path).writeAsStringSync('');
+      };
+
+      // The VM Service URI scrape throws AFTER navigate succeeded.
+      StartCommand.cdpVmServiceScraper = (_) async {
+        throw StateError('VM Service scrape timed out');
+      };
+
+      final killedPids = <int>[];
+      StartCommand.cdpKillPid = (pid, [signal = ProcessSignal.sigterm]) {
+        killedPids.add(pid);
+        return true;
+      };
+
+      final command = StartCommand();
+      final output = BufferedOutput();
+      final ctx = ArtisanContext.bare(
+        MapInput(<String, dynamic>{
+          'device': 'chrome',
+          'port': '3100',
+          'dds': false,
+          'profile-static': false,
+          'cdp-port': '9223',
+        }),
+        output,
+      );
+
+      final code = await command.handle(ctx);
+
+      expect(code, 1, reason: 'scrape failure must exit 1');
+      expect(output.content, contains('VM Service scrape timed out'),
+          reason: 'surfaced error must be the original throw');
+      expect(chromeKilled, isTrue, reason: 'Chrome must be reaped');
+      expect(killedPids, containsAll(<int>[300, 400]),
+          reason: 'both flutter holder + child pids must be SIGTERMed');
+      final fifoPath = '${tempHome.path}/.artisan/flutter-dev.fifo';
+      expect(File(fifoPath).existsSync(), isFalse,
+          reason: 'FIFO must be deleted on failure');
+      expect(Directory('${tempProfileRoot.path}/dusk-chrome-9223').existsSync(),
+          isFalse,
+          reason: 'tmp profile dir must be removed on failure');
+    });
+
     test('without --cdp-port: existing flow unchanged (no Chrome pre-launch)',
         () async {
       // Existing flow runs Process.start sh -c ... directly. We stub the
@@ -701,6 +885,106 @@ void main() {
       expect(state!['chromePid'], isNull);
       expect(state['cdpPort'], isNull);
       expect(state['tmpProfileDir'], isNull);
+    });
+  });
+
+  group(
+      'StartCommand.defaultChromeNavigate (regression: page-target selection)',
+      () {
+    // Regression guard for commit 871d0a7: defaultChromeNavigate must select
+    // the first page-type target from /json, NOT the browser-level endpoint
+    // that appears earlier in the list. If it regresses to selecting the
+    // browser entry, the recorded url assertion fails because the browser ws
+    // path never receives a Page.navigate frame.
+    test(
+        'selects page-type target from /json even when browser entry is first, '
+        'and delivers Page.navigate with the correct url', () async {
+      // 1. Stand up the fake CDP HTTP + WebSocket server on an ephemeral port.
+      final server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
+      final port = server.port;
+      final host = '127.0.0.1';
+
+      String? recordedNavigateUrl;
+      final navigateCompleter = Completer<void>();
+
+      // 2. Serve requests: /json for HTTP, ws paths for WebSocket upgrades.
+      server.listen((HttpRequest request) async {
+        if (request.uri.path == '/json' &&
+            !WebSocketTransformer.isUpgradeRequest(request)) {
+          // Return the targets list: browser FIRST, page SECOND.
+          final targets = jsonEncode(<Map<String, dynamic>>[
+            <String, dynamic>{
+              'type': 'browser',
+              'webSocketDebuggerUrl':
+                  'ws://$host:$port/devtools/browser/fake-browser-id',
+            },
+            <String, dynamic>{
+              'type': 'page',
+              'webSocketDebuggerUrl':
+                  'ws://$host:$port/devtools/page/fake-page-id',
+            },
+          ]);
+          request.response
+            ..statusCode = 200
+            ..headers.contentType = ContentType.json
+            ..write(targets);
+          await request.response.close();
+          return;
+        }
+
+        if (request.uri.path == '/devtools/page/fake-page-id' &&
+            WebSocketTransformer.isUpgradeRequest(request)) {
+          // Accept the WebSocket upgrade on the page path, record the navigate
+          // url, and ack with id:1.
+          final ws = await WebSocketTransformer.upgrade(request);
+          ws.listen((dynamic raw) async {
+            if (navigateCompleter.isCompleted) return;
+            try {
+              final decoded = jsonDecode(raw as String) as Map<String, dynamic>;
+              if (decoded['method'] == 'Page.navigate') {
+                final params = decoded['params'] as Map<String, dynamic>?;
+                recordedNavigateUrl = params?['url'] as String?;
+                ws.add(jsonEncode(<String, dynamic>{'id': 1}));
+                await ws.close();
+                navigateCompleter.complete();
+              }
+            } catch (e, st) {
+              if (!navigateCompleter.isCompleted) {
+                navigateCompleter.completeError(e, st);
+              }
+            }
+          });
+          return;
+        }
+
+        // Any other request (e.g. browser ws path) closes immediately to make
+        // the regression obvious: connecting to it would cause the test to hang
+        // or fail rather than silently succeed.
+        request.response.statusCode = 404;
+        await request.response.close();
+      });
+
+      try {
+        // 3. Invoke the real defaultChromeNavigate; must complete without throw.
+        const targetUrl = 'http://localhost:3100';
+        await StartCommand.defaultChromeNavigate(port, targetUrl);
+
+        // 4. Wait for the navigate frame to be processed by the fake server.
+        await navigateCompleter.future;
+
+        // 5. Assert page-target received the correct url.
+        expect(
+          recordedNavigateUrl,
+          equals(targetUrl),
+          reason: 'page-type WebSocket must receive the Page.navigate url; '
+              'if the browser entry was selected instead, this assertion fails',
+        );
+      } finally {
+        await server.close(force: true);
+      }
     });
   });
 }
