@@ -840,6 +840,65 @@ void main() {
           reason: 'tmp profile dir must be removed on failure');
     });
 
+    test(
+        'FIFO setup throws after Chrome launch: returns 1, reaps Chrome + '
+        'tmp profile dir', () async {
+      StartCommand.cdpTmpProfileDirRoot = tempProfileRoot.path;
+      StartCommand.cdpProcessRunner = _fakeProcessRunner(
+        flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
+      );
+      StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+
+      var chromeKilled = false;
+      var flutterSpawned = false;
+      StartCommand.cdpProcessStarter = (
+        String exec,
+        List<String> args, {
+        String? workingDirectory,
+        ProcessStartMode? mode,
+      }) async {
+        if (exec == '/fake/chrome') {
+          return _SpyProcess(pid: 5151, onKill: (_) => chromeKilled = true);
+        }
+        flutterSpawned = true;
+        return _FakeFlutterProcess(holderPid: 500, flutterPid: 600);
+      };
+
+      StartCommand.cdpChromeProber = (port, timeout) async {};
+      // FIFO creation throws AFTER Chrome launched but BEFORE flutter spawn.
+      StartCommand.cdpFifoMaker = (path) async {
+        throw StateError('mkfifo failed');
+      };
+
+      final command = StartCommand();
+      final output = BufferedOutput();
+      final ctx = ArtisanContext.bare(
+        MapInput(<String, dynamic>{
+          'device': 'chrome',
+          'port': '3100',
+          'dds': false,
+          'profile-static': false,
+          'cdp-port': '9223',
+        }),
+        output,
+      );
+
+      final code = await command.handle(ctx);
+
+      expect(code, 1, reason: 'FIFO setup failure must exit 1');
+      expect(output.content, contains('mkfifo failed'),
+          reason: 'surfaced error must be the original throw');
+      expect(chromeKilled, isTrue,
+          reason: 'Chrome must be reaped even when the failure precedes the '
+              'flutter spawn');
+      expect(flutterSpawned, isFalse,
+          reason:
+              'flutter must not have been spawned (FIFO setup threw first)');
+      expect(Directory('${tempProfileRoot.path}/dusk-chrome-9223').existsSync(),
+          isFalse,
+          reason: 'tmp profile dir must be removed on failure');
+    });
+
     test('without --cdp-port: existing flow unchanged (no Chrome pre-launch)',
         () async {
       // Existing flow runs Process.start sh -c ... directly. We stub the
@@ -900,12 +959,14 @@ void main() {
         'selects page-type target from /json even when browser entry is first, '
         'and delivers Page.navigate with the correct url', () async {
       // 1. Stand up the fake CDP HTTP + WebSocket server on an ephemeral port.
-      final server = await HttpServer.bind(
-        InternetAddress.loopbackIPv4,
-        0,
-      );
+      //    Bind to the 'localhost' hostname (not a fixed IPv4 literal) so the
+      //    server is reachable however localhost resolves on the host
+      //    (127.0.0.1 or ::1). defaultChromeNavigate connects via
+      //    http://localhost:<port>, so server + client must share the same
+      //    name resolution or the connect races to the wrong stack.
+      final server = await HttpServer.bind('localhost', 0);
       final port = server.port;
-      final host = '127.0.0.1';
+      const host = 'localhost';
 
       String? recordedNavigateUrl;
       final navigateCompleter = Completer<void>();

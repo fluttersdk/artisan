@@ -454,13 +454,11 @@ class StartCommand extends ArtisanCommand {
     }
 
     // 7. Build flutter argv: always -d web-server here (chrome target would
-    //    auto-launch its own conflicting Chrome).
+    //    auto-launch its own conflicting Chrome). Path construction below is
+    //    pure (no I/O); the side-effecting log + FIFO creation happens inside
+    //    the try so a failure there still reaps the already-launched Chrome.
     final logFile = File('${_logDir()}/flutter-dev.log');
-    await logFile.parent.create(recursive: true);
-    await logFile.writeAsString('');
-
     final fifoPath = '${_logDir()}/flutter-dev.fifo';
-    await _ensureFifo(fifoPath);
 
     final flutterArgs = <String>[
       'run',
@@ -475,12 +473,18 @@ class StartCommand extends ArtisanCommand {
 
     // The flutter wrapper handle + captured PIDs are held nullable so the
     // failure-cleanup catch can reap whatever was already spawned, regardless
-    // of which step (PID capture, navigate, scrape) threw.
+    // of which step (log/FIFO setup, PID capture, navigate, scrape) threw.
     Process? flutterProcess;
     int? holderPid;
     int? childPid;
     try {
-      // 8. Spawn flutter with the existing FIFO wrapper pattern.
+      // 8. Prepare the log file + FIFO. Inside the try so a failure here still
+      //    reaps the already-launched Chrome + tmp profile dir.
+      await logFile.parent.create(recursive: true);
+      await logFile.writeAsString('');
+      await _ensureFifo(fifoPath);
+
+      // 9. Spawn flutter with the existing FIFO wrapper pattern.
       flutterProcess = await _spawnFlutterWrapper(
         flutterArgs: flutterArgs,
         fifoPath: fifoPath,
@@ -496,18 +500,18 @@ class StartCommand extends ArtisanCommand {
         );
       }
 
-      // 9. Wait for the web server to be ready (look for "is being served at"
-      //    line in the log), then navigate Chrome FIRST so the debug service
-      //    has a client to emit the VM Service URI to. Scraping the URI before
-      //    navigation deadlocks: -d web-server only emits "Debug service
-      //    listening on ws://..." AFTER a debugger client connects.
+      // 10. Wait for the web server to be ready (look for "is being served at"
+      //     line in the log), then navigate Chrome FIRST so the debug service
+      //     has a client to emit the VM Service URI to. Scraping the URI before
+      //     navigation deadlocks: -d web-server only emits "Debug service
+      //     listening on ws://..." AFTER a debugger client connects.
       await _runWebServerReadyWait(logFile);
       await cdpChromeNavigator(cdpPort, 'http://localhost:$webPort/');
 
-      // 10. NOW scrape the VM Service URI emitted by DWDS once Chrome connected.
+      // 11. NOW scrape the VM Service URI emitted by DWDS once Chrome connected.
       final vmServiceUri = await _runVmServiceScrape(logFile);
 
-      // 11. Write state with the new CDP fields so StopCommand can reap Chrome.
+      // 12. Write state with the new CDP fields so StopCommand can reap Chrome.
       await StateFile.write(<String, dynamic>{
         'pid': childPid,
         'stdinPipe': fifoPath,
@@ -531,7 +535,7 @@ class StartCommand extends ArtisanCommand {
       ctx.output.success('log=${logFile.path}');
       return 0;
     } catch (error) {
-      // 12. Best-effort reap of everything launched above so a post-Chrome
+      // 13. Best-effort reap of everything launched above so a post-Chrome
       //     failure leaks no Chrome, no flutter web-server, no FIFO, no tmp
       //     profile dir. Every action is individually guarded and swallows so
       //     one cleanup failure cannot abort the rest; the error surfaced to
