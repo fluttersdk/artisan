@@ -340,11 +340,34 @@ class ManifestInstaller {
       installer.injectProvider(magic.provider!);
     }
     if (magic.configFactory != null) {
-      installer.injectConfigFactory(magic.configFactory!);
+      // When the manifest also publishes a config into the consumer's
+      // lib/config/, the factory symbol lives in that PUBLISHED file, not the
+      // plugin's package barrel. Import it from the published relative path so
+      // the injected `() => xxxConfig` reference resolves; fall back to the
+      // package barrel (injectConfigFactory's default) only when no config is
+      // published locally.
+      installer.injectConfigFactory(
+        magic.configFactory!,
+        package: _publishedConfigImport(),
+      );
     }
     if (magic.routes != null) {
       installer.injectRoute(magic.routes!);
     }
+  }
+
+  /// Returns the consumer-relative import for a config published under
+  /// `lib/config/` (e.g. `config/deeplink.dart`), or `null` when the manifest
+  /// publishes no such file (factory then resolves from the package barrel).
+  String? _publishedConfigImport() {
+    for (final target in _manifest.publish.values) {
+      final normalized = target.replaceAll(r'\', '/');
+      if (normalized.startsWith('lib/config/') &&
+          normalized.endsWith('.dart')) {
+        return normalized.substring('lib/'.length);
+      }
+    }
+    return null;
   }
 
   void _applyNative(PluginInstaller installer) {
