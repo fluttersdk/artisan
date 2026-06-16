@@ -6,11 +6,17 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ---
 
-## [Unreleased]
+## [0.0.8] - 2026-06-16
 
 ### Fixed
 
-- `restart` now preserves the `--cdp-port` value from the previous session. Previously, `restart` ran stop then start, but stop deleted `state.json` before start could read the prior CDP port, silently dropping the Chrome remote-debugging setup. `RestartCommand` now reads `cdpPort` from state before stopping and forwards it into `StartCommand`. An explicit `--cdp-port` flag on the `restart` invocation still wins over the forwarded value.
+- `restart` now preserves the `--cdp-port` value from the previous session. Previously, `restart` ran stop then start, but stop deleted `state.json` before start could read the prior CDP port, silently dropping the Chrome remote-debugging setup. `RestartCommand` now reads `cdpPort` from state before stopping and forwards it into `StartCommand`. `RestartCommand` also declares the `--cdp-port` option, so an explicit `--cdp-port` on the `restart` invocation parses and wins over the forwarded value.
+- `ManifestInstaller` now imports a published config factory from its consumer-relative `lib/config/<name>.dart` path instead of the plugin package barrel, so the injected `() => <name>Config` reference resolves after a `plugin:install` that publishes a config file.
+
+### Documentation
+
+- `doc/commands/start.md` now documents the `--cdp-port` option: synopsis, options table, the `state.json` schema (`cdpPort` / `chromePid` / `tmpProfileDir`), and a CDP example. The stale "Reserved for D6, always null in V1" field notes are corrected.
+- Fixed 14 broken internal links across `doc/commands/*` and `doc/plugins/*` (dead deep-dive page links repointed to the command index), and synced the `restart` CDP-port behavior into `doc/commands/index.md` and the `state-and-recovery` skill reference.
 
 ## [0.0.7] - 2026-06-09
 
