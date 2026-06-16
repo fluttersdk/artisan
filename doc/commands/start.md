@@ -129,7 +129,7 @@ Starts the Chrome session on port `4000` and omits `--no-dds`, letting the Dart 
 ## Related
 
 - [stop](stop.md): send SIGTERM to the running Flutter process and delete `state.json`.
-- [restart](restart.md): full stop + start cycle; preserves all flags from the original invocation.
+- [restart](index.md): full stop + start cycle; preserves the prior session's `--cdp-port` (read from `state.json` before `stop` deletes it, then forwarded into `start`). An explicit `--cdp-port` on the `restart` invocation wins.
 - [reload](reload.md): send `r\n` to the FIFO for a hot reload without a full restart.
 - [hot-restart](hot-restart.md): send `R\n` to the FIFO for a hot restart that resets app state.
 - [mcp:serve](../mcp/mcp-serve.md): start the stdio JSON-RPC MCP server; reads `~/.artisan/state.json` to discover the running app.
