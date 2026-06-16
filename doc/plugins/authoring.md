@@ -107,7 +107,7 @@ dart run fluttersdk_artisan make:command MyVerb
 
 The generator writes `lib/src/commands/my_verb_command.dart` and auto-registers
 it in the provider's `commands()` list. See
-[make:command](../commands/make-command.md) for the full scaffold walkthrough.
+[make:command](../commands/index.md) for the full scaffold walkthrough.
 
 ---
 

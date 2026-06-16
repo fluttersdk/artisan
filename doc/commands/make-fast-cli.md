@@ -139,6 +139,6 @@ time ./bin/fsa status
 
 ## Related
 
-- [make:command](make-command): scaffold a single `ArtisanCommand` subclass.
+- [make:command](index.md): scaffold a single `ArtisanCommand` subclass.
 - [make:plugin](make-plugin): scaffold a full plugin package.
 - [install](install): initialize an artisan consumer project structure.

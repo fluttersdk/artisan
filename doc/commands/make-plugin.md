@@ -198,9 +198,9 @@ standalone package and the success banner reports the outcome.
 
 ## Related
 
-- [make:command](make-command): scaffold a single `ArtisanCommand` subclass inside an
+- [make:command](index.md): scaffold a single `ArtisanCommand` subclass inside an
   existing consumer project or plugin.
-- [plugins:refresh](plugins-refresh): regenerate `lib/app/_plugins.g.dart` from
+- [plugins:refresh](index.md): regenerate `lib/app/_plugins.g.dart` from
   `.artisan/plugins.json` after manually editing the registry.
 - [plugin:install](plugin-install): register a third-party plugin (resolves
   `install.yaml` manifests produced by `make:plugin --magic`).
