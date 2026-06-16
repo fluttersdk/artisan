@@ -264,6 +264,34 @@ void main() {
       expect(ops.whereType<RunShell>(), hasLength(1));
     });
 
+    test(
+        'config factory import resolves from the published lib/config path, '
+        'not the package barrel', () {
+      final fs = InMemoryFs();
+      final stubs = _MapStubDriver({
+        'install/example_config.dart.stub': 'const x = 1;\n',
+        'install/lang/en.json': '{"hello": "world"}',
+      });
+      final prompt = _QueuedPromptDriver(
+        asks: {'Config path?': '/tmp/example.conf'},
+      );
+      final installer = ManifestInstaller(
+        _ctx(fs: fs, prompt: prompt, stubs: stubs),
+        _fullManifestSample(),
+      );
+
+      final import = installer
+          .prepare()
+          .pendingOps
+          .whereType<InjectMainDartImport>()
+          .single;
+
+      // The manifest publishes the factory into lib/config/example.dart, so the
+      // injected import must be consumer-relative (config/example.dart), not the
+      // plugin package barrel.
+      expect(import.importStatement, "import 'config/example.dart';");
+    });
+
     test('publish carries the resolved placeholders as replacements', () {
       final fs = InMemoryFs();
       final stubs = _MapStubDriver({

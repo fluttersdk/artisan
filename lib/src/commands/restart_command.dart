@@ -1,3 +1,5 @@
+import 'package:args/args.dart';
+
 import '../console/artisan_command.dart';
 import '../console/artisan_context.dart';
 import '../console/command_boot.dart';
@@ -20,6 +22,20 @@ class RestartCommand extends ArtisanCommand {
 
   @override
   CommandBoot get boot => CommandBoot.none;
+
+  @override
+  void configure(ArgParser parser) {
+    // Declare --cdp-port so `restart --cdp-port=N` parses. When present it is
+    // read by StartCommand (flag-wins); when absent the prior cdpPort read
+    // from state is forwarded. Without this declaration the explicit-flag path
+    // documented above would fail argument parsing.
+    parser.addOption(
+      'cdp-port',
+      defaultsTo: null,
+      help: 'Chrome DevTools Protocol port. Overrides the CDP port preserved '
+          'from the prior session. Omit to keep the previous session\'s port.',
+    );
+  }
 
   @override
   Future<int> handle(ArtisanContext ctx) async {

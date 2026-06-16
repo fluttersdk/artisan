@@ -26,6 +26,15 @@ void main() {
       expect(command.description.toLowerCase(), contains('stop'));
       expect(command.description.toLowerCase(), contains('start'));
     });
+
+    test('configure declares --cdp-port so restart --cdp-port=N parses', () {
+      final parser = ArgParser();
+      RestartCommand().configure(parser);
+
+      expect(parser.options.keys, contains('cdp-port'));
+      // The parser accepts the flag the docblock promises wins on restart.
+      expect(parser.parse(['--cdp-port=4444']).option('cdp-port'), '4444');
+    });
   });
 
   // ---------------------------------------------------------------------------
