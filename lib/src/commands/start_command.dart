@@ -245,10 +245,11 @@ class StartCommand extends ArtisanCommand {
     final profileStatic =
         (ctx.input.option('profile-static') as bool?) ?? false;
 
-    // 1. Explicit --cdp-port flag wins; the forwarded [cdpPort] parameter is
-    //    the fallback (forwarded by RestartCommand from prior state before stop
-    //    deleted state.json). A bare start with no flag and no forwarded param
-    //    leaves cdpPort null and uses the non-CDP branch.
+    // 1. Resolve the CDP port: an explicit --cdp-port flag wins; otherwise the
+    //    forwarded `cdpPort` parameter (passed by RestartCommand from prior
+    //    state before stop deleted state.json) is the fallback. A bare start
+    //    with no flag and no forwarded param leaves it null (non-CDP branch).
+    int? resolvedCdpPort = cdpPort;
     final cdpPortRaw = ctx.input.option('cdp-port') as String?;
     if (cdpPortRaw != null) {
       final parsed = int.tryParse(cdpPortRaw);
@@ -259,10 +260,10 @@ class StartCommand extends ArtisanCommand {
         );
         return 1;
       }
-      cdpPort = parsed;
+      resolvedCdpPort = parsed;
     }
 
-    if (cdpPort != null) {
+    if (resolvedCdpPort != null) {
       return await _handleCdpBranch(
         ctx: ctx,
         device: device,
@@ -270,7 +271,7 @@ class StartCommand extends ArtisanCommand {
         vmServicePort: vmServicePort,
         ddsOn: ddsOn,
         profileStatic: profileStatic,
-        cdpPort: cdpPort,
+        cdpPort: resolvedCdpPort,
       );
     }
 

@@ -9,10 +9,11 @@ import 'stop_command.dart';
 
 /// Composes stop + start atomically, preserving the prior CDP port.
 ///
-/// StopCommand deletes state.json, so the [cdpPort] from the previous session
-/// would be lost before StartCommand runs. RestartCommand reads the prior state
-/// BEFORE stopping, captures [cdpPort], then forwards it into StartCommand.
-/// An explicit [--cdp-port] flag on [ctx] always wins over the forwarded value.
+/// `StopCommand` deletes `state.json`, so the `cdpPort` from the previous
+/// session would be lost before `StartCommand` runs. `RestartCommand` reads the
+/// prior state before stopping, captures `cdpPort`, then forwards it into
+/// `StartCommand`. An explicit `--cdp-port` on the restart invocation always
+/// wins over the forwarded value.
 class RestartCommand extends ArtisanCommand {
   @override
   String get name => 'restart';

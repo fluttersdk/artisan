@@ -280,7 +280,7 @@ void main() {
         _fullManifestSample(),
       );
 
-      final import = installer
+      final importOp = installer
           .prepare()
           .pendingOps
           .whereType<InjectMainDartImport>()
@@ -289,7 +289,7 @@ void main() {
       // The manifest publishes the factory into lib/config/example.dart, so the
       // injected import must be consumer-relative (config/example.dart), not the
       // plugin package barrel.
-      expect(import.importStatement, "import 'config/example.dart';");
+      expect(importOp.importStatement, "import 'config/example.dart';");
     });
 
     test('publish carries the resolved placeholders as replacements', () {
