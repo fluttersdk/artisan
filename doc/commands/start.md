@@ -25,7 +25,7 @@ Launches a Chrome web dev session on port `3100` with the VM Service listener on
 
 ```
 dart run artisan start [--device=<target>] [--port=<n>] [--vm-service-port=<n>]
-                       [--[no-]dds] [--[no-]profile-static]
+                       [--[no-]dds] [--[no-]profile-static] [--cdp-port=<n>]
 ```
 
 `start` accepts no positional arguments. All configuration is done via named options and flags declared in `configure(ArgParser)` (see `lib/src/commands/start_command.dart:38`).
@@ -40,6 +40,7 @@ dart run artisan start [--device=<target>] [--port=<n>] [--vm-service-port=<n>]
 | `--vm-service-port` | int | `8181` | VM Service listener port. Recorded in `state.json`; used by `mcp:serve` and connected-mode tools to open the WebSocket. |
 | `--dds` | flag | `false` | Enable Dart Development Service. When absent (default), `--no-dds` is forwarded to `flutter run` so dusk and tinker connect directly to the VM Service. |
 | `--profile-static` | flag | `false` | Tag the session as a static-profile run. Sets `profile: "static"` in `state.json`; otherwise `"debug"`. |
+| `--cdp-port` | int | (none) | Chrome DevTools Protocol port. When set, `start` pre-launches Chrome with `--remote-debugging-port=<n>` and runs Flutter on `-d web-server`, recording `chromePid` / `tmpProfileDir` / `cdpPort` in `state.json`. Required for `dusk:resize` / `dusk:device`. Only valid with `--device=chrome` or `--device=web-server`, and requires Flutter SDK 3.30.0 or newer. A subsequent `restart` preserves this port. |
 
 <a name="behavior"></a>
 ## Behavior
@@ -68,7 +69,8 @@ dart run artisan start [--device=<target>] [--port=<n>] [--vm-service-port=<n>]
   "projectRoot": "/Users/you/Code/my-app",
   "device": "chrome",
   "chromePid": null,
-  "tmpProfileDir": null
+  "tmpProfileDir": null,
+  "cdpPort": null
 }
 ```
 
@@ -86,8 +88,9 @@ Field reference:
 | `profile` | string | `"debug"` or `"static"` (set by `--profile-static`). |
 | `projectRoot` | string | Absolute path to the working directory at invocation time. |
 | `device` | string | The `--device` value passed to this run. |
-| `chromePid` | int or null | Reserved for D6 Chrome capture (V1.x). Always `null` in V1. |
-| `tmpProfileDir` | string or null | Reserved for D6 Chrome capture (V1.x). Always `null` in V1. |
+| `chromePid` | int or null | PID of the Chrome process pre-launched by `--cdp-port`; `null` on non-CDP runs. `stop` reaps it. |
+| `tmpProfileDir` | string or null | Chrome temporary profile directory created by `--cdp-port`; `null` otherwise. `stop` deletes it. |
+| `cdpPort` | int or null | The `--cdp-port` value when CDP is enabled; `null` otherwise. Preserved across `restart` (forwarded into the next `start` before `stop` deletes this file). |
 
 <a name="examples"></a>
 ## Examples
@@ -115,6 +118,14 @@ dart run artisan start --device=chrome --port=4000 --dds
 ```
 
 Starts the Chrome session on port `4000` and omits `--no-dds`, letting the Dart Development Service run. Use this when your tooling requires DDS (for example, a secondary IDE debugger).
+
+**CDP session for `dusk:resize` / `dusk:device`:**
+
+```bash
+dart run artisan start --device=chrome --cdp-port=9222
+```
+
+Pre-launches Chrome with `--remote-debugging-port=9222` and runs Flutter on `-d web-server`, recording `chromePid` / `tmpProfileDir` / `cdpPort` in `state.json` so `dusk:resize` and `dusk:device` can drive the Chrome DevTools Protocol. Requires Flutter SDK 3.30.0 or newer. A subsequent `restart` preserves the CDP port.
 
 <a name="troubleshooting"></a>
 ## Troubleshooting
