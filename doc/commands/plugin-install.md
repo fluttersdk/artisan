@@ -191,9 +191,9 @@ reversibility is planned for V1.1.
 <a name="related"></a>
 ## Related
 
-- [plugin:uninstall](./plugin-uninstall.md): removes a plugin registered via
+- [plugin:uninstall](index.md): removes a plugin registered via
   `plugin:install`, using the `.artisan/installed/<name>.json` record.
-- [plugins:refresh](./plugins-refresh.md): regenerates `lib/app/_plugins.g.dart`
+- [plugins:refresh](index.md): regenerates `lib/app/_plugins.g.dart`
   from `.artisan/plugins.json` when the codegen barrel drifts out of sync.
 - [install.yaml schema](../plugins/install-yaml.md): full reference for the
   declarative manifest format consumed by Mode 1.

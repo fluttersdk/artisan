@@ -135,4 +135,4 @@ the full input schema, filter precedence, and the substrate vs plugin separation
 ## Related
 
 - [start](start): boot the Flutter app and write the VM Service URI to the state file.
-- [status](status): confirm the app is running and inspect the recorded state.
+- [status](index.md): confirm the app is running and inspect the recorded state.

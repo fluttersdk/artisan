@@ -209,8 +209,8 @@ Only the three named tools register. Any `tools.allow` in `.artisan/mcp.json` or
 
 ## Related
 
-- [mcp:install](./mcp-install.md): write or update the `.mcp.json` client entry.
-- [mcp:uninstall](./mcp-uninstall.md): remove the `fluttersdk` entry from `.mcp.json`.
+- [mcp:install](index.md): write or update the `.mcp.json` client entry.
+- [mcp:uninstall](index.md): remove the `fluttersdk` entry from `.mcp.json`.
 - [MCP setup guide](../mcp/setup.md): end-to-end wiring for Claude Code, Cursor, Windsurf.
 - [MCP tool reference](../mcp/tool-reference.md): full parameter and return value
   reference for every substrate and plugin tool.

@@ -212,7 +212,7 @@ The path-dep form is detected automatically and written to `pubspec.yaml`. No fl
 <a name="related"></a>
 ## Related
 
-- [make:command](make-command.md): scaffold a single `ArtisanCommand` subclass under `lib/app/commands/` and regenerate `_index.g.dart`.
+- [make:command](index.md): scaffold a single `ArtisanCommand` subclass under `lib/app/commands/` and regenerate `_index.g.dart`.
 - [plugin:install](plugin-install.md): register a third-party plugin after `flutter pub add`; requires the `lib/app/_plugins.g.dart` barrel that `install` writes.
 - [make:fast-cli](make-fast-cli.md): the sub-command auto-chained by `install`; run it standalone to rebuild `bin/fsa` without touching the scaffold artefacts.
 - [Getting Started: Installation](../getting-started/installation.md): step-by-step walkthrough from `dart pub add` to first `./bin/fsa status` for both vanilla Flutter and magic-stack projects.
