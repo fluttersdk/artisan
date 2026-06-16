@@ -236,7 +236,7 @@ class StartCommand extends ArtisanCommand {
   }
 
   @override
-  Future<int> handle(ArtisanContext ctx) async {
+  Future<int> handle(ArtisanContext ctx, {int? cdpPort}) async {
     final device = (ctx.input.option('device') as String?) ?? 'chrome';
     final webPort = int.parse((ctx.input.option('port') as String?) ?? '3100');
     final vmServicePort =
@@ -244,17 +244,22 @@ class StartCommand extends ArtisanCommand {
     final ddsOn = (ctx.input.option('dds') as bool?) ?? false;
     final profileStatic =
         (ctx.input.option('profile-static') as bool?) ?? false;
+
+    // 1. Explicit --cdp-port flag wins; the forwarded [cdpPort] parameter is
+    //    the fallback (forwarded by RestartCommand from prior state before stop
+    //    deleted state.json). A bare start with no flag and no forwarded param
+    //    leaves cdpPort null and uses the non-CDP branch.
     final cdpPortRaw = ctx.input.option('cdp-port') as String?;
-    int? cdpPort;
     if (cdpPortRaw != null) {
-      cdpPort = int.tryParse(cdpPortRaw);
-      if (cdpPort == null) {
+      final parsed = int.tryParse(cdpPortRaw);
+      if (parsed == null) {
         ctx.output.error(
           '--cdp-port expects an integer port number, got "$cdpPortRaw". '
           'Pass e.g. --cdp-port=9223.',
         );
         return 1;
       }
+      cdpPort = parsed;
     }
 
     if (cdpPort != null) {

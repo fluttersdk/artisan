@@ -8,6 +8,10 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- `restart` now preserves the `--cdp-port` value from the previous session. Previously, `restart` ran stop then start, but stop deleted `state.json` before start could read the prior CDP port, silently dropping the Chrome remote-debugging setup. `RestartCommand` now reads `cdpPort` from state before stopping and forwards it into `StartCommand`. An explicit `--cdp-port` flag on the `restart` invocation still wins over the forwarded value.
+
 ## [0.0.7] - 2026-06-09
 
 ### Added
