@@ -232,6 +232,13 @@ class StartCommand extends ArtisanCommand {
         help: 'Chrome DevTools Protocol port. When set, pre-launches Chrome '
             'with --remote-debugging-port=N and runs flutter with -d web-server. '
             'Required for dusk:resize / dusk:device commands.',
+      )
+      ..addOption(
+        'timeout',
+        defaultsTo: '90',
+        help: 'Seconds to wait for the VM Service URI to appear in the flutter '
+            'run log. Increase on cold starts where build + DartDev init takes '
+            'longer than the default. Applies to the --cdp-port branch only.',
       );
   }
 
@@ -263,6 +270,17 @@ class StartCommand extends ArtisanCommand {
       resolvedCdpPort = parsed;
     }
 
+    // 2. Resolve --timeout (applies to the CDP branch VM Service scrape).
+    final timeoutRaw = (ctx.input.option('timeout') as String?) ?? '90';
+    final resolvedTimeout = int.tryParse(timeoutRaw);
+    if (resolvedTimeout == null) {
+      ctx.output.error(
+        '--timeout expects an integer number of seconds, got "$timeoutRaw". '
+        'Pass e.g. --timeout=120.',
+      );
+      return 1;
+    }
+
     if (resolvedCdpPort != null) {
       return await _handleCdpBranch(
         ctx: ctx,
@@ -272,6 +290,7 @@ class StartCommand extends ArtisanCommand {
         ddsOn: ddsOn,
         profileStatic: profileStatic,
         cdpPort: resolvedCdpPort,
+        scrapTimeout: resolvedTimeout,
       );
     }
 
@@ -308,7 +327,7 @@ class StartCommand extends ArtisanCommand {
       );
     }
 
-    final vmServiceUri = await _runVmServiceScrape(logFile);
+    final vmServiceUri = await _runVmServiceScrape(logFile, 90);
 
     await StateFile.write(<String, dynamic>{
       'pid': childPid,
@@ -344,6 +363,7 @@ class StartCommand extends ArtisanCommand {
     required bool ddsOn,
     required bool profileStatic,
     required int cdpPort,
+    int scrapTimeout = 90,
   }) async {
     // 1. Validate device value: only chrome (default) and web-server accepted.
     if (device != 'chrome' && device != 'web-server') {
@@ -388,6 +408,18 @@ class StartCommand extends ArtisanCommand {
       ctx.output.error(
         'Port $webPort is already in use. Run `fsa stop` to free it or '
         'pass a different --port value.',
+      );
+      return 1;
+    }
+
+    // 4b. Probe CDP port availability before spawning Chrome. A busy CDP port
+    //     means Chrome will fail to open the debug port, producing a misleading
+    //     "Is Chrome installed?" error. Fail fast here with an actionable message.
+    final cdpPortFree = await cdpPortProbe(cdpPort);
+    if (!cdpPortFree) {
+      ctx.output.error(
+        'CDP port $cdpPort is already in use; pass --cdp-port <free-port> '
+        'or free it before running start.',
       );
       return 1;
     }
@@ -515,7 +547,7 @@ class StartCommand extends ArtisanCommand {
       await cdpChromeNavigator(cdpPort, 'http://localhost:$webPort/');
 
       // 11. NOW scrape the VM Service URI emitted by DWDS once Chrome connected.
-      final vmServiceUri = await _runVmServiceScrape(logFile);
+      final vmServiceUri = await _runVmServiceScrape(logFile, scrapTimeout);
 
       // 12. Write state with the new CDP fields so StopCommand can reap Chrome.
       await StateFile.write(<String, dynamic>{
@@ -692,10 +724,12 @@ class StartCommand extends ArtisanCommand {
   }
 
   /// Runs the VM Service URI scrape, honoring the test seam when set.
-  Future<String> _runVmServiceScrape(File logFile) {
+  /// [timeoutSeconds] caps the scrape loop; the production implementation
+  /// uses it as the deadline, while the test seam ignores it.
+  Future<String> _runVmServiceScrape(File logFile, int timeoutSeconds) {
     final scraper = cdpVmServiceScraper;
     if (scraper != null) return scraper(logFile);
-    return _scrapeVmServiceUriFromFile(logFile);
+    return _scrapeVmServiceUriFromFile(logFile, timeoutSeconds);
   }
 
   /// Probes `flutter --version --machine` and extracts `frameworkVersion`.
@@ -948,10 +982,13 @@ class StartCommand extends ArtisanCommand {
     return await completer.future.timeout(const Duration(seconds: 10));
   }
 
-  Future<String> _scrapeVmServiceUriFromFile(File logFile) async {
+  Future<String> _scrapeVmServiceUriFromFile(
+    File logFile,
+    int timeoutSeconds,
+  ) async {
     final sw = Stopwatch()..start();
     int lastSize = 0;
-    while (sw.elapsed < const Duration(seconds: 90)) {
+    while (sw.elapsed < Duration(seconds: timeoutSeconds)) {
       if (logFile.existsSync()) {
         final size = logFile.lengthSync();
         if (size > lastSize) {
@@ -966,7 +1003,8 @@ class StartCommand extends ArtisanCommand {
       await Future<void>.delayed(const Duration(milliseconds: 250));
     }
     throw StateError(
-      'Timed out after 90s waiting for VM Service URI in ${logFile.path}.',
+      'Timed out after ${timeoutSeconds}s waiting for VM Service URI in '
+      '${logFile.path}.',
     );
   }
 

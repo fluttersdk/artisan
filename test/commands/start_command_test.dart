@@ -396,6 +396,9 @@ void main() {
         flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
       );
       StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+      // All ports free so the pre-launch probes pass; the failure is in the
+      // post-launch Chrome probe.
+      StartCommand.cdpPortProbe = (_) async => true;
       var killedPid = 0;
       final chrome = _SpyProcess(pid: 4242, onKill: (sig) => killedPid = 4242);
       StartCommand.cdpProcessStarter = (
@@ -440,6 +443,7 @@ void main() {
         flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
       );
       StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+      StartCommand.cdpPortProbe = (_) async => true;
 
       final spawned = <List<String>>[];
       _SpyProcess? chromeProc;
@@ -535,6 +539,7 @@ void main() {
         flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
       );
       StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+      StartCommand.cdpPortProbe = (_) async => true;
 
       final spawned = <List<String>>[];
       StartCommand.cdpProcessStarter = (
@@ -589,6 +594,7 @@ void main() {
         flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
       );
       StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+      StartCommand.cdpPortProbe = (_) async => true;
 
       StartCommand.cdpProcessStarter = (
         String exec,
@@ -637,6 +643,7 @@ void main() {
         flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
       );
       StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+      StartCommand.cdpPortProbe = (_) async => true;
 
       StartCommand.cdpProcessStarter = (
         String exec,
@@ -708,6 +715,7 @@ void main() {
         flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
       );
       StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+      StartCommand.cdpPortProbe = (_) async => true;
 
       var chromeKilled = false;
       Process? flutterHandle;
@@ -779,6 +787,7 @@ void main() {
         flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
       );
       StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+      StartCommand.cdpPortProbe = (_) async => true;
 
       var chromeKilled = false;
       StartCommand.cdpProcessStarter = (
@@ -848,6 +857,7 @@ void main() {
         flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
       );
       StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+      StartCommand.cdpPortProbe = (_) async => true;
 
       var chromeKilled = false;
       var flutterSpawned = false;
@@ -897,6 +907,150 @@ void main() {
       expect(Directory('${tempProfileRoot.path}/dusk-chrome-9223').existsSync(),
           isFalse,
           reason: 'tmp profile dir must be removed on failure');
+    });
+
+    test('--timeout configure declares option with default 90', () {
+      final command = StartCommand();
+      final parser = ArgParser();
+
+      command.configure(parser);
+
+      expect(parser.options.containsKey('timeout'), isTrue,
+          reason: '--timeout option must be declared in configure()');
+      final result = parser.parse(<String>[]);
+      expect(result['timeout'], '90', reason: '--timeout must default to 90');
+    });
+
+    test('--timeout rejects non-integer value: exit 1 + actionable error',
+        () async {
+      final command = StartCommand();
+      final output = BufferedOutput();
+      final ctx = ArtisanContext.bare(
+        MapInput(<String, dynamic>{
+          'device': 'chrome',
+          'port': '3100',
+          'dds': false,
+          'profile-static': false,
+          'cdp-port': '9223',
+          'timeout': 'abc',
+        }),
+        output,
+      );
+
+      final code = await command.handle(ctx);
+
+      expect(code, 1);
+      expect(output.content,
+          contains('--timeout expects an integer number of seconds'));
+    });
+
+    test(
+        '--timeout value drives the VM Service scrape seam (configured value '
+        'reported in error, not literal 90)', () async {
+      // Arrange: inject a scraper that records the deadline and then throws.
+      // We check the error message contains the configured timeout value.
+      StartCommand.cdpProcessRunner = _fakeProcessRunner(
+        flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
+      );
+      StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+      // All ports free so the pre-launch probes do not block the test.
+      StartCommand.cdpPortProbe = (_) async => true;
+
+      StartCommand.cdpProcessStarter = (
+        String exec,
+        List<String> args, {
+        String? workingDirectory,
+        ProcessStartMode? mode,
+      }) async {
+        if (exec == '/fake/chrome') return _SpyProcess(pid: 111);
+        return _FakeFlutterProcess(holderPid: 10, flutterPid: 20);
+      };
+
+      StartCommand.cdpChromeProber = (port, timeout) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_) async {};
+      StartCommand.cdpChromeNavigator = (port, url) async {};
+      StartCommand.cdpFifoMaker = (path) async {
+        File(path).writeAsStringSync('');
+      };
+
+      // The scraper throws the production timeout message; the test checks the
+      // error message surfaced by handle() contains "120s" (the configured
+      // timeout) rather than "90s" (the old hardcoded literal).
+      StartCommand.cdpVmServiceScraper = (_) async {
+        throw StateError('Timed out after 120s waiting for VM Service URI');
+      };
+
+      final killedPids = <int>[];
+      StartCommand.cdpKillPid = (pid, [signal = ProcessSignal.sigterm]) {
+        killedPids.add(pid);
+        return true;
+      };
+
+      final command = StartCommand();
+      final output = BufferedOutput();
+      final ctx = ArtisanContext.bare(
+        MapInput(<String, dynamic>{
+          'device': 'chrome',
+          'port': '3100',
+          'dds': false,
+          'profile-static': false,
+          'cdp-port': '9223',
+          'timeout': '120',
+        }),
+        output,
+      );
+
+      final code = await command.handle(ctx);
+
+      expect(code, 1);
+      // The scraper seam surfaces the message that uses the configured value.
+      expect(output.content, contains('120s'),
+          reason: 'error must report configured timeout value, not a literal');
+    });
+
+    test(
+        'busy cdpPort before Chrome launch: exit 1 + distinct error, '
+        'Chrome never spawned', () async {
+      StartCommand.cdpProcessRunner = _fakeProcessRunner(
+        flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
+      );
+      StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+      // Probe: webPort free, cdpPort busy.
+      StartCommand.cdpPortProbe = (port) async => port != 9223;
+
+      var chromeLaunched = false;
+      StartCommand.cdpProcessStarter = (
+        String exec,
+        List<String> args, {
+        String? workingDirectory,
+        ProcessStartMode? mode,
+      }) async {
+        chromeLaunched = true;
+        return _NoopProcess();
+      };
+
+      final command = StartCommand();
+      final output = BufferedOutput();
+      final ctx = ArtisanContext.bare(
+        MapInput(<String, dynamic>{
+          'device': 'chrome',
+          'port': '3100',
+          'dds': false,
+          'profile-static': false,
+          'cdp-port': '9223',
+        }),
+        output,
+      );
+
+      final code = await command.handle(ctx);
+
+      expect(code, 1, reason: 'busy CDP port must exit 1');
+      expect(output.content, contains('9223'),
+          reason: 'error must name the busy CDP port');
+      expect(output.content, contains('--cdp-port'),
+          reason: 'error must suggest --cdp-port flag');
+      expect(chromeLaunched, isFalse,
+          reason: 'Chrome must not be launched when CDP port is busy');
     });
 
     test('without --cdp-port: existing flow unchanged (no Chrome pre-launch)',

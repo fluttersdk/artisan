@@ -6,6 +6,17 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- `start --timeout=<n>` option (default `90`): configures the maximum seconds the VM Service URI scrape loop waits for `flutter run` to print the debug URI in the log file. Previously the deadline was hardcoded to 90 s; cold starts on slow CI machines or after a fresh Flutter SDK install can exceed this limit. Setting `--timeout=120` (or higher) prevents false-timeout failures. The error message now reports the configured value rather than a literal "90s". Applies to the `--cdp-port` branch only; the non-CDP branch retains its own hardcoded deadline.
+- `start --cdp-port=<n>` now probes the CDP port for availability BEFORE launching Chrome. When the port is already in use, the command exits 1 immediately with a clear message: "CDP port N is already in use; pass --cdp-port <free-port> or free it before running start." This replaces the previous misleading "Is Chrome installed?" catch-all that fired when Chrome failed to open the debug port it was asked to bind.
+
+### Fixed
+
+- Passing an unknown option to any command now fails loudly instead of silently printing help and exiting as if help were requested (issue #12). The dispatcher writes `Unknown option: <flag>` to stderr (both long `--foo` and short `-x` forms), prints the command help, and exits non-zero. Other parse failures keep their original messages: a missing option value (`Missing argument for "..."`), a disallowed value, and a value given to a flag each surface their specific diagnostic unchanged. `--help` / `-h` and every valid invocation are unaffected. Because this is the shared dispatch path for every command, the fix benefits every plugin CLI built on the substrate.
+
 ## [0.0.8] - 2026-06-16
 
 ### Fixed

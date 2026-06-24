@@ -65,6 +65,20 @@ class ArtisanApplication {
     final ArgResults parsed;
     try {
       parsed = parser.parse(commandArgs);
+    } on ArgParserException catch (e) {
+      // An unknown flag must fail loudly rather than silently printing help as
+      // if it were requested: name the offending option, then show the help so
+      // the caller can find the correct flag. Other parse failures (missing
+      // value, bad value, mandatory option) keep their original message.
+      if (_isUnknownOption(e)) {
+        stderr.writeln(
+          ConsoleStyle.error('Unknown option: ${e.argumentName ?? e.message}'),
+        );
+      } else {
+        stderr.writeln(ConsoleStyle.error(e.message));
+      }
+      _printCommandHelp(command, parser);
+      return 1;
     } on FormatException catch (e) {
       stderr.writeln(ConsoleStyle.error(e.message));
       _printCommandHelp(command, parser);
@@ -134,6 +148,17 @@ class ArtisanApplication {
     } finally {
       await vmClient.disconnect();
     }
+  }
+
+  /// Whether [e] reports an unknown option / flag rather than a missing value,
+  /// a disallowed value, or a mandatory-option violation.
+  ///
+  /// Dart's `args` has no dedicated unknown-flag error type, so the signal is
+  /// the message prefix the parser emits for every "Could not find an option"
+  /// path (`--long` and `-short` both share it). Matching the prefix keeps the
+  /// other [ArgParserException] causes on their original, helpful messages.
+  bool _isUnknownOption(ArgParserException e) {
+    return e.message.startsWith('Could not find an option');
   }
 
   void _printRootHelp() {
