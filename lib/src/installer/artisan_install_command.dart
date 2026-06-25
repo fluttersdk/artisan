@@ -71,7 +71,7 @@ abstract class ArtisanInstallCommand extends ArtisanCommand {
   String get baseFlags => '{--force : Bypass conflict detection} '
       '{--dry-run : Print staged ops without writing} '
       '{--non-interactive : Skip prompts, use defaults} '
-      '{--no-bootstrap : Skip post-install hint message} ';
+      '{--no-bootstrap : Skip auto-running the plugin bootstrap command} ';
 
   /// Install commands run before the Flutter app boots: no VM Service, no
   /// connected isolate. The dispatcher constructs a [ArtisanContext.bare].

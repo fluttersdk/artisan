@@ -17,6 +17,7 @@ import '../installer/manifest_installer.dart';
 import '../installer/manifest_parser.dart';
 import '../installer/plugins_registry_file.dart';
 import '../installer/virtual_fs.dart';
+import 'helpers/bootstrap_command_runner.dart';
 import 'plugins_refresh_command.dart';
 
 /// `plugin:install <name>`, register a third-party artisan plugin into the
@@ -263,12 +264,69 @@ class PluginInstallCommand extends ArtisanInstallCommand {
       nonInteractive: isNonInteractive(ctx),
     );
 
-    final exit = _renderResultAndExit(ctx, result, manifest: manifest);
+    final exit = _renderResultAndExit(ctx, result);
     if (result is Success && !isDryRun(ctx)) {
       await _registerArtisanProvider(ctx, name: manifest.pluginName);
+      await _runBootstrapCommand(ctx, manifest: manifest);
     }
     return exit;
   }
+
+  /// Auto-runs the plugin's declared `bootstrap_command` (or the
+  /// `--bootstrap-command` override) as a fresh dispatcher subprocess after a
+  /// successful manifest install.
+  ///
+  /// The bootstrap command is a PLUGIN command that was only just written to
+  /// `lib/app/_plugins.g.dart` during this same install run, so it is NOT
+  /// loaded in the current process. [BootstrapCommandRunner] reaches it by
+  /// spawning a fresh `./bin/fsa` (or `dart run <consumer>:artisan`)
+  /// invocation, always forwarding `--non-interactive` so an interactive
+  /// chained install cannot hang.
+  ///
+  /// Falls back to the one-line bootstrap hint when the operator passed
+  /// `--no-bootstrap`, when no command is declared, or when no dispatcher is
+  /// resolvable (e.g. neither `bin/fsa` nor a consumer pubspec name exists).
+  Future<void> _runBootstrapCommand(
+    ArtisanContext ctx, {
+    required InstallManifest manifest,
+  }) async {
+    // 1. The --bootstrap-command override wins over the manifest declaration.
+    final override = ctx.input.option('bootstrap-command') as String?;
+    final bootstrap = override ?? manifest.bootstrapCommand;
+
+    // 2. Nothing to do when no command is declared or the operator opted out.
+    if (bootstrap == null) return;
+    if (isSkipBootstrap(ctx)) {
+      _emitBootstrapHint(ctx, bootstrap: bootstrap, skipped: true);
+      return;
+    }
+
+    // 3. Spawn the chained command. This is a best-effort convenience step that
+    //    runs AFTER the install + registration already succeeded, so a failure
+    //    here (missing `dart` on PATH, non-executable `bin/fsa`, working-dir
+    //    issues) must not crash `plugin:install`: catch it, warn, and fall back
+    //    to the manual hint so the operator can still bootstrap by hand.
+    try {
+      final outcome = await buildBootstrapRunner().run(
+        bootstrapCommand: bootstrap,
+        projectRoot: getProjectRoot(),
+      );
+      if (outcome == BootstrapRunOutcome.notResolvable) {
+        _emitBootstrapHint(ctx, bootstrap: bootstrap, skipped: false);
+      }
+    } catch (e) {
+      ctx.output.warning('Could not auto-run the bootstrap command: $e');
+      _emitBootstrapHint(ctx, bootstrap: bootstrap, skipped: false);
+    }
+  }
+
+  /// Builds the [BootstrapCommandRunner] used to spawn the chained bootstrap
+  /// command. Test subclasses override to inject a recording fake so no real
+  /// subprocess spawns during unit tests.
+  ///
+  /// @return A production [BootstrapCommandRunner] wired to [Process.run].
+  @visibleForTesting
+  BootstrapCommandRunner buildBootstrapRunner() => BootstrapCommandRunner();
 
   /// Convention-based registration of the plugin's [ArtisanServiceProvider] in
   /// `.artisan/plugins.json`, then a synchronous regeneration of
@@ -308,13 +366,11 @@ class PluginInstallCommand extends ArtisanInstallCommand {
   /// process exit code.
   int _renderResultAndExit(
     ArtisanContext ctx,
-    TransactionResult result, {
-    required InstallManifest manifest,
-  }) {
+    TransactionResult result,
+  ) {
     switch (result) {
       case Success():
         ctx.output.success(result.describe());
-        _emitBootstrapHint(ctx, manifest: manifest);
         return 0;
       case DryRun():
         ctx.output.info(result.describe());
@@ -328,14 +384,22 @@ class PluginInstallCommand extends ArtisanInstallCommand {
     }
   }
 
-  /// Emits the one-line bootstrap hint when the manifest declares a
-  /// `bootstrap_command` and the operator did not pass `--no-bootstrap`.
+  /// Emits the one-line bootstrap hint as the FALLBACK path for the manifest
+  /// flow: when the operator passed `--no-bootstrap` ([skipped] true), or when
+  /// auto-run could not resolve a dispatcher ([skipped] false). The happy path
+  /// auto-runs the command instead via [_runBootstrapCommand].
+  ///
+  /// @param ctx        The active context.
+  /// @param bootstrap  The resolved bootstrap command name.
+  /// @param skipped    `true` when emitted because `--no-bootstrap` was set.
   void _emitBootstrapHint(
     ArtisanContext ctx, {
-    required InstallManifest manifest,
+    required String bootstrap,
+    required bool skipped,
   }) {
-    final bootstrap = manifest.bootstrapCommand;
-    if (bootstrap == null || isSkipBootstrap(ctx)) return;
+    if (skipped) {
+      ctx.output.info('Skipping plugin bootstrap command (--no-bootstrap).');
+    }
     ctx.output.info(
       'Re-run `artisan list` to see new commands. '
       'Bootstrap with: artisan $bootstrap',

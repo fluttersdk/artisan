@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:fluttersdk_artisan/artisan.dart';
+import 'package:fluttersdk_artisan/src/commands/helpers/bootstrap_command_runner.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -78,6 +79,33 @@ ArtisanContext _ctxWith(
   );
 }
 
+/// Records every [BootstrapCommandRunner.run] invocation so the auto-run tests
+/// can assert the chained command + project root without spawning a real
+/// subprocess.
+class _RecordingBootstrapRunner implements BootstrapCommandRunner {
+  String? bootstrapCommand;
+  String? projectRoot;
+  int callCount = 0;
+
+  BootstrapRunOutcome returnOutcome = BootstrapRunOutcome.invoked;
+
+  /// When set, [run] throws this instead of returning, simulating a runtime
+  /// failure (e.g. `dart` missing on PATH) so the best-effort path is covered.
+  Object? throwOnRun;
+
+  @override
+  Future<BootstrapRunOutcome> run({
+    required String bootstrapCommand,
+    required String projectRoot,
+  }) async {
+    callCount++;
+    this.bootstrapCommand = bootstrapCommand;
+    this.projectRoot = projectRoot;
+    if (throwOnRun != null) throw throwOnRun!;
+    return returnOutcome;
+  }
+}
+
 /// Test subclass that pins the project root to a temp dir AND lets each test
 /// inject a custom install.yaml resolver so the path resolution does not have
 /// to round-trip through the host's real Isolate.resolvePackageUri.
@@ -85,6 +113,7 @@ class _TestablePluginInstallCommand extends PluginInstallCommand {
   _TestablePluginInstallCommand({
     required this.fakeProjectRoot,
     this.fakeInstallYamlPath,
+    this.fakeBootstrapRunner,
   });
 
   /// Pinned project root for the test invocation. Overrides the production
@@ -96,6 +125,10 @@ class _TestablePluginInstallCommand extends PluginInstallCommand {
   /// resolver reports "no manifest found" so the legacy branch fires.
   final String? fakeInstallYamlPath;
 
+  /// Optional bootstrap runner override so auto-run tests can record the
+  /// chained command without spawning a real subprocess.
+  final BootstrapCommandRunner? fakeBootstrapRunner;
+
   @override
   String getProjectRoot() => fakeProjectRoot;
 
@@ -103,6 +136,10 @@ class _TestablePluginInstallCommand extends PluginInstallCommand {
   Future<String?> resolveInstallYaml(String pluginName) async {
     return fakeInstallYamlPath;
   }
+
+  @override
+  BootstrapCommandRunner buildBootstrapRunner() =>
+      fakeBootstrapRunner ?? super.buildBootstrapRunner();
 }
 
 void main() {
@@ -882,6 +919,224 @@ void main() {
       expect(generated, contains('MyTestLoggerArtisanProvider'));
       expect(generated, isNot(contains('My_test_loggerArtisanProvider')),
           reason: 'PascalCase derivation must collapse all snake_case parts');
+    });
+  });
+
+  group('PluginInstallCommand — bootstrap_command auto-run (#4a)', () {
+    /// Seeds `<root>/lib/app/.keep` so [PluginsRefreshCommand]'s directory
+    /// probe passes during the manifest flow's registration step.
+    void seedLibApp(Directory root) {
+      Directory(p.join(root.path, 'lib', 'app')).createSync(recursive: true);
+      File(p.join(root.path, 'lib', 'app', '.keep')).writeAsStringSync('');
+    }
+
+    /// Writes an install.yaml that declares a `bootstrap_command`.
+    void writeManifestWithBootstrap(String path, String pluginName) {
+      File(path).writeAsStringSync(
+        'plugin_name: $pluginName\n'
+        'bootstrap_command: starter:install\n',
+      );
+    }
+
+    /// Standard non-interactive options map for the manifest flow.
+    Map<String, dynamic> opts({bool noBootstrap = false}) {
+      return <String, dynamic>{
+        'force': false,
+        'no-bootstrap': noBootstrap,
+        'dry-run': false,
+        'non-interactive': true,
+        'use-yaml-only': false,
+        'bootstrap-command': null,
+        'provider': null,
+      };
+    }
+
+    test(
+        '(a) a manifest declaring bootstrap_command triggers the subprocess '
+        'invocation with the declared command', () async {
+      final root = Directory.systemTemp.createTempSync('plinst_boot_run_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'magic_starter');
+      seedLibApp(root);
+
+      final manifestPath = p.join(root.path, 'install.yaml');
+      writeManifestWithBootstrap(manifestPath, 'magic_starter');
+
+      final runner = _RecordingBootstrapRunner();
+      final cmd = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+        fakeBootstrapRunner: runner,
+      );
+      final ctx = _ctxWith(
+        opts(),
+        positional: const ['magic_starter'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0);
+
+      expect(runner.callCount, 1, reason: 'auto-run must fire exactly once');
+      expect(runner.bootstrapCommand, 'starter:install');
+      expect(runner.projectRoot, root.path);
+
+      // The hint-only message must NOT fire when the command auto-ran.
+      final out = (ctx.output as BufferedOutput).content;
+      expect(out, isNot(contains('Bootstrap with: artisan')));
+    });
+
+    test('(b) --no-bootstrap suppresses the auto-run entirely', () async {
+      final root = Directory.systemTemp.createTempSync('plinst_boot_skip_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'magic_starter');
+      seedLibApp(root);
+
+      final manifestPath = p.join(root.path, 'install.yaml');
+      writeManifestWithBootstrap(manifestPath, 'magic_starter');
+
+      final runner = _RecordingBootstrapRunner();
+      final cmd = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+        fakeBootstrapRunner: runner,
+      );
+      final ctx = _ctxWith(
+        opts(noBootstrap: true),
+        positional: const ['magic_starter'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0);
+
+      expect(runner.callCount, 0,
+          reason: '--no-bootstrap must NOT invoke the bootstrap command');
+    });
+
+    test('(c) a manifest with no bootstrap_command invokes nothing', () async {
+      final root = Directory.systemTemp.createTempSync('plinst_boot_none_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'magic_logger');
+      seedLibApp(root);
+
+      // Minimal manifest: no bootstrap_command declared.
+      final manifestPath = p.join(root.path, 'install.yaml');
+      _writeInstallYaml(manifestPath, 'magic_logger');
+
+      final runner = _RecordingBootstrapRunner();
+      final cmd = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+        fakeBootstrapRunner: runner,
+      );
+      final ctx = _ctxWith(
+        opts(),
+        positional: const ['magic_logger'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0);
+
+      expect(runner.callCount, 0,
+          reason: 'no bootstrap_command means nothing to auto-run');
+    });
+
+    test('the --bootstrap-command override wins over the manifest declaration',
+        () async {
+      final root = Directory.systemTemp.createTempSync('plinst_boot_override_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'magic_starter');
+      seedLibApp(root);
+
+      final manifestPath = p.join(root.path, 'install.yaml');
+      writeManifestWithBootstrap(manifestPath, 'magic_starter');
+
+      final runner = _RecordingBootstrapRunner();
+      final cmd = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+        fakeBootstrapRunner: runner,
+      );
+      final overrideOpts = opts()..['bootstrap-command'] = 'starter:configure';
+      final ctx = _ctxWith(
+        overrideOpts,
+        positional: const ['magic_starter'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0);
+
+      expect(runner.bootstrapCommand, 'starter:configure',
+          reason: '--bootstrap-command must override the manifest value');
+    });
+
+    test('falls back to the hint message when no dispatcher is resolvable',
+        () async {
+      final root = Directory.systemTemp.createTempSync('plinst_boot_hint_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'magic_starter');
+      seedLibApp(root);
+
+      final manifestPath = p.join(root.path, 'install.yaml');
+      writeManifestWithBootstrap(manifestPath, 'magic_starter');
+
+      final runner = _RecordingBootstrapRunner()
+        ..returnOutcome = BootstrapRunOutcome.notResolvable;
+      final cmd = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+        fakeBootstrapRunner: runner,
+      );
+      final ctx = _ctxWith(
+        opts(),
+        positional: const ['magic_starter'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0);
+
+      expect(runner.callCount, 1,
+          reason: 'the runner is consulted before falling back to the hint');
+      final out = (ctx.output as BufferedOutput).content;
+      expect(out, contains('Bootstrap with: artisan starter:install'),
+          reason: 'when the runner cannot resolve a dispatcher, emit the hint');
+    });
+
+    test('a runner failure is best-effort: install succeeds, warns, hints',
+        () async {
+      final root = Directory.systemTemp.createTempSync('plinst_boot_throw_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'magic_starter');
+      seedLibApp(root);
+
+      final manifestPath = p.join(root.path, 'install.yaml');
+      writeManifestWithBootstrap(manifestPath, 'magic_starter');
+
+      final runner = _RecordingBootstrapRunner()
+        ..throwOnRun = ProcessException('dart', <String>[], 'not found');
+      final cmd = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+        fakeBootstrapRunner: runner,
+      );
+      final ctx = _ctxWith(
+        opts(),
+        positional: const ['magic_starter'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0,
+          reason: 'a post-install auto-run failure must not fail the install');
+      expect(runner.callCount, 1);
+      final out = (ctx.output as BufferedOutput).content;
+      expect(out, contains('Could not auto-run the bootstrap command'));
+      expect(out, contains('Bootstrap with: artisan starter:install'),
+          reason: 'falls back to the manual hint after a runner failure');
     });
   });
 }

@@ -293,7 +293,22 @@ post_install:
 
 ## bootstrap_command
 
-Optional plugin-specific bootstrap command name run after a Success result. Translates to a single `dart run <consumer>:artisan <name>` invocation deferred to the very end of the manifest flow.
+Optional plugin-specific bootstrap command name AUTO-RUN after a Success result. On a non-dry-run install, once the plugin is registered (`plugins.json` + `lib/app/_plugins.g.dart` regenerated), `plugin:install` spawns the declared command as a fresh dispatcher subprocess so the just-registered plugin command actually executes. The chained command is a plugin command that was only just written to `_plugins.g.dart`, so it is not loaded in the current process; a subprocess is the only way to reach it.
+
+Dispatcher resolution:
+
+1. `./bin/fsa <name> --non-interactive` when a `bin/fsa` wrapper exists at the consumer project root (the AOT fast-CLI path).
+2. Otherwise `dart run <consumer>:artisan <name> --non-interactive`, deriving the consumer package name from the project's `pubspec.yaml` `name:` field.
+3. When neither resolves, `plugin:install` prints the one-line bootstrap hint (`Bootstrap with: artisan <name>`) instead, so the operator can run it manually.
+
+`--non-interactive` is ALWAYS forwarded to the chained command so an interactive bootstrap (e.g. `starter:install`) cannot hang waiting on stdin.
+
+Override and opt-out:
+
+- `--bootstrap-command=<name>` on the `plugin:install` invocation overrides the manifest value (the override command runs instead of the declared one).
+- `--no-bootstrap` skips the auto-run entirely; the command falls back to printing the hint.
+
+This was hint-only before `0.0.9`: prior versions only printed `Bootstrap with: artisan <name>` and never executed the command.
 
 ```yaml
 bootstrap_command: example:install
