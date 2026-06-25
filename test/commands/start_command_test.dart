@@ -1059,6 +1059,40 @@ void main() {
           reason: 'error must report configured timeout value, not a literal');
     });
 
+    test('live scrape loop returns the normalized URI when the log yields one',
+        () async {
+      final dir = Directory.systemTemp.createTempSync('artisan_scrape_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final log = File('${dir.path}/run.log')
+        ..writeAsStringSync(
+          'Debug service listening on http://127.0.0.1:1234/abc=/\n',
+        );
+
+      final uri = await StartCommand().scrapeVmServiceUriForTest(log, 5);
+
+      expect(uri, 'ws://127.0.0.1:1234/abc=/ws');
+    });
+
+    test(
+        'live scrape loop throws after the configured timeout when no URI '
+        'appears (deadline honors the configured value)', () async {
+      final dir = Directory.systemTemp.createTempSync('artisan_scrape_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final log = File('${dir.path}/run.log')
+        ..writeAsStringSync('starting up, no service uri yet\n');
+
+      await expectLater(
+        StartCommand().scrapeVmServiceUriForTest(log, 1),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.toString(),
+            'message',
+            contains('Timed out after 1s'),
+          ),
+        ),
+      );
+    });
+
     test(
         'busy cdpPort before Chrome launch: exit 1 + distinct error, '
         'Chrome never spawned', () async {

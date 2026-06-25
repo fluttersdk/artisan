@@ -989,6 +989,13 @@ class StartCommand extends ArtisanCommand {
     return await completer.future.timeout(const Duration(seconds: 10));
   }
 
+  /// Test-only entry to the live VM Service URI scrape loop, the production
+  /// path the [cdpVmServiceScraper] seam otherwise bypasses. Lets tests cover
+  /// the configurable deadline and the timeout error directly.
+  @visibleForTesting
+  Future<String> scrapeVmServiceUriForTest(File logFile, int timeoutSeconds) =>
+      _scrapeVmServiceUriFromFile(logFile, timeoutSeconds);
+
   Future<String> _scrapeVmServiceUriFromFile(
     File logFile,
     int timeoutSeconds,
