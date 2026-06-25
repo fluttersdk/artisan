@@ -307,11 +307,26 @@ class PluginInstallCommand extends ArtisanInstallCommand {
     //    issues) must not crash `plugin:install`: catch it, warn, and fall back
     //    to the manual hint so the operator can still bootstrap by hand.
     try {
-      final outcome = await buildBootstrapRunner().run(
+      final result = await buildBootstrapRunner().run(
         bootstrapCommand: bootstrap,
         projectRoot: getProjectRoot(),
       );
-      if (outcome == BootstrapRunOutcome.notResolvable) {
+
+      // No dispatcher resolved: nothing ran, fall back to the manual hint.
+      if (result.outcome == BootstrapRunOutcome.notResolvable) {
+        _emitBootstrapHint(ctx, bootstrap: bootstrap, skipped: false);
+        return;
+      }
+
+      // A subprocess ran but exited non-zero: surface the failure instead of
+      // letting the manifest post_install message imply the chain succeeded.
+      if (!result.succeeded) {
+        final detail = (result.stderr ?? '').trim();
+        ctx.output.warning(
+          'The bootstrap command "$bootstrap" exited with code '
+          '${result.exitCode} and may not have completed.'
+          '${detail.isEmpty ? '' : '\n$detail'}',
+        );
         _emitBootstrapHint(ctx, bootstrap: bootstrap, skipped: false);
       }
     } catch (e) {

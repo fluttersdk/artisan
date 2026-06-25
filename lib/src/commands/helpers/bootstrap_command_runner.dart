@@ -38,6 +38,33 @@ enum BootstrapRunOutcome {
   notResolvable,
 }
 
+/// Result of a [BootstrapCommandRunner.run] attempt.
+///
+/// Carries the [outcome] plus, when a subprocess actually ran, its
+/// [exitCode] and captured [stderr]. The caller uses [succeeded] to decide
+/// whether the chained command completed; a non-zero exit (a stale bundle, an
+/// unknown command, a scaffold error) must NOT be reported to the operator as
+/// success, which is exactly what discarding the [ProcessResult] used to do.
+class BootstrapRunResult {
+  const BootstrapRunResult({
+    required this.outcome,
+    this.exitCode,
+    this.stderr,
+  });
+
+  final BootstrapRunOutcome outcome;
+
+  /// Subprocess exit code, or `null` when [outcome] is `notResolvable`
+  /// (nothing was spawned).
+  final int? exitCode;
+
+  /// Captured subprocess stderr, or `null` when nothing was spawned.
+  final String? stderr;
+
+  /// True only when a subprocess ran AND exited zero.
+  bool get succeeded => outcome == BootstrapRunOutcome.invoked && exitCode == 0;
+}
+
 /// Runs a plugin's declared `bootstrap_command` as a fresh dispatcher
 /// subprocess after `plugin:install` registers the plugin.
 ///
@@ -84,10 +111,10 @@ class BootstrapCommandRunner {
   /// @param bootstrapCommand  The plugin command to chain (e.g.
   ///                          `starter:install`).
   /// @param projectRoot       Absolute path to the consumer project root.
-  /// @return [BootstrapRunOutcome.invoked] when a dispatcher was resolved and
-  ///         the subprocess ran; [BootstrapRunOutcome.notResolvable] when no
-  ///         dispatcher could be resolved.
-  Future<BootstrapRunOutcome> run({
+  /// @return a [BootstrapRunResult]: `invoked` (with the subprocess exit code
+  ///         and captured stderr) when a dispatcher was resolved and ran;
+  ///         `notResolvable` when no dispatcher could be resolved.
+  Future<BootstrapRunResult> run({
     required String bootstrapCommand,
     required String projectRoot,
   }) async {
@@ -95,17 +122,26 @@ class BootstrapCommandRunner {
     //    else `dart run <consumer>:artisan`. Return early when neither is
     //    resolvable so the caller can fall back to the hint.
     final invocation = _resolveDispatcher(projectRoot, bootstrapCommand);
-    if (invocation == null) return BootstrapRunOutcome.notResolvable;
+    if (invocation == null) {
+      return const BootstrapRunResult(
+        outcome: BootstrapRunOutcome.notResolvable,
+      );
+    }
 
-    // 2. Run the chained command as a subprocess scoped to the consumer root.
-    //    The chained command's own exit code does not change this outcome:
-    //    "invoked" reports that the auto-run fired, not that it succeeded.
-    await _runner(
+    // 2. Run the chained command as a subprocess scoped to the consumer root,
+    //    and surface its exit code + stderr so the caller can tell success
+    //    from a silent failure (a stale bundle, an unknown command, or a
+    //    scaffold error must not be reported to the operator as success).
+    final result = await _runner(
       invocation.executable,
       invocation.arguments,
       workingDirectory: projectRoot,
     );
-    return BootstrapRunOutcome.invoked;
+    return BootstrapRunResult(
+      outcome: BootstrapRunOutcome.invoked,
+      exitCode: result.exitCode,
+      stderr: result.stderr?.toString(),
+    );
   }
 
   /// Resolves the dispatcher executable + argument list, or `null` when no

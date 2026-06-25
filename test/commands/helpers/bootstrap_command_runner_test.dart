@@ -44,7 +44,7 @@ void main() {
         projectRoot: root.path,
       );
 
-      expect(result, BootstrapRunOutcome.invoked);
+      expect(result.outcome, BootstrapRunOutcome.invoked);
       expect(runner.executable, './bin/fsa');
       expect(
         runner.arguments,
@@ -71,7 +71,7 @@ void main() {
         projectRoot: root.path,
       );
 
-      expect(result, BootstrapRunOutcome.invoked);
+      expect(result.outcome, BootstrapRunOutcome.invoked);
       expect(runner.executable, 'dart');
       expect(
         runner.arguments,
@@ -99,9 +99,48 @@ void main() {
         projectRoot: root.path,
       );
 
-      expect(result, BootstrapRunOutcome.notResolvable);
+      expect(result.outcome, BootstrapRunOutcome.notResolvable);
       expect(runner.executable, isNull,
           reason: 'no dispatcher means the runner is never invoked');
+    });
+
+    test('surfaces the subprocess exit code and stderr on failure', () async {
+      final root = Directory.systemTemp.createTempSync('bootstrap_fail_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      Directory(p.join(root.path, 'bin')).createSync(recursive: true);
+      File(p.join(root.path, 'bin', 'fsa')).writeAsStringSync('#!/bin/sh\n');
+
+      final runner = _RecordingRunner()
+        ..returnResult =
+            ProcessResult(0, 64, '', 'Unknown command: starter:install');
+      final result =
+          await BootstrapCommandRunner(processRunner: runner.call).run(
+        bootstrapCommand: 'starter:install',
+        projectRoot: root.path,
+      );
+
+      expect(result.outcome, BootstrapRunOutcome.invoked);
+      expect(result.succeeded, isFalse);
+      expect(result.exitCode, 64);
+      expect(result.stderr, contains('Unknown command'));
+    });
+
+    test('reports succeeded when the subprocess exits zero', () async {
+      final root = Directory.systemTemp.createTempSync('bootstrap_ok_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      Directory(p.join(root.path, 'bin')).createSync(recursive: true);
+      File(p.join(root.path, 'bin', 'fsa')).writeAsStringSync('#!/bin/sh\n');
+
+      final runner = _RecordingRunner()
+        ..returnResult = ProcessResult(0, 0, '', '');
+      final result =
+          await BootstrapCommandRunner(processRunner: runner.call).run(
+        bootstrapCommand: 'starter:install',
+        projectRoot: root.path,
+      );
+
+      expect(result.succeeded, isTrue);
+      expect(result.exitCode, 0);
     });
 
     test('always forwards --non-interactive to the chained command', () async {

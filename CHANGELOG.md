@@ -19,6 +19,7 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- `plugin:install` now surfaces a failing `bootstrap_command` instead of implying success. `BootstrapCommandRunner.run` returns a `BootstrapRunResult` carrying the subprocess exit code and captured stderr (it previously discarded the `ProcessResult`), and `plugin:install` warns with the exit code + stderr and prints the manual bootstrap hint when the chained command exits non-zero. A bootstrap that fails (stale fast-CLI bundle, unknown command, scaffold error) is no longer reported to the operator as if it had completed.
 - `start --timeout=<n>` now rejects zero and negative values immediately with an actionable error ("--timeout must be a positive integer"), instead of silently passing a non-positive deadline to the VM Service scrape loop and producing a confusing "Timed out after 0s" failure.
 - Passing an unknown option to any command now fails loudly instead of silently printing help and exiting as if help were requested (issue #12). The dispatcher writes `Unknown option: <flag>` to stderr (both long `--foo` and short `-x` forms), prints the command help, and exits non-zero. Other parse failures keep their original messages: a missing option value (`Missing argument for "..."`), a disallowed value, and a value given to a flag each surface their specific diagnostic unchanged. `--help` / `-h` and every valid invocation are unaffected. Because this is the shared dispatch path for every command, the fix benefits every plugin CLI built on the substrate.
 
