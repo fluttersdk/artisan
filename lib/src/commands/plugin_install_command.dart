@@ -301,13 +301,21 @@ class PluginInstallCommand extends ArtisanInstallCommand {
       return;
     }
 
-    // 3. Spawn the chained command. When no dispatcher resolves, fall back to
-    //    the hint so the operator can still bootstrap manually.
-    final outcome = await buildBootstrapRunner().run(
-      bootstrapCommand: bootstrap,
-      projectRoot: getProjectRoot(),
-    );
-    if (outcome == BootstrapRunOutcome.notResolvable) {
+    // 3. Spawn the chained command. This is a best-effort convenience step that
+    //    runs AFTER the install + registration already succeeded, so a failure
+    //    here (missing `dart` on PATH, non-executable `bin/fsa`, working-dir
+    //    issues) must not crash `plugin:install`: catch it, warn, and fall back
+    //    to the manual hint so the operator can still bootstrap by hand.
+    try {
+      final outcome = await buildBootstrapRunner().run(
+        bootstrapCommand: bootstrap,
+        projectRoot: getProjectRoot(),
+      );
+      if (outcome == BootstrapRunOutcome.notResolvable) {
+        _emitBootstrapHint(ctx, bootstrap: bootstrap, skipped: false);
+      }
+    } catch (e) {
+      ctx.output.warning('Could not auto-run the bootstrap command: $e');
       _emitBootstrapHint(ctx, bootstrap: bootstrap, skipped: false);
     }
   }

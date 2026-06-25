@@ -142,12 +142,20 @@ class BootstrapCommandRunner {
   }
 
   /// Reads the consumer package name from `<root>/pubspec.yaml` `name:` field.
-  /// Returns `null` when the pubspec is missing or has no `name:` entry.
+  /// Returns `null` when the pubspec is missing, unreadable, or has no `name:`
+  /// entry. An unreadable pubspec (permissions, mid-write) is treated as "not
+  /// resolvable" rather than crashing the post-install bootstrap step.
   static String? _readConsumerName(String root) {
     final pubspec = File(p.join(root, 'pubspec.yaml'));
     if (!pubspec.existsSync()) return null;
+    final String content;
+    try {
+      content = pubspec.readAsStringSync();
+    } on FileSystemException {
+      return null;
+    }
     final match = RegExp(r'^name:\s*(\S+)', multiLine: true).firstMatch(
-      pubspec.readAsStringSync(),
+      content,
     );
     return match?.group(1);
   }

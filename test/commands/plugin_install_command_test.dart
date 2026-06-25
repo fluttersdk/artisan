@@ -89,6 +89,10 @@ class _RecordingBootstrapRunner implements BootstrapCommandRunner {
 
   BootstrapRunOutcome returnOutcome = BootstrapRunOutcome.invoked;
 
+  /// When set, [run] throws this instead of returning, simulating a runtime
+  /// failure (e.g. `dart` missing on PATH) so the best-effort path is covered.
+  Object? throwOnRun;
+
   @override
   Future<BootstrapRunOutcome> run({
     required String bootstrapCommand,
@@ -97,6 +101,7 @@ class _RecordingBootstrapRunner implements BootstrapCommandRunner {
     callCount++;
     this.bootstrapCommand = bootstrapCommand;
     this.projectRoot = projectRoot;
+    if (throwOnRun != null) throw throwOnRun!;
     return returnOutcome;
   }
 }
@@ -1099,6 +1104,39 @@ void main() {
       final out = (ctx.output as BufferedOutput).content;
       expect(out, contains('Bootstrap with: artisan starter:install'),
           reason: 'when the runner cannot resolve a dispatcher, emit the hint');
+    });
+
+    test('a runner failure is best-effort: install succeeds, warns, hints',
+        () async {
+      final root = Directory.systemTemp.createTempSync('plinst_boot_throw_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'magic_starter');
+      seedLibApp(root);
+
+      final manifestPath = p.join(root.path, 'install.yaml');
+      writeManifestWithBootstrap(manifestPath, 'magic_starter');
+
+      final runner = _RecordingBootstrapRunner()
+        ..throwOnRun = ProcessException('dart', <String>[], 'not found');
+      final cmd = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+        fakeBootstrapRunner: runner,
+      );
+      final ctx = _ctxWith(
+        opts(),
+        positional: const ['magic_starter'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0,
+          reason: 'a post-install auto-run failure must not fail the install');
+      expect(runner.callCount, 1);
+      final out = (ctx.output as BufferedOutput).content;
+      expect(out, contains('Could not auto-run the bootstrap command'));
+      expect(out, contains('Bootstrap with: artisan starter:install'),
+          reason: 'falls back to the manual hint after a runner failure');
     });
   });
 }
