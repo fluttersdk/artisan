@@ -26,9 +26,10 @@ Launches a Chrome web dev session on port `3100` with the VM Service listener on
 ```
 dart run artisan start [--device=<target>] [--port=<n>] [--vm-service-port=<n>]
                        [--[no-]dds] [--[no-]profile-static] [--cdp-port=<n>]
+                       [--timeout=<n>]
 ```
 
-`start` accepts no positional arguments. All configuration is done via named options and flags declared in `configure(ArgParser)` (see `lib/src/commands/start_command.dart:38`).
+`start` accepts no positional arguments. All configuration is done via named options and flags declared in `configure(ArgParser)` in `lib/src/commands/start_command.dart`.
 
 <a name="options"></a>
 ## Options
@@ -40,7 +41,8 @@ dart run artisan start [--device=<target>] [--port=<n>] [--vm-service-port=<n>]
 | `--vm-service-port` | int | `8181` | VM Service listener port. Recorded in `state.json`; used by `mcp:serve` and connected-mode tools to open the WebSocket. |
 | `--dds` | flag | `false` | Enable Dart Development Service. When absent (default), `--no-dds` is forwarded to `flutter run` so dusk and tinker connect directly to the VM Service. |
 | `--profile-static` | flag | `false` | Tag the session as a static-profile run. Sets `profile: "static"` in `state.json`; otherwise `"debug"`. |
-| `--cdp-port` | int | (none) | Chrome DevTools Protocol port. When set, `start` pre-launches Chrome with `--remote-debugging-port=<n>` and runs Flutter on `-d web-server`, recording `chromePid` / `tmpProfileDir` / `cdpPort` in `state.json`. Required for `dusk:resize` / `dusk:device`. Only valid with `--device=chrome` or `--device=web-server`, and requires Flutter SDK 3.30.0 or newer. A subsequent `restart` preserves this port. |
+| `--cdp-port` | int | (none) | Chrome DevTools Protocol port. When set, `start` pre-launches Chrome with `--remote-debugging-port=<n>` and runs Flutter on `-d web-server`, recording `chromePid` / `tmpProfileDir` / `cdpPort` in `state.json`. Required for `dusk:resize` / `dusk:device`. Only valid with `--device=chrome` or `--device=web-server`, and requires Flutter SDK 3.30.0 or newer. A subsequent `restart` preserves this port. The port is probed before Chrome launches; if it is already in use you receive a clear error with the `--cdp-port` hint instead of a misleading "Is Chrome installed?" message. |
+| `--timeout` | int | `90` | Seconds to wait for the VM Service URI to appear in the `flutter run` log. Increase on cold starts where build and DartDev initialisation takes longer than the default (common on first run after a clean Flutter SDK install or on low-powered CI). Only applies to the `--cdp-port` branch. |
 
 <a name="behavior"></a>
 ## Behavior
@@ -127,6 +129,14 @@ dart run artisan start --device=chrome --cdp-port=9222
 
 Pre-launches Chrome with `--remote-debugging-port=9222` and runs Flutter on `-d web-server`, recording `chromePid` / `tmpProfileDir` / `cdpPort` in `state.json` so `dusk:resize` and `dusk:device` can drive the Chrome DevTools Protocol. Requires Flutter SDK 3.30.0 or newer. A subsequent `restart` preserves the CDP port.
 
+**CDP session with extended VM Service timeout (cold CI or slow machine):**
+
+```bash
+dart run artisan start --device=chrome --cdp-port=9222 --timeout=180
+```
+
+Allows up to 180 seconds for the VM Service URI to appear in the log. Use this when the default 90 seconds is not enough for a cold Flutter SDK install or a slow CI host.
+
 <a name="troubleshooting"></a>
 ## Troubleshooting
 
@@ -134,7 +144,9 @@ Pre-launches Chrome with `--remote-debugging-port=9222` and runs Flutter on `-d 
 
 **`mkfifo` permission denied.** `start` creates the FIFO at `~/.artisan/flutter-dev.fifo`. If `~/.artisan/` was created by a previous run with different ownership or mode bits, `mkfifo` fails. Fix with `rm -rf ~/.artisan && dart run artisan start`. Note: `start` is POSIX-only (macOS/Linux). It will not work on Windows.
 
-**VM Service URI never appears (90-second timeout).** If `flutter run` stalls before printing the URI (for example, the Chrome binary is missing, the Flutter SDK is not on `PATH`, or a Dart compilation error occurs), `start` throws `StateError: Timed out after 90s...`. Inspect the log at `~/.artisan/flutter-dev.log` for the underlying Flutter output. Common causes: wrong `--device` value, missing `CHROME_EXECUTABLE` env var for headless environments, or a syntax error in the app's entry point.
+**VM Service URI never appears (timeout).** If `flutter run` stalls before printing the URI (for example, the Chrome binary is missing, the Flutter SDK is not on `PATH`, or a Dart compilation error occurs), `start` throws `StateError: Timed out after <n>s...`. Inspect the log at `~/.artisan/flutter-dev.log` for the underlying Flutter output. Common causes: wrong `--device` value, missing `CHROME_EXECUTABLE` env var for headless environments, or a syntax error in the app's entry point. On cold starts (first run after a fresh SDK install, slow CI), increase the deadline with `--timeout=120` or higher.
+
+**CDP port already in use (`--cdp-port` collision).** When the configured CDP port is held by another process, `start` exits immediately before launching Chrome and emits: `CDP port <n> is already in use; pass --cdp-port <free-port> or free it before running start.` Choose a free port (for example `--cdp-port=9224`) or kill the occupying process with `lsof -ti:<port> | xargs kill`.
 
 <a name="related"></a>
 ## Related

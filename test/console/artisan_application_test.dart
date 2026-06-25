@@ -1,5 +1,23 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:fluttersdk_artisan/artisan.dart';
 import 'package:test/test.dart';
+
+/// Run [body] capturing everything written to `stderr` and `stdout`, so the
+/// dispatch path's user-facing output can be asserted in-process.
+Future<({int code, String err, String out})> _captureDispatch(
+  Future<int> Function() body,
+) async {
+  final err = _CapturingStdout();
+  final out = _CapturingStdout();
+  final code = await IOOverrides.runZoned(
+    body,
+    stderr: () => err,
+    stdout: () => out,
+  );
+  return (code: code, err: err.buffer.toString(), out: out.buffer.toString());
+}
 
 void main() {
   group('ArtisanApplication.dispatch', () {
@@ -44,14 +62,77 @@ void main() {
       expect(code, 7);
     });
 
-    test('FormatException from arg parser surfaces as exit 1', () async {
+    test('unknown long flag errors clearly on stderr and exits non-zero',
+        () async {
       final registry = ArtisanRegistry();
       registry.register(_OptionCommand());
       final app = ArtisanApplication(registry: registry);
 
-      final code = await app.dispatch(<String>['has-option', '--unknown']);
+      final result = await _captureDispatch(
+        () => app.dispatch(<String>['has-option', '--unknown']),
+      );
 
-      expect(code, 1);
+      expect(result.code, isNonZero);
+      expect(result.err, contains('Unknown option: --unknown'));
+    });
+
+    test('unknown short flag errors clearly on stderr and exits non-zero',
+        () async {
+      final registry = ArtisanRegistry();
+      registry.register(_OptionCommand());
+      final app = ArtisanApplication(registry: registry);
+
+      final result = await _captureDispatch(
+        () => app.dispatch(<String>['has-option', '-x']),
+      );
+
+      expect(result.code, isNonZero);
+      expect(result.err, contains('Unknown option: -x'));
+    });
+
+    test('valid flag set parses unchanged and reaches handle', () async {
+      final command = _OptionCommand();
+      final registry = ArtisanRegistry();
+      registry.register(command);
+      final app = ArtisanApplication(registry: registry);
+
+      final result = await _captureDispatch(
+        () => app.dispatch(<String>['has-option', '--output', 'build/app']),
+      );
+
+      expect(result.code, 0);
+      expect(command.capturedOutput, 'build/app');
+      expect(result.err, isEmpty);
+    });
+
+    test('command --help still prints help and exits 0 unchanged', () async {
+      final command = _OptionCommand();
+      final registry = ArtisanRegistry();
+      registry.register(command);
+      final app = ArtisanApplication(registry: registry);
+
+      final result = await _captureDispatch(
+        () => app.dispatch(<String>['has-option', '--help']),
+      );
+
+      expect(result.code, 0);
+      expect(command.handleCalls, 0);
+      expect(result.err, isEmpty);
+    });
+
+    test('genuine missing-required-value error keeps its original message',
+        () async {
+      final registry = ArtisanRegistry();
+      registry.register(_OptionCommand());
+      final app = ArtisanApplication(registry: registry);
+
+      final result = await _captureDispatch(
+        () => app.dispatch(<String>['has-option', '--output']),
+      );
+
+      expect(result.code, isNonZero);
+      expect(result.err, contains('Missing argument for "--output"'));
+      expect(result.err, isNot(contains('Unknown option')));
     });
 
     test('command --help (per-command) returns 0 without running handle',
@@ -138,17 +219,29 @@ class _FixedExitCommand extends ArtisanCommand {
 }
 
 class _OptionCommand extends ArtisanCommand {
+  int handleCalls = 0;
+  String? capturedOutput;
+
   @override
   String get name => 'has-option';
 
   @override
-  String get description => 'declares no options';
+  String get description => 'declares a single --output option';
 
   @override
   CommandBoot get boot => CommandBoot.none;
 
   @override
-  Future<int> handle(ArtisanContext ctx) async => 0;
+  void configure(ArgParser parser) {
+    parser.addOption('output', abbr: 'o', help: 'Output path');
+  }
+
+  @override
+  Future<int> handle(ArtisanContext ctx) async {
+    handleCalls++;
+    capturedOutput = ctx.input.option('output') as String?;
+    return 0;
+  }
 }
 
 class _RecordingCommand extends ArtisanCommand {
@@ -215,4 +308,74 @@ class _RegistryCapturingCommand extends ArtisanCommand {
     capturedRegistry = ctx.registry;
     return 0;
   }
+}
+
+/// File-private [Stdout] fake that buffers writes for assertion. Used via
+/// [IOOverrides.runZoned] to capture the dispatch path's stderr/stdout output
+/// for both the [stdout:] and [stderr:] override slots (both slots accept a
+/// [Stdout] factory in Dart's IO model).
+class _CapturingStdout implements Stdout {
+  final StringBuffer buffer = StringBuffer();
+
+  @override
+  Encoding encoding = systemEncoding;
+
+  @override
+  String lineTerminator = '\n';
+
+  // --- StringSink writes (buffered for assertion) ---
+
+  @override
+  void write(Object? object) => buffer.write(object);
+
+  @override
+  void writeln([Object? object = '']) => buffer.writeln(object);
+
+  @override
+  void writeAll(Iterable<dynamic> objects, [String sep = '']) =>
+      buffer.writeAll(objects, sep);
+
+  @override
+  void writeCharCode(int charCode) => buffer.writeCharCode(charCode);
+
+  // --- StreamSink<List<int>> (bytes, decoded and buffered) ---
+
+  @override
+  void add(List<int> data) => buffer.write(encoding.decode(data));
+
+  @override
+  void addError(Object error, [StackTrace? stackTrace]) {}
+
+  @override
+  Future<void> addStream(Stream<List<int>> stream) async {
+    await for (final chunk in stream) {
+      add(chunk);
+    }
+  }
+
+  @override
+  Future<void> flush() => Future<void>.value();
+
+  @override
+  Future<void> get done => Future<void>.value();
+
+  @override
+  Future<void> close() => Future<void>.value();
+
+  // --- Stdout terminal-query members (no-op in tests) ---
+
+  @override
+  bool get hasTerminal => false;
+
+  @override
+  bool get supportsAnsiEscapes => false;
+
+  @override
+  int get terminalColumns => 80;
+
+  @override
+  int get terminalLines => 24;
+
+  @override
+  IOSink get nonBlocking => this;
 }

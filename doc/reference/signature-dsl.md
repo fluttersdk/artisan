@@ -16,6 +16,7 @@ registration time; the registry applies it to the underlying `ArgParser`.
 - [Option Modifiers](#option-modifiers)
 - [Description Annotation](#description-annotation)
 - [Name Validation](#name-validation)
+- [Error Handling](#error-handling)
 - [Examples](#examples)
 - [Related](#related)
 
@@ -147,6 +148,35 @@ Allows colon-namespaced or hyphen-namespaced segments (e.g. `plugin:install`,
 Must start with a lowercase letter or digit; subsequent characters may
 include underscores and hyphens. Both patterns throw `FormatException` at
 parse time with the invalid value and expected pattern quoted in the message.
+
+---
+
+<a name="error-handling"></a>
+## Error Handling
+
+When a command is invoked with an option the parser does not recognize, the
+dispatcher fails loudly: it writes `Unknown option: <flag>` to stderr, prints
+the command help, and exits with a non-zero code. This applies to both long
+(`--unknown`) and short (`-x`) forms.
+
+```
+$ artisan make:command Foo --bogus
+✗ Unknown option: --bogus
+ℹ Description:
+  ...
+```
+
+Every other parse failure keeps its original, specific message:
+
+| Cause | Example invocation | Message |
+|-------|--------------------|---------|
+| Unknown option | `--bogus`, `-x` | `Unknown option: <flag>` |
+| Missing option value | `--output` (value required) | `Missing argument for "--output".` |
+| Disallowed value | `--mode=zoom` (not in `allowed`) | `"zoom" is not an allowed value for option "--mode".` |
+| Value on a flag | `--force=1` | `Flag option "--force" should not be given a value.` |
+
+`--help` / `-h` and every valid invocation are unaffected: they parse and
+behave exactly as before.
 
 ---
 
