@@ -944,6 +944,55 @@ void main() {
           contains('--timeout expects an integer number of seconds'));
     });
 
+    test('--timeout rejects zero: exit 1 + actionable error', () async {
+      final command = StartCommand();
+      final output = BufferedOutput();
+      final ctx = ArtisanContext.bare(
+        MapInput(<String, dynamic>{
+          'device': 'chrome',
+          'port': '3100',
+          'dds': false,
+          'profile-static': false,
+          'cdp-port': '9223',
+          'timeout': '0',
+        }),
+        output,
+      );
+
+      final code = await command.handle(ctx);
+
+      expect(code, 1);
+      expect(
+        output.content,
+        contains('--timeout must be a positive integer'),
+      );
+    });
+
+    test('--timeout rejects negative value: exit 1 + actionable error',
+        () async {
+      final command = StartCommand();
+      final output = BufferedOutput();
+      final ctx = ArtisanContext.bare(
+        MapInput(<String, dynamic>{
+          'device': 'chrome',
+          'port': '3100',
+          'dds': false,
+          'profile-static': false,
+          'cdp-port': '9223',
+          'timeout': '-5',
+        }),
+        output,
+      );
+
+      final code = await command.handle(ctx);
+
+      expect(code, 1);
+      expect(
+        output.content,
+        contains('--timeout must be a positive integer'),
+      );
+    });
+
     test(
         '--timeout value drives the VM Service scrape seam (configured value '
         'reported in error, not literal 90)', () async {

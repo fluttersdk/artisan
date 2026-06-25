@@ -280,6 +280,13 @@ class StartCommand extends ArtisanCommand {
       );
       return 1;
     }
+    if (resolvedTimeout <= 0) {
+      ctx.output.error(
+        '--timeout must be a positive integer (got $resolvedTimeout). '
+        'Pass e.g. --timeout=90.',
+      );
+      return 1;
+    }
 
     if (resolvedCdpPort != null) {
       return await _handleCdpBranch(

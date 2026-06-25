@@ -29,7 +29,7 @@ dart run artisan start [--device=<target>] [--port=<n>] [--vm-service-port=<n>]
                        [--timeout=<n>]
 ```
 
-`start` accepts no positional arguments. All configuration is done via named options and flags declared in `configure(ArgParser)` (see `lib/src/commands/start_command.dart:38`).
+`start` accepts no positional arguments. All configuration is done via named options and flags declared in `configure(ArgParser)` in `lib/src/commands/start_command.dart`.
 
 <a name="options"></a>
 ## Options
