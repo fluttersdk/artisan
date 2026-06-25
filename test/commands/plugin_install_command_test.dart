@@ -87,14 +87,15 @@ class _RecordingBootstrapRunner implements BootstrapCommandRunner {
   String? projectRoot;
   int callCount = 0;
 
-  BootstrapRunOutcome returnOutcome = BootstrapRunOutcome.invoked;
+  BootstrapRunResult returnResult = const BootstrapRunResult(
+      outcome: BootstrapRunOutcome.invoked, exitCode: 0);
 
   /// When set, [run] throws this instead of returning, simulating a runtime
   /// failure (e.g. `dart` missing on PATH) so the best-effort path is covered.
   Object? throwOnRun;
 
   @override
-  Future<BootstrapRunOutcome> run({
+  Future<BootstrapRunResult> run({
     required String bootstrapCommand,
     required String projectRoot,
   }) async {
@@ -102,7 +103,7 @@ class _RecordingBootstrapRunner implements BootstrapCommandRunner {
     this.bootstrapCommand = bootstrapCommand;
     this.projectRoot = projectRoot;
     if (throwOnRun != null) throw throwOnRun!;
-    return returnOutcome;
+    return returnResult;
   }
 }
 
@@ -1084,7 +1085,9 @@ void main() {
       writeManifestWithBootstrap(manifestPath, 'magic_starter');
 
       final runner = _RecordingBootstrapRunner()
-        ..returnOutcome = BootstrapRunOutcome.notResolvable;
+        ..returnResult = const BootstrapRunResult(
+          outcome: BootstrapRunOutcome.notResolvable,
+        );
       final cmd = _TestablePluginInstallCommand(
         fakeProjectRoot: root.path,
         fakeInstallYamlPath: manifestPath,
@@ -1137,6 +1140,45 @@ void main() {
       expect(out, contains('Could not auto-run the bootstrap command'));
       expect(out, contains('Bootstrap with: artisan starter:install'),
           reason: 'falls back to the manual hint after a runner failure');
+    });
+
+    test('a non-zero bootstrap exit warns + hints instead of implying success',
+        () async {
+      final root = Directory.systemTemp.createTempSync('plinst_boot_nonzero_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      _seedConsumerProject(root, pluginName: 'magic_starter');
+      seedLibApp(root);
+
+      final manifestPath = p.join(root.path, 'install.yaml');
+      writeManifestWithBootstrap(manifestPath, 'magic_starter');
+
+      final runner = _RecordingBootstrapRunner()
+        ..returnResult = const BootstrapRunResult(
+          outcome: BootstrapRunOutcome.invoked,
+          exitCode: 64,
+          stderr: 'Unknown command: starter:install',
+        );
+      final cmd = _TestablePluginInstallCommand(
+        fakeProjectRoot: root.path,
+        fakeInstallYamlPath: manifestPath,
+        fakeBootstrapRunner: runner,
+      );
+      final ctx = _ctxWith(
+        opts(),
+        positional: const ['magic_starter'],
+        signature: cmd.parsedSignature,
+      );
+
+      final exit = await cmd.handle(ctx);
+      expect(exit, 0,
+          reason: 'a failed auto-run is best-effort, install still succeeds');
+      final out = (ctx.output as BufferedOutput).content;
+      expect(out, contains('exited with code 64'),
+          reason: 'a non-zero bootstrap exit must be surfaced, not hidden');
+      expect(out, contains('Unknown command: starter:install'),
+          reason: 'the captured stderr explains the failure');
+      expect(out, contains('Bootstrap with: artisan starter:install'),
+          reason: 'falls back to the manual hint so the operator can recover');
     });
   });
 }
