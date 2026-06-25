@@ -297,7 +297,7 @@ class StartCommand extends ArtisanCommand {
         ddsOn: ddsOn,
         profileStatic: profileStatic,
         cdpPort: resolvedCdpPort,
-        scrapTimeout: resolvedTimeout,
+        scrapeTimeout: resolvedTimeout,
       );
     }
 
@@ -370,7 +370,7 @@ class StartCommand extends ArtisanCommand {
     required bool ddsOn,
     required bool profileStatic,
     required int cdpPort,
-    int scrapTimeout = 90,
+    int scrapeTimeout = 90,
   }) async {
     // 1. Validate device value: only chrome (default) and web-server accepted.
     if (device != 'chrome' && device != 'web-server') {
@@ -554,7 +554,7 @@ class StartCommand extends ArtisanCommand {
       await cdpChromeNavigator(cdpPort, 'http://localhost:$webPort/');
 
       // 11. NOW scrape the VM Service URI emitted by DWDS once Chrome connected.
-      final vmServiceUri = await _runVmServiceScrape(logFile, scrapTimeout);
+      final vmServiceUri = await _runVmServiceScrape(logFile, scrapeTimeout);
 
       // 12. Write state with the new CDP fields so StopCommand can reap Chrome.
       await StateFile.write(<String, dynamic>{

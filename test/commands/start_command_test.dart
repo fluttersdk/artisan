@@ -996,8 +996,9 @@ void main() {
     test(
         '--timeout value drives the VM Service scrape seam (configured value '
         'reported in error, not literal 90)', () async {
-      // Arrange: inject a scraper that records the deadline and then throws.
-      // We check the error message contains the configured timeout value.
+      // Arrange: inject a scraper that throws. The seam only receives a File,
+      // so the test asserts the error surfaced by handle() contains the
+      // configured timeout value rather than observing the deadline directly.
       StartCommand.cdpProcessRunner = _fakeProcessRunner(
         flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
       );
@@ -1022,9 +1023,10 @@ void main() {
         File(path).writeAsStringSync('');
       };
 
-      // The scraper throws the production timeout message; the test checks the
-      // error message surfaced by handle() contains "120s" (the configured
-      // timeout) rather than "90s" (the old hardcoded literal).
+      // The injected seam throws a timeout-shaped message containing the
+      // configured value; the test checks the error surfaced by handle()
+      // contains "120s" (the configured timeout) rather than "90s" (the old
+      // hardcoded literal).
       StartCommand.cdpVmServiceScraper = (_) async {
         throw StateError('Timed out after 120s waiting for VM Service URI');
       };
