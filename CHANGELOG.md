@@ -8,6 +8,8 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.9] - 2026-07-29
+
 ### Added
 
 - `start --timeout=<n>` option (default `90`): configures the maximum seconds the VM Service URI scrape loop waits for `flutter run` to print the debug URI in the log file. Previously the deadline was hardcoded to 90 s; cold starts on slow CI machines or after a fresh Flutter SDK install can exceed this limit. Setting `--timeout=120` (or higher) prevents false-timeout failures. The error message now reports the configured value rather than a literal "90s". Applies to the `--cdp-port` branch only; the non-CDP branch retains its own hardcoded deadline.
