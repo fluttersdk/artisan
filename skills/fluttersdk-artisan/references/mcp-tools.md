@@ -34,6 +34,23 @@ contract: protocol-level RPC errors never surface; missing-app /
 compile-error / runtime-exception cases all return successful JSON-RPC
 responses with `isError: true` text.
 
+## Contents
+
+- [Dispatch model (cross-cutting)](#dispatch-model-cross-cutting)
+- [artisan_start](#artisan_start)
+- [artisan_stop](#artisan_stop)
+- [artisan_status](#artisan_status)
+- [artisan_logs](#artisan_logs)
+- [artisan_restart](#artisan_restart)
+- [artisan_reload](#artisan_reload)
+- [artisan_hot_restart](#artisan_hot_restart)
+- [artisan_doctor](#artisan_doctor)
+- [artisan_list](#artisan_list)
+- [artisan_tinker](#artisan_tinker)
+- [Plugin-tool surface (when dispatcher path wired)](#plugin-tool-surface-when-dispatcher-path-wired)
+- [Cross-cutting: dispatch + error envelopes](#cross-cutting-dispatch--error-envelopes)
+- [Filter mechanics](#filter-mechanics)
+
 ## Dispatch model (cross-cutting)
 
 - **Boot modes**: 9 of 10 tools declare `CommandBoot.none` (no VM Service

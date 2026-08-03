@@ -8,6 +8,17 @@ channel), and the AOT bundle at `.artisan/cli-bundle/` plus its stamp
 documents each, the MCP boot path comparison (substrate vs dispatcher),
 and the recovery loop for every common failure substring.
 
+## Contents
+
+- [state.json schema](#statejson-schema)
+- [FIFO pipe model](#fifo-pipe-model)
+- [AOT bundle staleness gate](#aot-bundle-staleness-gate)
+- [MCP server boot path comparison](#mcp-server-boot-path-comparison)
+- [Diagnosing missing plugin tools](#diagnosing-missing-plugin-tools)
+- [Recovery loops by substring](#recovery-loops-by-substring)
+- [Quick state cleanup](#quick-state-cleanup)
+- [When to favour `./bin/fsa` over MCP](#when-to-favour-binfsa-over-mcp)
+
 ## state.json schema
 
 `lib/src/state/state_file.dart:6-26`
