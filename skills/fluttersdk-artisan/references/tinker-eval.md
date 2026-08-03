@@ -10,6 +10,19 @@ The handler is `lib/src/commands/tinker_command.dart:35`. The VM
 client is `lib/src/vm/vm_service_client.dart`. The MCP dispatch path is
 `lib/src/mcp/mcp_server.dart:794-820`.
 
+## Contents
+
+- [Wire model](#wire-model)
+- [Expression grammar (what `evaluate` accepts)](#expression-grammar-what-evaluate-accepts)
+- [The `await` auto-wrap](#the-await-auto-wrap)
+- [Scope rules](#scope-rules)
+- [Return value formatting](#return-value-formatting)
+- [Error paths (four distinct shapes)](#error-paths-four-distinct-shapes)
+- [Recipe pack](#recipe-pack)
+- [When NOT to use tinker](#when-not-to-use-tinker)
+- [Anti-patterns](#anti-patterns)
+- [Comparison: `artisan_tinker` vs `dusk_evaluate`](#comparison-artisan_tinker-vs-dusk_evaluate)
+
 ## Wire model
 
 ```
