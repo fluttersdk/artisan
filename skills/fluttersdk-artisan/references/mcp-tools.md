@@ -73,13 +73,13 @@ responses with `isError: true` text.
 > Spawns `flutter run -d <device>` as a background process and writes the
 > resulting VM Service URI + pid + web port to `~/.artisan/state.json`.
 > Other tools (`artisan_status`, `artisan_logs`, `dusk_*`,
-> `telescope_*`, `tinker_eval`) read this state file to find the running
+> `telescope_*`, `artisan_tinker`) read this state file to find the running
 > app. ONLY ONE Flutter app per machine can be tracked at a time
 > (single-slot state).
 >
 > Usage:
 > - Call this BEFORE invoking any plugin tool (`dusk_snap`,
->   `telescope_tail`, `tinker_eval`) that needs VM Service access.
+>   `telescope_tail`, `artisan_tinker`) that needs VM Service access.
 > - Default device is the first available; pass `device: "chrome"` for
 >   web (port 3100), `device: "macos"` for desktop, or
 >   `device: "<serial>"` for a connected mobile.

@@ -36,7 +36,7 @@ final class McpToolDescriptor {
   /// Tool name exposed to the MCP client.
   ///
   /// Follow the snake_case service-prefix pattern documented by Anthropic
-  /// (e.g. `dusk_tap`, `telescope_tail`, `tinker_evaluate`). The name must
+  /// (e.g. `dusk_tap`, `telescope_tail`, `artisan_tinker`). The name must
   /// be unique across all providers loaded in a single artisan session; the
   /// registry throws [ArtisanMcpToolCollisionException] on collision.
   final String name;

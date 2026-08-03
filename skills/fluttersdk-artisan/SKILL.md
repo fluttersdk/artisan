@@ -83,7 +83,8 @@ by `dart run fluttersdk_artisan install` once from the app root, then
    plus `status`, `logs`, `restart`, `doctor`, `list`, `tinker`). The
    other 12 are CLI-only: `help`, `install`, `make:command`,
    `make:fast-cli`, `make:plugin`, `commands:refresh`, `plugins:refresh`,
-   `plugin:install`, `plugin:uninstall`, `mcp:serve`, `mcp:install`.
+   `plugin:install`, `plugin:uninstall`, `mcp:serve`, `mcp:install`,
+   `mcp:uninstall`.
    They are excluded because they mutate source on disk (use the agent's
    file tools instead), need a TTY (interactive prompts), recurse into
    the MCP server (`mcp:serve`), or are meta-config (`mcp:install`).

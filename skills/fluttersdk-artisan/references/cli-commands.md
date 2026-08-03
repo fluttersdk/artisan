@@ -14,7 +14,7 @@ The allowlist excludes a command for one of five reasons:
 | Codegen barrel mutation | `commands:refresh`, `plugins:refresh` |
 | Needs TTY (interactive prompts) | `plugin:install`, `plugin:uninstall`, `help` |
 | Recurses into the MCP server | `mcp:serve` |
-| One-time meta config | `install`, `mcp:install` |
+| One-time meta config | `install`, `mcp:install`, `mcp:uninstall` |
 
 ## Picking the Bash form
 
@@ -423,7 +423,7 @@ Reconnect Claude Code (`/mcp reconnect fluttersdk`) to pick up the new entry.
 Exit 0 on success, 1 on `.mcp.json` parse error or refusal to overwrite
 without `--force`.
 
-## Reading the 21-command surface from `artisan_list`
+## Reading the 22-command surface from `artisan_list`
 
 Use `artisan_list` (MCP) or `./bin/fsa list` (CLI) to see the live
 catalog. The 12 CLI-only commands appear under these namespaces:
