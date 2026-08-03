@@ -1,8 +1,9 @@
-# CLI commands (the 11 not in the MCP allowlist)
+# CLI commands (the 12 not in the MCP allowlist)
 
-Of the 21 builtin commands in `fluttersdk_artisan`, only 10 surface as
-MCP tools (allowlist at `lib/src/mcp/mcp_server.dart:871-882`). The other
-11 are CLI-only. This file documents each: flag set, defaults, output
+Of the 22 builtin commands in `fluttersdk_artisan`, only 10 surface as
+MCP tools (the `_safeArtisanCommandNames` allowlist in
+`lib/src/mcp/mcp_server.dart`). The other
+12 are CLI-only. This file documents each: flag set, defaults, output
 shapes, exit codes, and the Bash form the agent should call.
 
 The allowlist excludes a command for one of five reasons:
@@ -425,7 +426,7 @@ without `--force`.
 ## Reading the 21-command surface from `artisan_list`
 
 Use `artisan_list` (MCP) or `./bin/fsa list` (CLI) to see the live
-catalog. The 11 CLI-only commands appear under these namespaces:
+catalog. The 12 CLI-only commands appear under these namespaces:
 
 - root: `help`, `install`
 - `commands:`: `commands:refresh`

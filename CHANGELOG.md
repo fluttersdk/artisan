@@ -8,6 +8,17 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The MCP server reported itself as `0.0.8` to every client.** The `Implementation.version` string in `McpServer` carries the comment "Keep in sync with pubspec.yaml `version:` on each release cut" and was missed on the 0.0.9 cut, so an MCP client's initialize handshake read a version one release behind while the package on disk was 0.0.9. Client-side version gating and bug reports both keyed on the wrong number. (`lib/src/mcp/mcp_server.dart`)
+
+### Quality
+
+- **The skill undercounted the builtin commands by one and the CLI-only set with it.** `make:fast-cli` landed in 0.0.2 and the counts were never rolled forward, so the skill promised "21 builtin CLI commands" and "11 CLI-only" against a real 22 and 12. Corrected in the frontmatter description, Core Law 6, the section 14 reference table, and the `references/cli-commands.md` title and intro. (`skills/fluttersdk-artisan/SKILL.md`, `skills/fluttersdk-artisan/references/cli-commands.md`)
+- **`start --timeout=<seconds>` was undiscoverable from the skill.** 0.0.9 made the VM Service URI scrape window configurable, but the skill still presented 90s as a fixed property of `start` in three places, so an agent facing a slow cold boot had no documented way out and would conclude the boot was broken. The MCP schema exposes no timeout parameter, which makes this a CLI-only escape hatch worth naming explicitly. (`skills/fluttersdk-artisan/SKILL.md`, `skills/fluttersdk-artisan/references/mcp-tools.md`, `skills/fluttersdk-artisan/references/state-and-recovery.md`)
+- The skill cited the substrate allowlist as `mcp_server.dart:871-882`; the range had drifted by two lines. Both citations now name the `_safeArtisanCommandNames` constant instead, which does not rot when the file moves. (`skills/fluttersdk-artisan/SKILL.md`, `skills/fluttersdk-artisan/references/mcp-tools.md`)
+- Skill version 0.0.4, stamped against package 0.0.9. The previous stamp claimed 0.0.7, which predates the `--timeout` flag and the `restart` CDP-port preservation the skill now describes. (`skills/fluttersdk-artisan/SKILL.md`)
+
 ## [0.0.9] - 2026-07-29
 
 ### Added

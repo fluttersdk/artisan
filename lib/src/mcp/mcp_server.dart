@@ -71,7 +71,7 @@ final class McpServer extends MCPServer with ToolsSupport {
           implementation: Implementation(
             name: 'fluttersdk_artisan_mcp',
             // Keep in sync with pubspec.yaml `version:` on each release cut.
-            version: '0.0.8',
+            version: '0.0.9',
           ),
         );
 
