@@ -35,6 +35,47 @@ void main() {
       // The parser accepts the flag the docblock promises wins on restart.
       expect(parser.parse(['--cdp-port=4444']).option('cdp-port'), '4444');
     });
+
+    test('configure declares every option a restart has to carry over', () {
+      // Only --cdp-port was preserved, so a restart relaunched on the default
+      // web port and VM Service port. Several worktrees run their own dev
+      // server here, so 3100 is usually held by a sibling: the stop half
+      // succeeded, the relaunch failed with `Address already in use`, and the
+      // app being driven was simply gone. The error names a port that appears
+      // in no command the caller ran, so it reads as a machine problem.
+      final parser = ArgParser();
+      RestartCommand().configure(parser);
+
+      expect(
+        parser.options.keys,
+        containsAll(<String>['cdp-port', 'port', 'vm-service-port', 'device']),
+      );
+    });
+
+    test('sessionOverridesFrom carries the prior ports and device', () {
+      final Map<String, Object?> forwarded =
+          RestartCommand.sessionOverridesFrom(
+        <String, dynamic>{
+          'cdpPort': 9333,
+          'webPort': 3180,
+          'vmServicePort': 8281,
+          'device': 'chrome',
+        },
+      );
+
+      expect(forwarded['cdpPort'], 9333);
+      expect(forwarded['webPort'], 3180);
+      expect(forwarded['vmServicePort'], 8281);
+      expect(forwarded['device'], 'chrome');
+    });
+
+    test('sessionOverridesFrom tolerates a missing or partial state', () {
+      expect(RestartCommand.sessionOverridesFrom(null), isEmpty);
+      expect(
+        RestartCommand.sessionOverridesFrom(<String, dynamic>{'cdpPort': 1}),
+        equals(<String, Object?>{'cdpPort': 1}),
+      );
+    });
   });
 
   // ---------------------------------------------------------------------------

@@ -1,0 +1,159 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:fluttersdk_artisan/artisan.dart';
+import 'package:test/test.dart';
+
+/// Verifies that two projects driven at once do not share one state file.
+///
+/// `~/.artisan/state.json` was a single global slot. A second project's
+/// `artisan start` silently took it over, and every connected command from
+/// the first project then drove the second app, succeeding each time. The
+/// measured case had a worktree in another repository rewrite the file
+/// mid-session; two commands later produced a screenshot of an entirely
+/// different product before anyone noticed.
+void main() {
+  group('StateFile session isolation', () {
+    late Directory tempHome;
+    late Directory projectA;
+    late Directory projectB;
+
+    setUp(() async {
+      tempHome = await Directory.systemTemp.createTemp('artisan_session_');
+      projectA = await Directory.systemTemp.createTemp('artisan_proj_a_');
+      projectB = await Directory.systemTemp.createTemp('artisan_proj_b_');
+      StateFile.debugHomeOverride = tempHome.path;
+      StateFile.pathOverride = null;
+    });
+
+    tearDown(() async {
+      StateFile.debugHomeOverride = null;
+      StateFile.debugProjectRootOverride = null;
+      StateFile.pathOverride = null;
+      for (final Directory dir in <Directory>[
+        tempHome,
+        projectA,
+        projectB,
+      ]) {
+        if (dir.existsSync()) await dir.delete(recursive: true);
+      }
+    });
+
+    test('two projects get two files', () {
+      StateFile.debugProjectRootOverride = projectA.path;
+      final String a = StateFile.path;
+      StateFile.debugProjectRootOverride = projectB.path;
+      final String b = StateFile.path;
+
+      expect(a, isNot(equals(b)));
+      expect(a, contains('/.artisan/sessions/'));
+      expect(b, contains('/.artisan/sessions/'));
+    });
+
+    test('the same project resolves to the same file', () {
+      StateFile.debugProjectRootOverride = projectA.path;
+      final String first = StateFile.path;
+      final String second = StateFile.path;
+
+      expect(first, equals(second));
+    });
+
+    test('a write for one project is invisible to the other', () async {
+      StateFile.debugProjectRootOverride = projectA.path;
+      await StateFile.write(<String, dynamic>{
+        'pid': 111,
+        'projectRoot': projectA.path,
+      });
+
+      StateFile.debugProjectRootOverride = projectB.path;
+      await StateFile.write(<String, dynamic>{
+        'pid': 222,
+        'projectRoot': projectB.path,
+      });
+
+      StateFile.debugProjectRootOverride = projectA.path;
+      final Map<String, dynamic>? a = await StateFile.read();
+
+      expect(
+        a?['pid'],
+        equals(111),
+        reason: 'project B taking the global slot must not repoint project A',
+      );
+    });
+
+    test('write mirrors to the legacy pointer for hand-written recipes',
+        () async {
+      StateFile.debugProjectRootOverride = projectA.path;
+      await StateFile.write(<String, dynamic>{
+        'pid': 111,
+        'projectRoot': projectA.path,
+      });
+
+      final File pointer = File(StateFile.legacyPointerPath);
+      expect(pointer.existsSync(), isTrue);
+      final Map<String, dynamic> decoded =
+          jsonDecode(pointer.readAsStringSync()) as Map<String, dynamic>;
+      expect(decoded['pid'], equals(111));
+    });
+
+    test('read falls back to the legacy pointer when no session file exists',
+        () async {
+      // The documented recovery recipe is to hand-write ~/.artisan/state.json
+      // when `artisan start` cannot boot the app. That has to keep working.
+      final Directory dir = Directory('${tempHome.path}/.artisan');
+      await dir.create(recursive: true);
+      await File('${dir.path}/state.json').writeAsString(
+        jsonEncode(<String, dynamic>{'pid': 999}),
+      );
+
+      StateFile.debugProjectRootOverride = projectA.path;
+      final Map<String, dynamic>? got = await StateFile.read();
+
+      expect(got?['pid'], equals(999));
+    });
+
+    test('pathOverride wins over the session path', () {
+      StateFile.debugProjectRootOverride = projectA.path;
+      StateFile.pathOverride = '${tempHome.path}/custom.json';
+
+      expect(StateFile.path, equals('${tempHome.path}/custom.json'));
+    });
+
+    test('delete removes the session file and the matching pointer', () async {
+      StateFile.debugProjectRootOverride = projectA.path;
+      await StateFile.write(<String, dynamic>{
+        'pid': 111,
+        'projectRoot': projectA.path,
+      });
+
+      await StateFile.delete();
+
+      expect(File(StateFile.path).existsSync(), isFalse);
+      expect(File(StateFile.legacyPointerPath).existsSync(), isFalse);
+    });
+
+    test('delete leaves a pointer that belongs to another project', () async {
+      StateFile.debugProjectRootOverride = projectA.path;
+      await StateFile.write(<String, dynamic>{
+        'pid': 111,
+        'projectRoot': projectA.path,
+      });
+      StateFile.debugProjectRootOverride = projectB.path;
+      await StateFile.write(<String, dynamic>{
+        'pid': 222,
+        'projectRoot': projectB.path,
+      });
+
+      // A stops. The pointer currently describes B, which is still running,
+      // so taking it away would break B's connected commands.
+      StateFile.debugProjectRootOverride = projectA.path;
+      await StateFile.delete();
+
+      final File pointer = File(StateFile.legacyPointerPath);
+      expect(pointer.existsSync(), isTrue);
+      final Map<String, dynamic> decoded =
+          jsonDecode(pointer.readAsStringSync()) as Map<String, dynamic>;
+      expect(decoded['pid'], equals(222));
+    });
+  });
+}

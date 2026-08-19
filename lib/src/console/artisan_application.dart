@@ -130,6 +130,19 @@ class ArtisanApplication {
       );
       return 1;
     }
+    // Refuse a session that belongs to somebody else BEFORE dialling it.
+    // The failure this prevents is silent: every command succeeds, against
+    // the wrong app.
+    final String? ownership = sessionOwnershipError(
+      state: state,
+      workingDirectory: Directory.current.path,
+      explicitStatePath: StateFile.pathOverride,
+    );
+    if (ownership != null) {
+      output.error(ownership);
+      return 1;
+    }
+
     final wsUri = state['vmServiceUri'] as String?;
     if (wsUri == null) {
       output.error('state.json missing vmServiceUri; re-run `artisan start`.');

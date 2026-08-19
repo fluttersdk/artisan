@@ -9,7 +9,11 @@
 - [Troubleshooting](#troubleshooting)
 - [Related](#related)
 
-The `start` command spawns `flutter run` as a detached background process, scrapes the VM Service URI from its output, and writes `~/.artisan/state.json` so that every downstream tool (MCP server, `stop`, `restart`, `dusk:snap`, `tinker`, etc.) knows where the running app lives.
+The `start` command spawns `flutter run` as a detached background process, scrapes the VM Service URI from its output, and records the session so that every downstream tool (MCP server, `stop`, `restart`, `dusk:snap`, `tinker`, etc.) knows where the running app lives.
+
+The session lives in a directory of its own, **per project**: `~/.artisan/sessions/<hash>/state.json`, with the log and the FIFO beside it. It used to be one global `~/.artisan/state.json`, so a second project's `start` silently took the slot and every command from the first project then drove the second app, succeeding each time. That file is still written, as a pointer to whichever session started last, because hand-writing it is the documented recovery recipe when `start` cannot boot an app.
+
+Two projects at once still need distinct `--port`, `--vm-service-port` and `--cdp-port` values; `start` fails fast when one is taken. Override the session path with `--state=<path>` or `ARTISAN_STATE_FILE` when you need to name it explicitly.
 
 <a name="basic-usage"></a>
 ## Basic Usage
@@ -51,7 +55,7 @@ dart run artisan start [--device=<target>] [--port=<n>] [--vm-service-port=<n>]
 
 **Detached spawn and URI scrape.** The shell one-liner run by `start` launches both background processes (`tail` holder and `flutter run`) and echoes their PIDs in `HOLDER=<n>` / `FLUTTER=<n>` format. `start` captures those PIDs from the wrapper's stdout, then polls the log file at `~/.artisan/flutter-dev.log` every 250 ms until it finds a line matching either the web format (`Debug service listening on ws://...`) or the desktop/mobile format (`Dart VM Service on <Platform> is available at: http://...`). `http://` and `https://` URIs are normalized to their `ws://` and `wss://` equivalents and a `/ws` suffix is appended when missing.
 
-**State file write.** After the URI is confirmed, `start` writes `~/.artisan/state.json` atomically (`.tmp` + rename) with the full process inventory: PIDs, FIFO path, VM Service URI, web port, device target, profile mode, project root, and a UTC `startedAt` timestamp. The MCP server (`mcp:serve`) reads this file at startup to discover the running app; `stop` reads it to send SIGTERM; `status` reads it to report the live process.
+**State file write.** After the URI is confirmed, `start` writes this project's session state atomically (`.tmp` + rename) with the full process inventory: PIDs, FIFO path, VM Service URI, web port, device target, profile mode, project root, and a UTC `startedAt` timestamp. The MCP server (`mcp:serve`) reads this file at startup to discover the running app; `stop` reads it to send SIGTERM; `status` reads it to report the live process.
 
 <a name="state-file"></a>
 ## State File

@@ -31,6 +31,21 @@ class HotRestartCommand extends ArtisanCommand {
   @override
   Future<int> handle(ArtisanContext ctx) async {
     final state = await StateFile.read();
+
+    // The legacy pointer describes whichever app started last, so a
+    // command that writes to the recorded FIFO would otherwise reach
+    // into a sibling project's running app.
+    final String? ownership = state == null
+        ? null
+        : sessionOwnershipError(
+            state: state,
+            workingDirectory: Directory.current.path,
+            explicitStatePath: StateFile.pathOverride,
+          );
+    if (ownership != null) {
+      ctx.output.error(ownership);
+      return 1;
+    }
     if (state == null) {
       ctx.output.error(
         'No state file; nothing to hot-restart. Run `artisan start` first.',

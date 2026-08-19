@@ -243,11 +243,26 @@ class StartCommand extends ArtisanCommand {
   }
 
   @override
-  Future<int> handle(ArtisanContext ctx, {int? cdpPort}) async {
-    final device = (ctx.input.option('device') as String?) ?? 'chrome';
-    final webPort = int.parse((ctx.input.option('port') as String?) ?? '3100');
-    final vmServicePort =
-        int.parse((ctx.input.option('vm-service-port') as String?) ?? '8181');
+  Future<int> handle(
+    ArtisanContext ctx, {
+    int? cdpPort,
+    int? webPort,
+    int? vmServicePort,
+    String? device,
+  }) async {
+    // Flag wins, then the value carried from a prior session (RestartCommand
+    // passes those), then the default. A restart that fell back to the
+    // default web port relaunched onto whichever port a sibling worktree was
+    // already holding, and the stop half had already succeeded.
+    final resolvedDevice =
+        (ctx.input.option('device') as String?) ?? device ?? 'chrome';
+    final resolvedWebPort = int.parse(
+      (ctx.input.option('port') as String?) ?? '${webPort ?? 3100}',
+    );
+    final resolvedVmServicePort = int.parse(
+      (ctx.input.option('vm-service-port') as String?) ??
+          '${vmServicePort ?? 8181}',
+    );
     final ddsOn = (ctx.input.option('dds') as bool?) ?? false;
     final profileStatic =
         (ctx.input.option('profile-static') as bool?) ?? false;
@@ -291,9 +306,9 @@ class StartCommand extends ArtisanCommand {
     if (resolvedCdpPort != null) {
       return await _handleCdpBranch(
         ctx: ctx,
-        device: device,
-        webPort: webPort,
-        vmServicePort: vmServicePort,
+        device: resolvedDevice,
+        webPort: resolvedWebPort,
+        vmServicePort: resolvedVmServicePort,
         ddsOn: ddsOn,
         profileStatic: profileStatic,
         cdpPort: resolvedCdpPort,
@@ -301,7 +316,7 @@ class StartCommand extends ArtisanCommand {
       );
     }
 
-    final isChromeTarget = device == 'chrome';
+    final isChromeTarget = resolvedDevice == 'chrome';
     final logFile = File('${_logDir()}/flutter-dev.log');
     await logFile.parent.create(recursive: true);
     await logFile.writeAsString('');
@@ -312,9 +327,9 @@ class StartCommand extends ArtisanCommand {
     final flutterArgs = <String>[
       'run',
       '-d',
-      device,
-      if (isChromeTarget) '--web-port=$webPort',
-      '--host-vmservice-port=$vmServicePort',
+      resolvedDevice,
+      if (isChromeTarget) '--web-port=$resolvedWebPort',
+      '--host-vmservice-port=$resolvedVmServicePort',
       if (!ddsOn) '--no-dds',
       '--dart-define=AI_TEST=1',
     ];
@@ -341,12 +356,12 @@ class StartCommand extends ArtisanCommand {
       'stdinPipe': fifoPath,
       'stdinHolderPid': holderPid,
       'vmServiceUri': vmServiceUri,
-      'webPort': webPort,
-      'vmServicePort': vmServicePort,
+      'webPort': resolvedWebPort,
+      'vmServicePort': resolvedVmServicePort,
       'startedAt': DateTime.now().toUtc().toIso8601String(),
       'profile': profileStatic ? 'static' : 'debug',
       'projectRoot': Directory.current.path,
-      'device': device,
+      'device': resolvedDevice,
       'chromePid': null,
       'tmpProfileDir': null,
       'cdpPort': null,
@@ -435,56 +450,55 @@ class StartCommand extends ArtisanCommand {
     final tmpRoot = cdpTmpProfileDirRoot ?? '/tmp';
     final tmpProfileDir = '$tmpRoot/dusk-chrome-$cdpPort';
     final chromeProcess = await cdpProcessStarter(
-      chromeBinary,
-      <String>[
-        // CDP wiring (load-bearing for dusk + this start command).
-        '--remote-debugging-port=$cdpPort',
-        '--remote-allow-origins=*',
-        '--user-data-dir=$tmpProfileDir',
-        // Tells Chrome it is automated. Shows the "Chrome is being controlled
-        // by automated test software" banner and implies several behaviors
-        // that quiet first-run noise without us listing each one.
-        '--enable-automation',
-        // First-run flow + default-browser prompt (fresh tmp profile would
-        // trigger Welcome dialog that blocks CDP Page.navigate).
-        '--no-first-run',
-        '--no-default-browser-check',
-        // Save-password + autofill prompts (Flutter web forms trigger these
-        // and the popups can intercept dusk:tap on the underlying widget).
-        '--disable-save-password-bubble',
-        '--password-store=basic',
-        '--use-mock-keychain',
-        '--disable-features=AutofillServerCommunication,PasswordLeakDetection,'
-            'PasswordManagerOnboarding,Translate,MediaRouter,OptimizationHints,'
-            'InterestFeedContentSuggestions,CalculateNativeWinOcclusion,'
-            'GlobalMediaControls,DestroyProfileOnBrowserClose,'
-            'AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync',
-        // Misc noise suppression. None of these change user-observable app
-        // behavior; they only quiet Chrome internals so automation is clean.
-        '--disable-translate',
-        '--disable-sync',
-        '--disable-background-networking',
-        '--disable-default-apps',
-        '--disable-extensions',
-        '--disable-component-extensions-with-background-pages',
-        '--disable-client-side-phishing-detection',
-        '--disable-hang-monitor',
-        '--disable-popup-blocking',
-        '--disable-prompt-on-repost',
-        '--disable-domain-reliability',
-        '--metrics-recording-only',
-        '--no-pings',
-        '--no-service-autorun',
-        // Performance: keep timers + renderer active when window not focused
-        // so dusk actions land on a live frame.
-        '--disable-background-timer-throttling',
-        '--disable-renderer-backgrounding',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-ipc-flooding-protection',
-        'about:blank',
-      ],
-      mode: ProcessStartMode.detached,
-    );
+        chromeBinary,
+        <String>[
+          // CDP wiring (load-bearing for dusk + this start command).
+          '--remote-debugging-port=$cdpPort',
+          '--remote-allow-origins=*',
+          '--user-data-dir=$tmpProfileDir',
+          // Tells Chrome it is automated. Shows the "Chrome is being controlled
+          // by automated test software" banner and implies several behaviors
+          // that quiet first-run noise without us listing each one.
+          '--enable-automation',
+          // First-run flow + default-browser prompt (fresh tmp profile would
+          // trigger Welcome dialog that blocks CDP Page.navigate).
+          '--no-first-run',
+          '--no-default-browser-check',
+          // Save-password + autofill prompts (Flutter web forms trigger these
+          // and the popups can intercept dusk:tap on the underlying widget).
+          '--disable-save-password-bubble',
+          '--password-store=basic',
+          '--use-mock-keychain',
+          '--disable-features=AutofillServerCommunication,PasswordLeakDetection,'
+              'PasswordManagerOnboarding,Translate,MediaRouter,OptimizationHints,'
+              'InterestFeedContentSuggestions,CalculateNativeWinOcclusion,'
+              'GlobalMediaControls,DestroyProfileOnBrowserClose,'
+              'AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync',
+          // Misc noise suppression. None of these change user-observable app
+          // behavior; they only quiet Chrome internals so automation is clean.
+          '--disable-translate',
+          '--disable-sync',
+          '--disable-background-networking',
+          '--disable-default-apps',
+          '--disable-extensions',
+          '--disable-component-extensions-with-background-pages',
+          '--disable-client-side-phishing-detection',
+          '--disable-hang-monitor',
+          '--disable-popup-blocking',
+          '--disable-prompt-on-repost',
+          '--disable-domain-reliability',
+          '--metrics-recording-only',
+          '--no-pings',
+          '--no-service-autorun',
+          // Performance: keep timers + renderer active when window not focused
+          // so dusk actions land on a live frame.
+          '--disable-background-timer-throttling',
+          '--disable-renderer-backgrounding',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-ipc-flooding-protection',
+          'about:blank',
+        ],
+        mode: ProcessStartMode.detached);
 
     // 6. Probe Chrome to confirm it opened the debug port; on failure kill it
     //    so we never leak a runaway Chrome with no parent supervision.
@@ -674,18 +688,19 @@ class StartCommand extends ArtisanCommand {
     // 2. `nohup flutter run ... < fifo` reads from the FIFO on stdin.
     final wrapperArgs = <String>['nohup', 'flutter', ...flutterArgs];
     return await cdpProcessStarter(
-      'sh',
-      <String>[
-        '-c',
-        'tail -f /dev/null > ${shellQuoteTokens([
-              fifoPath
-            ])} & echo HOLDER=\$! ; '
-            '${shellQuoteTokens(wrapperArgs)} < ${shellQuoteTokens([
-              fifoPath
-            ])} >> ${shellQuoteTokens([logFile.path])} 2>&1 & echo FLUTTER=\$!',
-      ],
-      mode: ProcessStartMode.detachedWithStdio,
-    );
+        'sh',
+        <String>[
+          '-c',
+          'tail -f /dev/null > ${shellQuoteTokens([
+                fifoPath
+              ])} & echo HOLDER=\$! ; '
+              '${shellQuoteTokens(wrapperArgs)} < ${shellQuoteTokens([
+                fifoPath
+              ])} >> ${shellQuoteTokens([
+                logFile.path
+              ])} 2>&1 & echo FLUTTER=\$!',
+        ],
+        mode: ProcessStartMode.detachedWithStdio);
   }
 
   /// Creates the FIFO at [path]. Delegates to a test seam when [cdpFifoMaker]
@@ -743,10 +758,10 @@ class StartCommand extends ArtisanCommand {
   /// Returns null on parse failure or when the flutter binary is missing.
   Future<String?> _probeFlutterSdkVersion() async {
     try {
-      final result = await cdpProcessRunner(
-        'flutter',
-        <String>['--version', '--machine'],
-      );
+      final result = await cdpProcessRunner('flutter', <String>[
+        '--version',
+        '--machine',
+      ]);
       if (result.exitCode != 0) return null;
       final raw = result.stdout;
       final text = raw is String ? raw : utf8.decode(raw as List<int>);
@@ -887,9 +902,8 @@ class StartCommand extends ArtisanCommand {
         final client = HttpClient();
         String wsUrl;
         try {
-          final req = await client.getUrl(
-            Uri.parse('http://localhost:$port/json'),
-          );
+          final req =
+              await client.getUrl(Uri.parse('http://localhost:$port/json'));
           final resp = await req.close();
           if (resp.statusCode != 200) {
             throw StateError(
@@ -920,9 +934,10 @@ class StartCommand extends ArtisanCommand {
                 final decoded = jsonDecode(raw as String);
                 if (decoded is Map && decoded['id'] == 1) {
                   if (decoded['error'] != null) {
-                    completer.completeError(StateError(
-                      'CDP Page.navigate failed: ${decoded['error']}',
-                    ));
+                    completer.completeError(
+                      StateError(
+                          'CDP Page.navigate failed: ${decoded['error']}'),
+                    );
                   } else {
                     completer.complete();
                   }
@@ -941,11 +956,13 @@ class StartCommand extends ArtisanCommand {
             },
             cancelOnError: true,
           );
-          ws.add(jsonEncode(<String, dynamic>{
-            'id': 1,
-            'method': 'Page.navigate',
-            'params': <String, dynamic>{'url': url},
-          }));
+          ws.add(
+            jsonEncode(<String, dynamic>{
+              'id': 1,
+              'method': 'Page.navigate',
+              'params': <String, dynamic>{'url': url},
+            }),
+          );
           await completer.future.timeout(const Duration(seconds: 10));
         } finally {
           await ws.close();

@@ -36,7 +36,7 @@ The `hot-restart` command is the one outlier: it lives in the lifecycle group bu
 
 ## Lifecycle
 
-Seven commands that own the running Flutter process: spawn, stop, query, tail, restart, reload, hot-restart. All run pure CLI; none of them boot Flutter or Magic in the artisan process. State is shared via `~/.artisan/state.json`, written by `start` and consumed by everything that needs the VM Service URI.
+Seven commands that own the running Flutter process: spawn, stop, query, tail, restart, reload, hot-restart. All run pure CLI; none of them boot Flutter or Magic in the artisan process. State lives in a per-project session directory under `~/.artisan/sessions/`, written by `start` and consumed by everything that needs the VM Service URI. `~/.artisan/state.json` remains a pointer to whichever session started last. Any command that acts on the recorded app refuses when the session belongs to another project, so a `stop` from the wrong checkout cannot kill a sibling's run.
 
 These seven are the only commands surfaced as MCP tools today, which makes them the agent-facing surface area of the substrate.
 
@@ -46,7 +46,7 @@ These seven are the only commands surfaced as MCP tools today, which makes them 
 | `stop` | Stop the running flutter app and delete `~/.artisan/state.json`. | none | artisan_stop |
 | `status` | Print JSON status of the recorded flutter app. | none | artisan_status |
 | `logs` | Print or `--follow` the captured flutter run log. | none | artisan_logs |
-| `restart` | Stop and start the running flutter app; preserves the prior session's `--cdp-port`. | none | artisan_restart |
+| `restart` | Stop and start the running flutter app; carries the prior session's device, web port, VM Service port and CDP port across. | none | artisan_restart |
 | `reload` | Hot reload the running app (sends `r` to flutter run's stdin). State preserved. | none | artisan_reload |
 | `hot-restart` | Hot restart the running app (sends `R` to flutter run's stdin). Drops Dart state, keeps process. | none | artisan_hot_restart |
 

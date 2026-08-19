@@ -25,8 +25,15 @@ class LogsCommand extends ArtisanCommand {
 
   @override
   Future<int> handle(ArtisanContext ctx) async {
-    final stateDir = File(StateFile.path).parent.path;
-    final logFile = File('$stateDir/flutter-dev.log');
+    // The log lives beside the state file, in this project's session
+    // directory. An app started by an older artisan wrote it to the shared
+    // `~/.artisan/` instead, so fall back there rather than reporting no
+    // log for a run that has one.
+    final sessionLog =
+        File('${File(StateFile.path).parent.path}/flutter-dev.log');
+    final logFile = sessionLog.existsSync()
+        ? sessionLog
+        : File('${StateFile.homeDir}/flutter-dev.log');
     if (!logFile.existsSync()) {
       ctx.output.warning(
         'Log file not found at ${logFile.path}. Run `artisan start` first.',

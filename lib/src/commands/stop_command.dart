@@ -60,6 +60,19 @@ class StopCommand extends ArtisanCommand {
       return 0;
     }
 
+    // The legacy pointer describes whichever app started last, so without
+    // this a stop from a project with nothing up reaches across and kills a
+    // sibling's running app, reporting a clean success while doing it.
+    final String? ownership = sessionOwnershipError(
+      state: state,
+      workingDirectory: Directory.current.path,
+      explicitStatePath: StateFile.pathOverride,
+    );
+    if (ownership != null) {
+      ctx.output.error(ownership);
+      return 1;
+    }
+
     // 1. flutter run process.
     final pid = state['pid'] as int?;
     if (pid != null) {
@@ -129,9 +142,10 @@ class StopCommand extends ArtisanCommand {
       if (delivered) {
         ctx.output.success('Chrome SIGTERM sent to pid=$chromePid.');
       } else {
-        ctx.output
-            .warning('Chrome SIGTERM not delivered to pid=$chromePid (process '
-                'may already be gone).');
+        ctx.output.warning(
+          'Chrome SIGTERM not delivered to pid=$chromePid (process '
+          'may already be gone).',
+        );
       }
     } catch (_) {
       // Non-fatal; the probe below drives escalation.

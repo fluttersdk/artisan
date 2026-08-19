@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../state/state_file.dart';
 import '../commands/commands_refresh_command.dart';
 import '../commands/doctor_command.dart';
 import '../commands/help_command.dart';
@@ -124,6 +125,11 @@ Future<int> runArtisan(
   WrapperNameResolver? wrapperName,
   DelegateStrategy? delegate,
 }) async {
+  // 0. Resolve the session BEFORE anything else, because a wrapper
+  //    delegation forwards the args verbatim and the delegate resolves it
+  //    again from the same source.
+  args = _consumeStateFlag(args);
+
   // 1. Decide whether the consumer wrapper owns this invocation. Resolve
   //    the wrapper FILENAME first (dispatcher vs legacy artisan) so the
   //    delegate token matches the file actually on disk; an older consumer
@@ -255,3 +261,28 @@ List<ArtisanCommand> _builtinCommands(ArtisanRegistry registry) =>
       McpInstallCommand(),
       McpUninstallCommand(),
     ];
+
+/// Pulls a leading-or-anywhere `--state=<path>` (or `--state <path>`) out of
+/// [args] and records it on [StateFile].
+///
+/// A global flag rather than a per-command option: every connected command
+/// needs it and none of them owns it. `ARTISAN_STATE_FILE` covers the same
+/// need for a shell that sets it once; the flag wins when both are present,
+/// because it is the more specific statement of intent.
+List<String> _consumeStateFlag(List<String> args) {
+  final List<String> rest = <String>[];
+  for (int i = 0; i < args.length; i++) {
+    final String arg = args[i];
+    if (arg.startsWith('--state=')) {
+      StateFile.pathOverride = arg.substring('--state='.length);
+      continue;
+    }
+    if (arg == '--state' && i + 1 < args.length) {
+      StateFile.pathOverride = args[i + 1];
+      i++;
+      continue;
+    }
+    rest.add(arg);
+  }
+  return rest;
+}

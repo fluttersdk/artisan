@@ -49,7 +49,7 @@ Single barrel: `package:fluttersdk_artisan/artisan.dart` re-exports the full pub
 | `mcp/` | `McpServer extends MCPServer with ToolsSupport` (dart_mcp) + `McpToolDescriptor` + `McpFilterConfig` (3-layer Cargo-style: file + env + CLI). Substrate commands surface as `artisan_*` MCP tools via the 10-entry allowlist at `lib/src/mcp/mcp_server.dart:744-755`: `start` / `stop` / `status` / `logs` / `restart` / `reload` / `hot-restart` / `doctor` / `list` / `tinker`. |
 | `helpers/` | `FileHelper`, `ConfigEditor` (idempotent injects), `MainDartEditor`, `EnvEditor`, `PlistWriter`, `GradleEditor`, `PodfileEditor`, `HtmlEditor`, `JsonEditor`, `XmlEditor`, `RouteRegistryEditor`. |
 | `stubs/` | `StubLoader` (4-tier resolution: env, package_config, pubspec walk, fallback). Stub assets under `assets/stubs/`. |
-| `state/` | `StateFile` (`~/.artisan/state.json` for the running app: pid, vmServiceUri, device, FIFO pipe). |
+| `state/` | `StateFile`: one session directory PER PROJECT at `~/.artisan/sessions/<sha256(projectRoot)[0:12]>/` holding `state.json`, the log and the FIFO. `~/.artisan/state.json` remains a pointer to whichever session started last (read fallback, and the target of the hand-written recovery recipe). `--state=<path>` / `ARTISAN_STATE_FILE` override. `sessionOwnershipError` is what stops a command acting on another project's app. |
 | `tinker/`, `vm/` | REPL + `VmServiceClient` (wraps `package:vm_service`, no isolate-id cache to handle device-target switches). |
 
 User-facing assets:

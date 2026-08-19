@@ -8,7 +8,21 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`artisan start` now records its session per project, so two apps can be driven at once.** `~/.artisan/state.json` was one global slot: a second project's `start` silently took it, and every connected command from the first project then drove the second app, succeeding each time. The measured case had a worktree in another repository rewrite the file mid-session, and two commands later produced a screenshot of an entirely different product. The session is now a DIRECTORY at `~/.artisan/sessions/<sha256(projectRoot)[0:12]>/`, holding `state.json`, the log and the FIFO, because those last two collided for exactly the same reason and fixing one member of the set is not fixing the set. Keyed by a digest rather than a slugified path, since a project path can contain separators, spaces and non-ASCII.
+
+  `~/.artisan/state.json` is still written, as a pointer to whichever session started last. That is an interop contract, not a shim: hand-writing that file is the documented recovery recipe when `start` cannot boot an app, and `read()` falls back to it when this project has no session of its own. Two projects still need distinct `--port`, `--vm-service-port` and `--cdp-port`; `start` fails fast when one is taken.
+
+- **`--state=<path>` and `ARTISAN_STATE_FILE` name the session explicitly.** A global flag consumed before dispatch rather than a per-command option, because every connected command needs it and none of them owns it. The flag wins over the environment variable, and naming a session also bypasses the ownership check below, since the caller has already answered the question it asks.
+
+- **`sessionOwnershipError` refuses a command that would act on another project's app.** The legacy pointer describes whichever app started last, so a `stop` run from a project with nothing up reached across and killed a sibling's running app while reporting a clean success, and a connected command dialled the wrong VM Service. Wired into the connected-mode boot path, `stop`, `reload` and `hot-restart`. A working directory INSIDE the project passes, state with no recorded `projectRoot` passes (hand-written recovery state usually omits it), and an explicit `--state` passes.
+
 ### Fixed
+
+- **`artisan restart` relaunched on the default web port, VM Service port and device, keeping only the CDP port.** Several worktrees run their own dev server at once, so 3100 is usually held by a sibling: the stop half succeeded, the relaunch failed with `Address already in use`, and the app being driven was simply gone. The error names a port that appears in no command the caller ran, so it reads as a machine problem rather than a missing flag. A restart onto the default web-server device is quieter and worse: nothing renders, and every screenshot after it comes back byte-identical. `restart` now carries the device and all three ports across, and declares each as a flag so an explicit value still wins.
+
+- **`logs` looked for `flutter-dev.log` beside the state file**, which now resolves inside the session directory. It reads the session log and falls back to the shared `~/.artisan/flutter-dev.log` for an app started by an older artisan.
 
 - **`artisan_start`'s tool description pointed agents at a tool that does not exist.** Two lines of the description listed `tinker_eval` among the tools that read `~/.artisan/state.json`; the tool is `artisan_tinker`. An agent taking the description at its word calls a name the server never registered and gets an unknown-tool error. Also corrected the same stale name in `McpToolDescriptor`'s own docstring example. (`lib/src/mcp/mcp_server.dart`, `lib/src/mcp/mcp_tool_descriptor.dart`, `skills/fluttersdk-artisan/references/mcp-tools.md`, `skills/fluttersdk-artisan/references/tinker-eval.md`)
 - **The MCP server reported itself as `0.0.8` to every client.** The `Implementation.version` string in `McpServer` carries the comment "Keep in sync with pubspec.yaml `version:` on each release cut" and was missed on the 0.0.9 cut, so an MCP client's initialize handshake read a version one release behind while the package on disk was 0.0.9. Client-side version gating and bug reports both keyed on the wrong number. (`lib/src/mcp/mcp_server.dart`)
