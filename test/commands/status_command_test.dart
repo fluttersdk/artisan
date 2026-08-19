@@ -99,5 +99,51 @@ void main() {
       final decoded = jsonDecode(output.content.trim()) as Map<String, dynamic>;
       expect(decoded['alive'], isTrue);
     });
+
+    test('marks a session that belongs to another project', () async {
+      // status reads rather than acts, so it reports a foreign session
+      // instead of refusing it. It must not report one as THIS project's:
+      // an agent reading `running: true` from a checkout with nothing up
+      // would conclude its own app is live.
+      final Directory sibling =
+          Directory.systemTemp.createTempSync('artisan_status_sibling_');
+      addTearDown(() => sibling.deleteSync(recursive: true));
+
+      final Directory dir = Directory('${tempHome.path}/.artisan');
+      dir.createSync(recursive: true);
+      File('${dir.path}/state.json').writeAsStringSync(
+        jsonEncode(<String, dynamic>{
+          'pid': 4242,
+          'projectRoot': sibling.path,
+        }),
+      );
+
+      final output = BufferedOutput();
+      await StatusCommand().handle(
+        ArtisanContext.bare(MapInput(const {}), output),
+      );
+
+      expect(output.content, contains('"ownedByThisProject":false'));
+      expect(output.content, contains('another project'));
+    });
+
+    test('marks a session that belongs to this project', () async {
+      final Directory dir = Directory('${tempHome.path}/.artisan');
+      dir.createSync(recursive: true);
+      File('${dir.path}/state.json').writeAsStringSync(
+        jsonEncode(<String, dynamic>{
+          'pid': 4242,
+          'projectRoot': Directory.current.path,
+        }),
+      );
+
+      final output = BufferedOutput();
+      await StatusCommand().handle(
+        ArtisanContext.bare(MapInput(const {}), output),
+      );
+
+      expect(output.content, contains('"ownedByThisProject":true'));
+      expect(output.content, isNot(contains('another project')));
+    });
   });
 }

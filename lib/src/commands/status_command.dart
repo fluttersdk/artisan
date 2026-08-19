@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import '../console/artisan_command.dart';
 import '../console/artisan_context.dart';
@@ -26,6 +27,17 @@ class StatusCommand extends ArtisanCommand {
     }
     final pid = state['pid'] as int?;
     final alive = pid != null && processAlive(pid);
+
+    // `status` reads rather than acts, so it reports a foreign session
+    // instead of refusing it. But it must not report one as THIS project's:
+    // an agent that reads `running: true` from a checkout with nothing up
+    // would conclude its own app is live and act on that.
+    final String? foreign = sessionOwnershipError(
+      state: state,
+      workingDirectory: Directory.current.path,
+      explicitStatePath: StateFile.pathOverride,
+    );
+
     ctx.output.writeln(
       jsonEncode({
         'running': true,
@@ -35,8 +47,11 @@ class StatusCommand extends ArtisanCommand {
         'webPort': state['webPort'],
         'startedAt': state['startedAt'],
         'device': state['device'],
+        'projectRoot': state['projectRoot'],
+        'ownedByThisProject': foreign == null,
       }),
     );
+    if (foreign != null) ctx.output.warning(foreign);
     return 0;
   }
 }

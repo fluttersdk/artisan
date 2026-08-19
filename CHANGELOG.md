@@ -16,6 +16,8 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 - **`--state=<path>` and `ARTISAN_STATE_FILE` name the session explicitly.** A global flag consumed before dispatch rather than a per-command option, because every connected command needs it and none of them owns it. The flag wins over the environment variable, and naming a session also bypasses the ownership check below, since the caller has already answered the question it asks.
 
+- **`status` reports `ownedByThisProject` and `projectRoot`.** It reads rather than acts, so it surfaces a foreign session instead of refusing it, but it must not present one as this project's: an agent reading `running: true` from a checkout with nothing up would conclude its own app is live and act on that.
+
 - **`sessionOwnershipError` refuses a command that would act on another project's app.** The legacy pointer describes whichever app started last, so a `stop` run from a project with nothing up reached across and killed a sibling's running app while reporting a clean success, and a connected command dialled the wrong VM Service. Wired into the connected-mode boot path, `stop`, `reload` and `hot-restart`. A working directory INSIDE the project passes, state with no recorded `projectRoot` passes (hand-written recovery state usually omits it), and an explicit `--state` passes.
 
 ### Fixed
