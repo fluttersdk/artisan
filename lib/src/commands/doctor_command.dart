@@ -87,8 +87,10 @@ class DoctorCommand extends ArtisanCommand {
       _Check('flutter --version', _checkFlutter),
       _Check('dart --version', _checkDart),
       _Check('port 3100 free', _checkPort3100),
-      _Check('flutter sdk >= $_minSdkVersion (for --cdp-port)',
-          _checkFlutterSdkVersion),
+      _Check(
+        'flutter sdk >= $_minSdkVersion (for --cdp-port)',
+        _checkFlutterSdkVersion,
+      ),
     ];
     var allPass = true;
     for (final c in checks) {
@@ -171,8 +173,10 @@ class DoctorCommand extends ArtisanCommand {
   /// false so the check label surfaces the issue to the user.
   static Future<bool> _checkFlutterSdkVersion() async {
     try {
-      final r = await doctorFlutterRunner(
-          'flutter', <String>['--version', '--machine']);
+      final r = await doctorFlutterRunner('flutter', <String>[
+        '--version',
+        '--machine',
+      ]);
       if (r.exitCode != 0) return false;
 
       final Map<String, dynamic> json;

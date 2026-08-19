@@ -68,10 +68,8 @@ class McpInstallCommand extends ArtisanCommand {
   /// [hasFsa] and [isWindows] are optional predicates injected for testing.
   /// Production callers omit both; tests pass custom closures to exercise
   /// each branch without touching the filesystem or reading `Platform`.
-  McpInstallCommand({
-    bool Function()? hasFsa,
-    bool Function()? isWindows,
-  })  : _hasFsa = hasFsa ?? _defaultHasFsa,
+  McpInstallCommand({bool Function()? hasFsa, bool Function()? isWindows})
+      : _hasFsa = hasFsa ?? _defaultHasFsa,
         _isWindows = isWindows ?? _defaultIsWindows;
 
   final bool Function() _hasFsa;

@@ -642,11 +642,7 @@ final class InjectEnvVar extends InstallOperation {
   final String? comment;
 
   /// Creates an [InjectEnvVar] operation.
-  const InjectEnvVar({
-    required this.key,
-    required this.value,
-    this.comment,
-  });
+  const InjectEnvVar({required this.key, required this.value, this.comment});
 
   @override
   String describe() => '[inject-env] $key=$value';
@@ -806,11 +802,7 @@ final class RunShell extends InstallOperation {
   final String? workingDir;
 
   /// Creates a [RunShell] operation.
-  const RunShell({
-    required this.command,
-    required this.args,
-    this.workingDir,
-  });
+  const RunShell({required this.command, required this.args, this.workingDir});
 
   @override
   String describe() {

@@ -97,7 +97,8 @@ class Prompt {
       }
       if (options.contains(raw)) return raw;
       stdout.writeln(
-          '  ✗ Choose 1-${options.length} or one of: ${options.join(", ")}');
+        '  ✗ Choose 1-${options.length} or one of: ${options.join(", ")}',
+      );
     }
   }
 

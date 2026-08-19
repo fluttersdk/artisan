@@ -73,7 +73,8 @@ String renderCommandsIndex(List<DiscoveredCommand> commands) {
     buf
       ..writeln()
       ..writeln(
-          'List<ArtisanCommand> get commands => const <ArtisanCommand>[];')
+        'List<ArtisanCommand> get commands => const <ArtisanCommand>[];',
+      )
       ..writeln();
     return buf.toString();
   }

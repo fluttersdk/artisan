@@ -65,11 +65,7 @@ class JsonEditor {
   /// @param path    Destination file path.
   /// @param data    The object to serialise (typically `Map<String, dynamic>`).
   /// @param indent  Number of spaces for indentation (default: `2`).
-  static void writeJson(
-    String path,
-    dynamic data, {
-    int indent = 2,
-  }) {
+  static void writeJson(String path, dynamic data, {int indent = 2}) {
     final file = File(path);
 
     // 1. Ensure parent directory exists.

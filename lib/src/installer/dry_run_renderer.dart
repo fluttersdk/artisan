@@ -53,9 +53,7 @@ class DryRunRenderer {
   }) {
     // 1. Emit the header line including op count and optional plugin name.
     final suffix = pluginName != null ? ' for $pluginName' : '';
-    output.writeln(
-      'DRY RUN -- would execute ${ops.length} operations$suffix:',
-    );
+    output.writeln('DRY RUN -- would execute ${ops.length} operations$suffix:');
 
     // 2. Partition ops into the seven named categories in fixed order.
     final pubspec = <InstallOperation>[];
@@ -117,9 +115,7 @@ class DryRunRenderer {
 
     // 4. Emit the footer so the user knows nothing was written.
     output.writeln('');
-    output.writeln(
-      'No changes written. Re-run without --dry-run to apply.',
-    );
+    output.writeln('No changes written. Re-run without --dry-run to apply.');
   }
 
   /// Emits a category block when [ops] is non-empty.

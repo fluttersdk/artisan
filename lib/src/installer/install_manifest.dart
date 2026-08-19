@@ -508,10 +508,8 @@ class PostInstallSpec {
   });
 
   /// Empty post-install block used when the section is absent.
-  factory PostInstallSpec.empty() => const PostInstallSpec(
-        run: <ShellSpec>[],
-        askToRun: <AskToRunSpec>[],
-      );
+  factory PostInstallSpec.empty() =>
+      const PostInstallSpec(run: <ShellSpec>[], askToRun: <AskToRunSpec>[]);
 
   /// Parses the `post_install:` sub-map.
   factory PostInstallSpec.fromYaml(YamlMap m) {
@@ -571,11 +569,7 @@ class AskToRunSpec {
         'ask_to_run entry requires "prompt" and "cmd" strings.',
       );
     }
-    return AskToRunSpec(
-      prompt: prompt,
-      cmd: cmd,
-      args: _stringList(m['args']),
-    );
+    return AskToRunSpec(prompt: prompt, cmd: cmd, args: _stringList(m['args']));
   }
 }
 

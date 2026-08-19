@@ -55,10 +55,8 @@ class InstallContext {
   ///                        to the active command's `handle()` method.
   /// @param projectRoot     Optional explicit override of the project root.
   /// @return A fully wired [InstallContext] ready for production install ops.
-  InstallContext.real(
-    ArtisanContext artisanContext, {
-    String? projectRoot,
-  }) : this._(
+  InstallContext.real(ArtisanContext artisanContext, {String? projectRoot})
+      : this._(
           artisanContext: artisanContext,
           fs: const RealFs(),
           prompt: const RealPromptDriver(),

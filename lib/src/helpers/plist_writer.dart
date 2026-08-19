@@ -68,8 +68,11 @@ class PlistWriter {
       existing.replace(replacement);
     } else {
       // 3. Key is absent: append the pair.
-      _appendPair(dict, key,
-          XmlElement(XmlName('string'))..children.add(XmlText(value)));
+      _appendPair(
+        dict,
+        key,
+        XmlElement(XmlName('string'))..children.add(XmlText(value)),
+      );
     }
 
     _write(plistPath, doc);
@@ -178,8 +181,9 @@ class PlistWriter {
     }
 
     // 3. Append the new <string> child.
-    existing.children
-        .add(XmlElement(XmlName('string'))..children.add(XmlText(value)));
+    existing.children.add(
+      XmlElement(XmlName('string'))..children.add(XmlText(value)),
+    );
     _write(plistPath, doc);
   }
 
@@ -268,8 +272,9 @@ class PlistWriter {
   static XmlElement _buildArray(List<String> values) {
     final array = XmlElement(XmlName('array'));
     for (final v in values) {
-      array.children
-          .add(XmlElement(XmlName('string'))..children.add(XmlText(v)));
+      array.children.add(
+        XmlElement(XmlName('string'))..children.add(XmlText(v)),
+      );
     }
     return array;
   }
@@ -282,8 +287,7 @@ class PlistWriter {
 
   /// Serialise [doc] back to [plistPath] using Apple plist tab indentation.
   static void _write(String plistPath, XmlDocument doc) {
-    File(plistPath).writeAsStringSync(
-      doc.toXmlString(pretty: true, indent: '\t'),
-    );
+    File(plistPath)
+        .writeAsStringSync(doc.toXmlString(pretty: true, indent: '\t'));
   }
 }

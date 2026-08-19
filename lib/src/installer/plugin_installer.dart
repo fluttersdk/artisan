@@ -264,11 +264,13 @@ class PluginInstaller {
     required String targetPath,
     Map<String, String> replacements = const <String, String>{},
   }) {
-    _ops.add(PublishFile(
-      sourceStubName: stubName,
-      targetPath: targetPath,
-      replacements: replacements,
-    ));
+    _ops.add(
+      PublishFile(
+        sourceStubName: stubName,
+        targetPath: targetPath,
+        replacements: replacements,
+      ),
+    );
     return this;
   }
 
@@ -325,11 +327,13 @@ class PluginInstaller {
     required Map<String, dynamic> sourceData,
     bool additive = true,
   }) {
-    _ops.add(MergeJson(
-      targetPath: targetPath,
-      sourceData: sourceData,
-      additive: additive,
-    ));
+    _ops.add(
+      MergeJson(
+        targetPath: targetPath,
+        sourceData: sourceData,
+        additive: additive,
+      ),
+    );
     return this;
   }
 
@@ -347,10 +351,9 @@ class PluginInstaller {
     required String targetFile,
     required String importStatement,
   }) {
-    _ops.add(InjectImport(
-      targetFile: targetFile,
-      importStatement: importStatement,
-    ));
+    _ops.add(
+      InjectImport(targetFile: targetFile, importStatement: importStatement),
+    );
     return this;
   }
 
@@ -366,11 +369,9 @@ class PluginInstaller {
     required Pattern pattern,
     required String code,
   }) {
-    _ops.add(InjectBeforePattern(
-      targetFile: targetFile,
-      pattern: pattern,
-      code: code,
-    ));
+    _ops.add(
+      InjectBeforePattern(targetFile: targetFile, pattern: pattern, code: code),
+    );
     return this;
   }
 
@@ -386,11 +387,9 @@ class PluginInstaller {
     required Pattern pattern,
     required String code,
   }) {
-    _ops.add(InjectAfterPattern(
-      targetFile: targetFile,
-      pattern: pattern,
-      code: code,
-    ));
+    _ops.add(
+      InjectAfterPattern(targetFile: targetFile, pattern: pattern, code: code),
+    );
     return this;
   }
 
@@ -413,10 +412,9 @@ class PluginInstaller {
   /// @param code  Code snippet to insert immediately before `Magic.init(...)`.
   /// @return This installer (chainable).
   PluginInstaller injectBeforeMagicInit(String code) {
-    _ops.add(InjectIntoMainDart(
-      placement: MainDartPlacement.beforeInit,
-      code: code,
-    ));
+    _ops.add(
+      InjectIntoMainDart(placement: MainDartPlacement.beforeInit, code: code),
+    );
     return this;
   }
 
@@ -426,10 +424,9 @@ class PluginInstaller {
   /// @param code  Code snippet to insert immediately after `Magic.init(...)`.
   /// @return This installer (chainable).
   PluginInstaller injectAfterMagicInit(String code) {
-    _ops.add(InjectIntoMainDart(
-      placement: MainDartPlacement.afterInit,
-      code: code,
-    ));
+    _ops.add(
+      InjectIntoMainDart(placement: MainDartPlacement.afterInit, code: code),
+    );
     return this;
   }
 
@@ -442,10 +439,12 @@ class PluginInstaller {
   /// @param wrapperName  Widget constructor name.
   /// @return This installer (chainable).
   PluginInstaller wrapRunApp(String wrapperName) {
-    _ops.add(InjectIntoMainDart(
-      placement: MainDartPlacement.wrapRunApp,
-      code: wrapperName,
-    ));
+    _ops.add(
+      InjectIntoMainDart(
+        placement: MainDartPlacement.wrapRunApp,
+        code: wrapperName,
+      ),
+    );
     return this;
   }
 
@@ -472,27 +471,29 @@ class PluginInstaller {
   /// @param package            Optional import target overriding the default
   ///                           `package:<pluginName>/<pluginName>.dart`.
   /// @return This installer (chainable).
-  PluginInstaller injectProvider(
-    String providerClassName, {
-    String? package,
-  }) {
+  PluginInstaller injectProvider(String providerClassName, {String? package}) {
     final String importTarget =
         package ?? 'package:$_pluginName/$_pluginName.dart';
-    _ops.add(InjectImport(
-      targetFile: 'lib/config/app.dart',
-      importStatement: "import '$importTarget';",
-    ));
+    _ops.add(
+      InjectImport(
+        targetFile: 'lib/config/app.dart',
+        importStatement: "import '$importTarget';",
+      ),
+    );
     // Append to the END of the providers list (just after the last entry's
     // trailing comma) using a lookahead-anchored regex that only matches the
     // last `(app) => XxxServiceProvider(app),` line before the closing `]`.
     // Falls back to inserting after `'providers': [` (i.e. at the top of the
     // list) when the host's providers list is empty.
-    _ops.add(InjectAfterPattern(
-      targetFile: 'lib/config/app.dart',
-      pattern:
-          RegExp(r'\(app\)\s*=>\s*\w+ServiceProvider\(app\),(?=\s*\n\s*\])'),
-      code: '\n      (app) => $providerClassName(app),',
-    ));
+    _ops.add(
+      InjectAfterPattern(
+        targetFile: 'lib/config/app.dart',
+        pattern: RegExp(
+          r'\(app\)\s*=>\s*\w+ServiceProvider\(app\),(?=\s*\n\s*\])',
+        ),
+        code: '\n      (app) => $providerClassName(app),',
+      ),
+    );
     return this;
   }
 
@@ -505,23 +506,20 @@ class PluginInstaller {
   /// @param factoryName  Top-level factory expression to insert.
   /// @param package      Optional import override.
   /// @return This installer (chainable).
-  PluginInstaller injectConfigFactory(
-    String factoryName, {
-    String? package,
-  }) {
+  PluginInstaller injectConfigFactory(String factoryName, {String? package}) {
     final String importTarget =
         package ?? 'package:$_pluginName/$_pluginName.dart';
-    _ops.add(InjectMainDartImport(
-      importStatement: "import '$importTarget';",
-    ));
+    _ops.add(InjectMainDartImport(importStatement: "import '$importTarget';"));
     // Append to the END of the configFactories list (just after the last
     // entry's trailing comma) using a lookahead-anchored regex that only
     // matches the last `() => xxxConfig,` line before the closing `]`.
-    _ops.add(InjectAfterPattern(
-      targetFile: 'lib/main.dart',
-      pattern: RegExp(r'\(\)\s*=>\s*\w+Config,(?=\s*\n\s*\])'),
-      code: '\n      () => $factoryName,',
-    ));
+    _ops.add(
+      InjectAfterPattern(
+        targetFile: 'lib/main.dart',
+        pattern: RegExp(r'\(\)\s*=>\s*\w+Config,(?=\s*\n\s*\])'),
+        code: '\n      () => $factoryName,',
+      ),
+    );
     return this;
   }
 
@@ -787,11 +785,7 @@ class PluginInstaller {
     List<String> args = const <String>[],
     String? workingDir,
   }) {
-    _ops.add(RunShell(
-      command: command,
-      args: args,
-      workingDir: workingDir,
-    ));
+    _ops.add(RunShell(command: command, args: args, workingDir: workingDir));
     return this;
   }
 

@@ -218,9 +218,10 @@ final class InstallArtisanCommand extends ArtisanCommand {
   static String? _readConsumerName(String root) {
     final pubspec = File(p.join(root, 'pubspec.yaml'));
     if (!pubspec.existsSync()) return null;
-    final match = RegExp(r'^name:\s*(\S+)', multiLine: true).firstMatch(
-      pubspec.readAsStringSync(),
-    );
+    final match = RegExp(
+      r'^name:\s*(\S+)',
+      multiLine: true,
+    ).firstMatch(pubspec.readAsStringSync());
     return match?.group(1);
   }
 
@@ -260,9 +261,7 @@ final class InstallArtisanCommand extends ArtisanCommand {
       if (p.isAbsolute(rootUri)) return null;
       // rootUri is relative to .dart_tool/ inside the consumer; rebase to
       // be relative to the consumer's pubspec.yaml location.
-      final absolute = p.normalize(
-        p.join(consumerRoot, '.dart_tool', rootUri),
-      );
+      final absolute = p.normalize(p.join(consumerRoot, '.dart_tool', rootUri));
       final relativeToConsumer = p.relative(absolute, from: consumerRoot);
       return relativeToConsumer;
     }

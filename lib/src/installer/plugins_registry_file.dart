@@ -91,10 +91,7 @@ final class PluginsRegistry {
   ///
   /// @return A [PluginsRegistry] with no plugins.
   factory PluginsRegistry.empty() {
-    return const PluginsRegistry(
-      version: 1,
-      plugins: <PluginEntry>[],
-    );
+    return const PluginsRegistry(version: 1, plugins: <PluginEntry>[]);
   }
 
   /// Deserialises a [PluginsRegistry] from a JSON object map.

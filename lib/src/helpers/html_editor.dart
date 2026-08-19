@@ -127,9 +127,7 @@ class HtmlEditor {
 
     // 3. Validate structure.
     if (!html.contains('</head>')) {
-      throw StateError(
-        'Cannot find </head> closing tag in HTML file: $path',
-      );
+      throw StateError('Cannot find </head> closing tag in HTML file: $path');
     }
 
     // 4. Inject.

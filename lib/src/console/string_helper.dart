@@ -72,7 +72,8 @@ class StringHelper {
 
   /// Parse nested name into components
   static ({String directory, String className, String fileName}) parseName(
-      String input) {
+    String input,
+  ) {
     if (input.isEmpty) {
       return (directory: '', className: '', fileName: '');
     }

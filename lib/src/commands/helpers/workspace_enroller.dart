@@ -142,8 +142,9 @@ class WorkspaceEnroller {
       }
 
       // 2b. List present: dedup before appending.
-      final alreadyPresent =
-          existing.any((entry) => entry?.toString() == pluginRelativePath);
+      final alreadyPresent = existing.any(
+        (entry) => entry?.toString() == pluginRelativePath,
+      );
       if (alreadyPresent) return;
 
       final merged = <dynamic>[...existing, pluginRelativePath];

@@ -16,10 +16,7 @@ import 'dart:io';
 /// against intentionally-impossible PIDs.
 bool processAlive(int pid) {
   if (Platform.isWindows) {
-    final result = Process.runSync('tasklist', <String>[
-      '/FI',
-      'PID eq $pid',
-    ]);
+    final result = Process.runSync('tasklist', <String>['/FI', 'PID eq $pid']);
     return result.exitCode == 0 && result.stdout.toString().contains('$pid');
   }
   final result = Process.runSync('kill', <String>['-0', '$pid']);

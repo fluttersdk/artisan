@@ -74,11 +74,7 @@ class GradleEditor {
   ///
   /// @throws [FileSystemException]  if the file does not exist.
   /// @throws [StateError]           if no `plugins {` block is found.
-  static void addPlugin(
-    String gradlePath,
-    String pluginId, {
-    String? version,
-  }) {
+  static void addPlugin(String gradlePath, String pluginId, {String? version}) {
     final syntax = _detectSyntax(gradlePath);
     final content = _read(gradlePath);
 
@@ -124,11 +120,7 @@ class GradleEditor {
   ///
   /// @throws [FileSystemException]  if the file does not exist.
   /// @throws [StateError]           if no `dependencies {` block is found.
-  static void addDependency(
-    String gradlePath,
-    String scope,
-    String notation,
-  ) {
+  static void addDependency(String gradlePath, String scope, String notation) {
     final syntax = _detectSyntax(gradlePath);
     final content = _read(gradlePath);
 
@@ -259,9 +251,7 @@ class GradleEditor {
     final match = blockPattern.firstMatch(content);
 
     if (match == null) {
-      throw StateError(
-        'Cannot find "$block {" block in Gradle file: $path',
-      );
+      throw StateError('Cannot find "$block {" block in Gradle file: $path');
     }
 
     // Insert newLine immediately after the opening brace.

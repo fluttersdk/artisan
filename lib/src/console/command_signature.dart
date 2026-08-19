@@ -103,11 +103,7 @@ class CommandSignature {
   void applyTo(ArgParser parser) {
     for (final opt in options) {
       if (opt.isFlag) {
-        parser.addFlag(
-          opt.name,
-          help: opt.description,
-          negatable: false,
-        );
+        parser.addFlag(opt.name, help: opt.description, negatable: false);
       } else {
         parser.addOption(
           opt.name,

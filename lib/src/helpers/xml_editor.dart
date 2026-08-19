@@ -78,11 +78,7 @@ class XmlEditor {
   /// @param element      XML element string to insert.
   ///
   /// @throws [StateError] if [parentXpath] is not found in the file.
-  static void addElement(
-    String path,
-    String parentXpath,
-    String element,
-  ) {
+  static void addElement(String path, String parentXpath, String element) {
     var content = read(path);
 
     // 1. Idempotency check — skip when element is already present.
@@ -92,16 +88,11 @@ class XmlEditor {
 
     // 2. Locate the anchor closing tag.
     if (!content.contains(parentXpath)) {
-      throw StateError(
-        'Cannot find anchor "$parentXpath" in XML file: $path',
-      );
+      throw StateError('Cannot find anchor "$parentXpath" in XML file: $path');
     }
 
     // 3. Insert element immediately before the anchor.
-    content = content.replaceFirst(
-      parentXpath,
-      '$element\n$parentXpath',
-    );
+    content = content.replaceFirst(parentXpath, '$element\n$parentXpath');
 
     File(path).writeAsStringSync(content);
   }
@@ -122,10 +113,7 @@ class XmlEditor {
   ///
   /// @throws [FileSystemException] if the manifest file is not found.
   /// @throws [StateError]          if `</manifest>` is not present in the file.
-  static void addAndroidPermission(
-    String manifestPath,
-    String permission,
-  ) {
+  static void addAndroidPermission(String manifestPath, String permission) {
     var content = read(manifestPath);
 
     // 1. Idempotency — skip when the permission is already declared.
@@ -135,17 +123,12 @@ class XmlEditor {
 
     // 2. Validate the manifest structure before mutating.
     if (!content.contains('</manifest>')) {
-      throw StateError(
-        'Cannot find </manifest> closing tag in: $manifestPath',
-      );
+      throw StateError('Cannot find </manifest> closing tag in: $manifestPath');
     }
 
     // 3. Build and insert the permission element.
     final tag = '  <uses-permission android:name="$permission"/>';
-    content = content.replaceFirst(
-      '</manifest>',
-      '$tag\n</manifest>',
-    );
+    content = content.replaceFirst('</manifest>', '$tag\n</manifest>');
 
     File(manifestPath).writeAsStringSync(content);
   }
@@ -177,8 +160,10 @@ class XmlEditor {
     }
 
     // 2. Find the <application ...> opening tag (may span multiple attributes).
-    final appTagMatch =
-        RegExp(r'<application[^>]*>', dotAll: true).firstMatch(content);
+    final appTagMatch = RegExp(
+      r'<application[^>]*>',
+      dotAll: true,
+    ).firstMatch(content);
     if (appTagMatch == null) {
       throw StateError(
         'Cannot find <application> opening tag in: $manifestPath',
@@ -188,10 +173,7 @@ class XmlEditor {
     // 3. Build the meta-data element and insert after the opening tag.
     final tag = '    <meta-data android:name="$name" android:value="$value"/>';
     final applicationTag = appTagMatch.group(0)!;
-    content = content.replaceFirst(
-      applicationTag,
-      '$applicationTag\n$tag',
-    );
+    content = content.replaceFirst(applicationTag, '$applicationTag\n$tag');
 
     File(manifestPath).writeAsStringSync(content);
   }
@@ -214,9 +196,7 @@ class XmlEditor {
     final result = <String, dynamic>{};
 
     // Match consecutive <key>…</key> <string>…</string> pairs.
-    final keyPattern = RegExp(
-      r'<key>([^<]+)</key>\s*<string>([^<]*)</string>',
-    );
+    final keyPattern = RegExp(r'<key>([^<]+)</key>\s*<string>([^<]*)</string>');
 
     for (final match in keyPattern.allMatches(content)) {
       final key = match.group(1)!.trim();

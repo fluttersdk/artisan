@@ -79,9 +79,10 @@ class MakeCommandCommand extends ArtisanGeneratorCommand {
     final pubspecPath = p.join(FileHelper.findProjectRoot(), 'pubspec.yaml');
     final file = File(pubspecPath);
     if (!file.existsSync()) return '';
-    final match = RegExp(r'^name:\s*(\S+)', multiLine: true).firstMatch(
-      file.readAsStringSync(),
-    );
+    final match = RegExp(
+      r'^name:\s*(\S+)',
+      multiLine: true,
+    ).firstMatch(file.readAsStringSync());
     return match?.group(1) ?? '';
   }
 
@@ -163,10 +164,9 @@ class MakeCommandCommand extends ArtisanGeneratorCommand {
     final root = FileHelper.findProjectRoot();
     final libSrc = Directory(p.join(root, 'lib', 'src'));
     if (!libSrc.existsSync()) return false;
-    return libSrc
-        .listSync()
-        .whereType<File>()
-        .any((f) => f.path.endsWith('_artisan_provider.dart'));
+    return libSrc.listSync().whereType<File>().any(
+          (f) => f.path.endsWith('_artisan_provider.dart'),
+        );
   }
 
   /// Locates the nearest `lib/src/*_artisan_provider.dart` and injects an

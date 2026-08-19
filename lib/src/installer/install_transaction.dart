@@ -593,12 +593,7 @@ class InstallTransaction {
 
   /// Resolves `<projectRoot>/<ios|macos>/Runner/Runner.entitlements`.
   String _entitlementsPathFor(String platform) {
-    return p.join(
-      _ctx.projectRoot,
-      platform,
-      'Runner',
-      'Runner.entitlements',
-    );
+    return p.join(_ctx.projectRoot, platform, 'Runner', 'Runner.entitlements');
   }
 
   /// Resolves `<projectRoot>/<ios|macos>/Podfile`.
@@ -610,7 +605,8 @@ class InstallTransaction {
   /// a platform directory that does not exist on the consumer project.
   void _logSkip(String opName, String platform) {
     _ctx.artisanContext.output.info(
-        'Skipping $opName: no $platform/ directory at ${_ctx.projectRoot}.');
+      'Skipping $opName: no $platform/ directory at ${_ctx.projectRoot}.',
+    );
   }
 
   /// Iterates [_ops] and fires every [RunShell] via [Process.runSync]. Runs
