@@ -88,11 +88,11 @@ responses with `isError: true` text.
 > downstream tools.
 >
 > Spawns `flutter run -d <device>` as a background process and writes the
-> resulting VM Service URI + pid + web port to `~/.artisan/state.json`.
-> Other tools (`artisan_status`, `artisan_logs`, `dusk_*`,
-> `telescope_*`, `artisan_tinker`) read this state file to find the running
-> app. ONLY ONE Flutter app per machine can be tracked at a time
-> (single-slot state).
+> resulting VM Service URI + pid + web port to a session file under
+> `~/.artisan/sessions/`, keyed by project. Other tools (`artisan_status`,
+> `artisan_logs`, `dusk_*`, `telescope_*`, `artisan_tinker`) read it to find
+> the running app. Sessions are PER PROJECT, so two projects can be driven
+> at once and neither overwrites the other.
 >
 > Usage:
 > - Call this BEFORE invoking any plugin tool (`dusk_snap`,
@@ -100,13 +100,20 @@ responses with `isError: true` text.
 > - Default device is the first available; pass `device: "chrome"` for
 >   web (port 3100), `device: "macos"` for desktop, or
 >   `device: "<serial>"` for a connected mobile.
-> - Returns immediately once the VM Service URI is captured; the Flutter
->   process keeps running in the background.
+> - Returns once the VM Service URI is captured; the Flutter process keeps
+>   running in the background.
+> - IF THIS CALL TIMES OUT, the app is probably still starting rather than
+>   broken: a cold iOS or Android build routinely takes longer than an MCP
+>   client allows a single tool call. The session is recorded before the
+>   wait, so call `artisan_status` to see it. A `booting: true` there means
+>   the app is up and the URI has not landed yet; the next connected tool
+>   call recovers it from the log. Do NOT re-run start, and do NOT
+>   hand-write the state file.
 > - To stop call `artisan_stop`. To full-cycle restart call
 >   `artisan_restart`. For source-change reload call `artisan_reload`
 >   (state preserved) or `artisan_hot_restart` (state dropped).
-> - Fails with "another app is recorded" when state.json already has a
->   running pid; call `artisan_stop` first.
+> - Fails with "another app is recorded" when this project's session
+>   already has a running pid; call `artisan_stop` first.
 
 **Input schema**:
 

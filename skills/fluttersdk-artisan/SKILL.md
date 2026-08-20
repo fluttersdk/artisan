@@ -1,7 +1,7 @@
 ---
 name: fluttersdk-artisan
 description: "fluttersdk_artisan: Dart CLI framework + stdio MCP server that lets an LLM agent boot, inspect, hot-reload, and evaluate a running Flutter app via 10 substrate MCP tools (`artisan_*`) and 22 builtin CLI commands (`./bin/fsa`). `~/.artisan/state.json` carries the running app's pid + VM Service URI + FIFO pipe; lazy-reconnect picks it up after `artisan_start`. Plugin tools (`dusk_*`, `telescope_*`) surface ONLY via `./bin/fsa mcp:serve` (dispatcher path), not `dart run fluttersdk_artisan:mcp` (substrate-only). TRIGGER when: any `artisan_*` MCP call, `./bin/fsa` or `dart run artisan` invocation, `.artisan/state.json` / `bin/dispatcher.dart` / `_plugins.g.dart` mention, or the user asks to start / stop / restart / reload / hot-restart / inspect / tinker a Flutter app. DO NOT TRIGGER on plugin authoring (install.yaml / PluginInstaller DSL) or pure `dart test` without driving the app."
-version: 0.0.4
+version: 0.0.5
 when_to_use: "Any task where the agent boots, restarts, inspects, or evaluates a running Flutter app via artisan: calling `artisan_*` MCP tools (start, status, doctor, tinker, hot-restart) in sequence, invoking `./bin/fsa <cmd>` from Bash, recovering from missing state.json or stale PID, picking substrate vs dispatcher MCP wiring, choosing between `artisan_tinker` (VM Service evaluate) and `dusk_evaluate` (E2E driver) for an inspect-or-mutate flow."
 ---
 
