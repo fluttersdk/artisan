@@ -6,7 +6,7 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ---
 
-## [Unreleased]
+## [0.0.10] - 2026-08-20
 
 ### Added
 
@@ -39,7 +39,7 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 - **`artisan_start`'s tool description pointed agents at a tool that does not exist.** Two lines of the description listed `tinker_eval` among the tools that read `~/.artisan/state.json`; the tool is `artisan_tinker`. An agent taking the description at its word calls a name the server never registered and gets an unknown-tool error. Also corrected the same stale name in `McpToolDescriptor`'s own docstring example. (`lib/src/mcp/mcp_server.dart`, `lib/src/mcp/mcp_tool_descriptor.dart`, `skills/fluttersdk-artisan/references/mcp-tools.md`, `skills/fluttersdk-artisan/references/tinker-eval.md`)
 - **The MCP server reported itself as `0.0.8` to every client.** The `Implementation.version` string in `McpServer` carries the comment "Keep in sync with pubspec.yaml `version:` on each release cut" and was missed on the 0.0.9 cut, so an MCP client's initialize handshake read a version one release behind while the package on disk was 0.0.9. Client-side version gating and bug reports both keyed on the wrong number. (`lib/src/mcp/mcp_server.dart`)
 
-### Quality
+### Documentation
 
 - **The registry dispatch fires on a published release now, not on every push that touches the skill.** Under the push trigger `fluttersdk/ai` climbed to v1.3.75, and most of those releases re-published identical skill content: a docs commit and a release commit each cost the registry a version. The registry version now tracks published artisan releases instead of counting commits. `workflow_dispatch` stays as the manual escape hatch when a skill fix has to reach users before the next release. (`.github/workflows/dispatch-to-registry.yml`)
 - **The skill undercounted the builtin commands by one and the CLI-only set with it.** `make:fast-cli` landed in 0.0.2 and the counts were never rolled forward, so the skill promised "21 builtin CLI commands" and "11 CLI-only" against a real 22 and 12. Corrected in the frontmatter description, Core Law 6, the section 14 reference table, and the `references/cli-commands.md` title, intro, and `artisan_list` heading. Core Law 6's inline list was 11 items long against its own count of 12: `mcp:uninstall` was missing, and it is now in both the list and the exclusion-reason table. (`skills/fluttersdk-artisan/SKILL.md`, `skills/fluttersdk-artisan/references/cli-commands.md`)
@@ -255,3 +255,16 @@ Both write through `.tmp` + atomic rename; never hand-edit.
 - Dart SDK `>=3.4.0 <4.0.0`. Pure Dart core; Flutter optional (only required by plugins that consume Flutter SDK APIs).
 - Platforms: Android, iOS, macOS, Linux, Windows. Web unsupported (relies on `dart:io`).
 - V1 lifecycle commands (`start`, `stop`, `reload`, `hot-restart`) use POSIX FIFO stdin pipes via `mkfifo`. macOS and Linux only; Windows unsupported for the lifecycle quartet (other commands work).
+
+---
+
+[0.0.10]: https://github.com/fluttersdk/artisan/compare/0.0.9...0.0.10
+[0.0.9]: https://github.com/fluttersdk/artisan/compare/0.0.8...0.0.9
+[0.0.8]: https://github.com/fluttersdk/artisan/compare/0.0.7...0.0.8
+[0.0.7]: https://github.com/fluttersdk/artisan/compare/0.0.6...0.0.7
+[0.0.6]: https://github.com/fluttersdk/artisan/compare/0.0.5...0.0.6
+[0.0.5]: https://github.com/fluttersdk/artisan/compare/0.0.4...0.0.5
+[0.0.4]: https://github.com/fluttersdk/artisan/compare/0.0.3...0.0.4
+[0.0.3]: https://github.com/fluttersdk/artisan/compare/0.0.2...0.0.3
+[0.0.2]: https://github.com/fluttersdk/artisan/compare/0.0.1...0.0.2
+[0.0.1]: https://github.com/fluttersdk/artisan/releases/tag/0.0.1

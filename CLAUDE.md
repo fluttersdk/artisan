@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Stack
 
-Pure Dart 3.4+ CLI framework. NO Flutter runtime dependency: the package is consumed by Flutter apps via `dart run fluttersdk_artisan <cmd>` but the framework itself runs on the Dart VM. Vendor deps locked: `args ^2.7`, `vm_service ^15.2` (DDS-aware), `dart_mcp ^0.5.1` (labs.dart.dev official MCP SDK), `stream_channel ^2.1`, `xml`, `yaml`, `yaml_edit ^2.2.3` (in-place YAML mutation), `crypto`, `meta`, `path`. Published on pub.dev as `fluttersdk_artisan ^0.0.1`; never reference `path:` local-dev syntax in user-facing artifacts.
+Pure Dart 3.4+ CLI framework. NO Flutter runtime dependency: the package is consumed by Flutter apps via `dart run fluttersdk_artisan <cmd>` but the framework itself runs on the Dart VM. Vendor deps locked: `args ^2.7`, `vm_service ^15.2` (DDS-aware), `dart_mcp ^0.5.1` (labs.dart.dev official MCP SDK), `stream_channel ^2.1`, `xml`, `yaml`, `yaml_edit ^2.2.3` (in-place YAML mutation), `crypto`, `meta`, `path`. Published on pub.dev as `fluttersdk_artisan ^0.0.10`; never reference `path:` local-dev syntax in user-facing artifacts.
 
 ## Commands
 
@@ -80,13 +80,15 @@ User-facing assets:
 - `example/` is a dev playground for live e2e validation. Production code does not depend on it. Pub.dev archive ships only `lib/`, `bin/`, `pubspec.yaml`, `README.md`, `CHANGELOG.md`, `LICENSE`, `assets/`, `doc/`, `llms.txt`, `skills/`, `analysis_options.yaml`; the rest is excluded via `.pubignore`.
 - `*.g.dart` files (`_index.g.dart`, `_plugins.g.dart`) are codegen output. Edit the source of truth (`.artisan/plugins.json` for plugins; `lib/app/commands/<name>_command.dart` for commands) and re-run the matching refresh command.
 - `magic_tinker` sibling package's `tinker_eval` MCP descriptor is OBSOLETE since artisan absorbed `artisan_tinker` as the 10th substrate tool. Any new code path or doc page must point at `artisan_tinker`, not `tinker_eval`.
-- `path:` deps in docs and the pub.dev archive are forbidden: README, install.yaml templates, doc pages, and `llms.txt` always use `^0.0.1` caret form (or `dart pub add` form). The `install` command itself picks the right dep shape at scaffold time: a `path:` entry when `.dart_tool/package_config.json` resolves `fluttersdk_artisan` to a relative `rootUri` (sibling-package monorepo workflow), otherwise `fluttersdk_artisan: any` so the next `pub get` pulls the published package. Never hand-write `path:` syntax in documentation, even when the codebase is monorepo-vendored.
+- `path:` deps in docs and the pub.dev archive are forbidden: README, install.yaml templates, doc pages, and `llms.txt` always use the current caret form (`^0.0.10`) (or `dart pub add` form). The `install` command itself picks the right dep shape at scaffold time: a `path:` entry when `.dart_tool/package_config.json` resolves `fluttersdk_artisan` to a relative `rootUri` (sibling-package monorepo workflow), otherwise `fluttersdk_artisan: any` so the next `pub get` pulls the published package. Never hand-write `path:` syntax in documentation, even when the codebase is monorepo-vendored.
 - `~/.artisan/` is machine-local state. Never commit; `.gitignore` already excludes it.
 - Platform: V1 lifecycle commands (`start` / `stop` / `reload` / `hot-restart`) use POSIX FIFO stdin via `mkfifo`. macOS and Linux only; Windows unsupported.
 
 ## Release
 
-- Version: `0.0.1` (first public release). Bump per SemVer in `pubspec.yaml` and promote the `[Unreleased]` block of `CHANGELOG.md` to a dated section before publishing.
+- Version: `0.0.10`. Bump per SemVer in `pubspec.yaml` and promote the `[Unreleased]` block of `CHANGELOG.md` to a dated section (with its footer compare link) before publishing.
+- Four files carry the version and three of them are edited by hand: `pubspec.yaml`, `lib/src/mcp/mcp_server.dart` (the MCP handshake string), `example/pubspec.yaml`, and the stamp comment in `skills/fluttersdk-artisan/SKILL.md`. The MCP one shipped a release behind on the 0.0.9 cut; `test/mcp/mcp_server_version_test.dart` now fails the build when it drifts from the pubspec, so that one cannot repeat. The other two have no guard, so check them.
+- Docs that quote the caret constraint (`doc/getting-started/installation.md`, `doc/commands/install.md`, `doc/plugins/authoring.md`) track the released version; a stale `^0.0.1` there tells a reader the package never moved.
 - Pub.dev topics (max 5, declared in `pubspec.yaml`): `cli`, `mcp-server`, `scaffolding`, `plugin-system`, `code-generation`.
 - Homepage and documentation URL: `https://fluttersdk.com/artisan`. Repository: `https://github.com/fluttersdk/artisan`.
 - `dart pub publish --dry-run` must end clean (0 errors). Dev-state warnings (uncommitted, gitignored-but-tracked) are acceptable in dev and cleared before publish via clean git checkout.
