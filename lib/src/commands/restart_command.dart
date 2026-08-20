@@ -102,8 +102,14 @@ class RestartCommand extends ArtisanCommand {
     final priorState = await StateFile.read();
     final Map<String, Object?> carried = sessionOverridesFrom(priorState);
 
-    // 2. Stop the running app (deletes the session state).
-    await StopCommand().handle(ctx);
+    // 2. Stop the running app (deletes the session state). A non-zero exit
+    //    is a REFUSAL, not noise: `stop` returns 1 when the recorded session
+    //    belongs to another project. Proceeding past it would relaunch this
+    //    project on the OTHER project's ports and device, carried over by
+    //    `sessionOverridesFrom` above, which is the `Address already in use`
+    //    this command exists to stop producing.
+    final int stopped = await StopCommand().handle(ctx);
+    if (stopped != 0) return stopped;
 
     // 3. Start again with the carried settings. An explicit flag on ctx
     //    overrides the carried value inside StartCommand.handle (flag-wins).

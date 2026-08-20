@@ -315,6 +315,42 @@ void main() {
       expect(state, isNotNull);
       expect(state!['cdpPort'], isNull);
     });
+
+    test('a refused stop aborts the restart', () async {
+      // `stop` returns 1 when the recorded session belongs to another
+      // project. Proceeding past it relaunched THIS project on the OTHER
+      // project's ports and device, carried over by sessionOverridesFrom,
+      // which is the `Address already in use` restart exists to stop
+      // producing.
+      final Directory sibling =
+          Directory.systemTemp.createTempSync('artisan_restart_sibling_');
+      addTearDown(() => sibling.deleteSync(recursive: true));
+
+      final Directory stateDir = Directory('${tempHome.path}/.artisan');
+      stateDir.createSync(recursive: true);
+      File('${stateDir.path}/state.json').writeAsStringSync(
+        jsonEncode(<String, dynamic>{
+          'pid': 4242,
+          'projectRoot': sibling.path,
+          'webPort': 3100,
+          'cdpPort': 9222,
+          'device': 'chrome',
+        }),
+      );
+
+      final output = BufferedOutput();
+      final int code = await RestartCommand().handle(
+        ArtisanContext.bare(MapInput(const {}), output),
+      );
+
+      expect(code, 1);
+      expect(output.content, contains('another project'));
+      expect(
+        output.content,
+        isNot(contains('Address already in use')),
+        reason: 'it must not have reached the relaunch at all',
+      );
+    });
   });
 
   // (c) Bare start (no flag, no forwarded param): cdpPort==null.
@@ -560,7 +596,10 @@ Future<void> _writeFakeState(Directory tempHome,
     'vmServicePort': 8181,
     'startedAt': '2026-06-16T00:00:00.000Z',
     'profile': 'debug',
-    'projectRoot': '/fake/project',
+    // This project's own directory: `restart` refuses a session that
+    // belongs to somebody else, so a fake root here would exercise the
+    // refusal path rather than the carry-over these cases are about.
+    'projectRoot': Directory.current.path,
     'device': 'chrome',
     'chromePid': null,
     'tmpProfileDir': null,

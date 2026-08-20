@@ -125,9 +125,10 @@ Future<int> runArtisan(
   WrapperNameResolver? wrapperName,
   DelegateStrategy? delegate,
 }) async {
-  // 0. Resolve the session BEFORE anything else, because a wrapper
-  //    delegation forwards the args verbatim and the delegate resolves it
-  //    again from the same source.
+  // 0. Resolve the session BEFORE anything else, so a command that runs in
+  //    THIS process sees it. The flag is re-attached below when the
+  //    invocation is handed to a wrapper instead: that spawns a separate
+  //    Dart process, where a static on this isolate means nothing.
   args = _consumeStateFlag(args);
 
   // 1. Decide whether the consumer wrapper owns this invocation. Resolve
@@ -145,7 +146,16 @@ Future<int> runArtisan(
     final bypassed = _bypassDelegation.contains(firstArg);
     if (hasWrapper && !bypassed) {
       final token = resolvedName ?? 'dispatcher';
-      return await (delegate ?? _defaultDelegate)(<String>[':$token', ...args]);
+      // Re-attach --state: the delegate spawns a NEW process, so the child
+      // resolves its own session from scratch. Dropping it here meant
+      // `artisan stop --state=/x` from any consumer with a wrapper acted on
+      // the auto-resolved session instead, silently.
+      final String? named = StateFile.pathOverride;
+      return await (delegate ?? _defaultDelegate)(<String>[
+        ':$token',
+        if (named != null && named.isNotEmpty) '--state=$named',
+        ...args,
+      ]);
     }
   }
 

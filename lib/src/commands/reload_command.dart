@@ -46,7 +46,7 @@ Future<int> _sendKeystroke(ArtisanContext ctx, String key, String label) async {
       : sessionOwnershipError(
           state: state,
           workingDirectory: Directory.current.path,
-          explicitStatePath: StateFile.pathOverride,
+          explicitStatePath: StateFile.explicitPath(),
         );
   if (ownership != null) {
     ctx.output.error(ownership);

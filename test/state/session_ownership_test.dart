@@ -87,5 +87,19 @@ void main() {
         isNull,
       );
     });
+
+    test('ARTISAN_STATE_FILE counts as naming the session', () {
+      // Both spellings are documented as equivalent and `path` honours both,
+      // so a guard that saw only the flag read the session the env var
+      // pointed at and then refused to drive it.
+      expect(
+        sessionOwnershipError(
+          state: <String, dynamic>{'projectRoot': projectB.path},
+          workingDirectory: projectA.path,
+          explicitStatePath: '/tmp/named.json',
+        ),
+        isNull,
+      );
+    });
   });
 }

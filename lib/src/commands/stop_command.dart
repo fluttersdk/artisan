@@ -66,7 +66,7 @@ class StopCommand extends ArtisanCommand {
     final String? ownership = sessionOwnershipError(
       state: state,
       workingDirectory: Directory.current.path,
-      explicitStatePath: StateFile.pathOverride,
+      explicitStatePath: StateFile.explicitPath(),
     );
     if (ownership != null) {
       ctx.output.error(ownership);

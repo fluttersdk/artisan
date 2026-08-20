@@ -35,7 +35,7 @@ class StatusCommand extends ArtisanCommand {
     final String? foreign = sessionOwnershipError(
       state: state,
       workingDirectory: Directory.current.path,
-      explicitStatePath: StateFile.pathOverride,
+      explicitStatePath: StateFile.explicitPath(),
     );
 
     ctx.output.writeln(

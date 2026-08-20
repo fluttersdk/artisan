@@ -136,7 +136,7 @@ class ArtisanApplication {
     final String? ownership = sessionOwnershipError(
       state: state,
       workingDirectory: Directory.current.path,
-      explicitStatePath: StateFile.pathOverride,
+      explicitStatePath: StateFile.explicitPath(),
     );
     if (ownership != null) {
       output.error(ownership);

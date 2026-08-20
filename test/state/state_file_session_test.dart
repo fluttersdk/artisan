@@ -200,5 +200,58 @@ void main() {
       expect(StateFile.legacyPointerPath, equals('$home/.artisan/state.json'));
       expect(StateFile.homeDir, equals('$home/.artisan'));
     });
+
+    test('delete leaves a pointer that records no project', () async {
+      // The hand-written recovery file usually omits projectRoot, and the
+      // read path honours it. Deleting it took away the escape hatch people
+      // reach for precisely when `start` has already failed them.
+      final Directory dir = Directory('${tempHome.path}/.artisan');
+      await dir.create(recursive: true);
+      await File('${dir.path}/state.json').writeAsString(
+        jsonEncode(<String, dynamic>{'pid': 999}),
+      );
+
+      StateFile.debugProjectRootOverride = projectA.path;
+      await StateFile.delete();
+
+      expect(File(StateFile.legacyPointerPath).existsSync(), isTrue);
+    });
+
+    test('delete from a subdirectory still clears this project\'s pointer',
+        () async {
+      // `stop` run from `backend/` has no session file of its own, so the
+      // fallback root is the subdirectory. Comparing exactly left the
+      // pointer behind, advertising a session that had just been stopped.
+      final Directory nested = Directory('${projectA.path}/backend');
+      await nested.create(recursive: true);
+
+      StateFile.debugProjectRootOverride = projectA.path;
+      await StateFile.write(<String, dynamic>{
+        'pid': 111,
+        'projectRoot': projectA.path,
+      });
+
+      StateFile.debugProjectRootOverride = nested.path;
+      await StateFile.delete();
+
+      expect(File(StateFile.legacyPointerPath).existsSync(), isFalse);
+    });
+
+    test('the staging file is per process, not per path', () async {
+      // The legacy pointer is shared, so two projects starting at once both
+      // staged `state.json.tmp`; the loser's rename threw after flutter run
+      // had already spawned.
+      StateFile.debugProjectRootOverride = projectA.path;
+      await StateFile.write(<String, dynamic>{'pid': 1});
+
+      final List<String> leftovers = Directory('${tempHome.path}/.artisan')
+          .listSync()
+          .whereType<File>()
+          .map((File f) => f.path)
+          .where((String p) => p.endsWith('.tmp'))
+          .toList();
+
+      expect(leftovers, isEmpty, reason: 'staging files are renamed away');
+    });
   });
 }

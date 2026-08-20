@@ -345,7 +345,17 @@ void main() {
       );
 
       expect(StateFile.pathOverride, equals('/tmp/named-session.json'));
-      expect(receivedArgs, equals(<String>[':dispatcher', 'list']));
+      // Re-attached, not dropped: the delegate spawns a separate process,
+      // so a static on this isolate would never reach the command that
+      // actually runs.
+      expect(
+        receivedArgs,
+        equals(<String>[
+          ':dispatcher',
+          '--state=/tmp/named-session.json',
+          'list',
+        ]),
+      );
     });
 
     test('--state <path> in two tokens is consumed the same way', () async {
@@ -362,7 +372,14 @@ void main() {
       );
 
       expect(StateFile.pathOverride, equals('/tmp/spaced-session.json'));
-      expect(receivedArgs, equals(<String>[':dispatcher', 'list']));
+      expect(
+        receivedArgs,
+        equals(<String>[
+          ':dispatcher',
+          '--state=/tmp/spaced-session.json',
+          'list',
+        ]),
+      );
     });
 
     test('a trailing --state with no value is left for the parser', () async {

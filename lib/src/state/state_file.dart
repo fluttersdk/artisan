@@ -49,9 +49,23 @@ class StateFile {
   @visibleForTesting
   static String? debugProjectRootOverride;
 
-  /// Explicit path override, set from `--state=<path>` or
-  /// `ARTISAN_STATE_FILE`. Null means "resolve from the project root".
+  /// Explicit path override, set from `--state=<path>`. Null means "resolve
+  /// from the project root", subject to [explicitPath].
   static String? pathOverride;
+
+  /// The session the caller NAMED, by flag or by environment, or null when
+  /// they named none.
+  ///
+  /// The ownership check reads this rather than [pathOverride] alone. Both
+  /// spellings are documented as equivalent and [path] honours both, so a
+  /// guard that saw only the flag refused to drive the very session
+  /// `ARTISAN_STATE_FILE` had just pointed it at.
+  static String? explicitPath() {
+    final String? flag = pathOverride;
+    if (flag != null && flag.isNotEmpty) return flag;
+    final String? env = _envPathOverride();
+    return (env != null && env.isNotEmpty) ? env : null;
+  }
 
   /// The single global file every version before session isolation used.
   static String get legacyPointerPath => '${_homePath()}/.artisan/state.json';
@@ -61,8 +75,8 @@ class StateFile {
   /// Resolution order: the explicit [pathOverride] (`--state=<path>` or
   /// `ARTISAN_STATE_FILE`), then the per-project session file.
   static String get path {
-    final String? override = pathOverride ?? _envPathOverride();
-    if (override != null && override.isNotEmpty) return override;
+    final String? override = explicitPath();
+    if (override != null) return override;
     return sessionPathFor(_projectRoot());
   }
 
@@ -134,7 +148,11 @@ class StateFile {
   static Future<void> _writeFile(String at, Map<String, dynamic> data) async {
     final file = File(at);
     await file.parent.create(recursive: true);
-    final tmp = File('${file.path}.tmp');
+    // The temp name carries the pid because the legacy pointer is SHARED:
+    // two projects starting at once both staged `state.json.tmp`, and the
+    // loser's rename threw after `flutter run` had already been spawned,
+    // orphaning the process with no state file to find it by.
+    final tmp = File('${file.path}.$pid.tmp');
     await tmp.writeAsString(jsonEncode(data));
     await tmp.rename(file.path);
   }
@@ -158,8 +176,19 @@ class StateFile {
 
     final Map<String, dynamic>? pointed = await _readFile(legacyPointerPath);
     final Object? pointedRoot = pointed?['projectRoot'];
-    final Object? myRoot = mine?['projectRoot'] ?? _projectRoot();
-    if (pointedRoot == null || pointedRoot == myRoot) {
+    // A pointer with no recorded root is the hand-written recovery file the
+    // read path goes out of its way to honour. Deleting it here took away
+    // the escape hatch people reach for precisely when `start` has already
+    // failed them, so an unattributed pointer is left alone.
+    if (pointedRoot is! String || pointedRoot.isEmpty) return;
+
+    // IS-WITHIN, matching sessionOwnershipError: a `stop` run from a
+    // subdirectory has no session file of its own, so `mine` is null and
+    // the fallback root is that subdirectory. Comparing exactly left the
+    // pointer behind, still advertising a session that had just been
+    // stopped.
+    final String myRoot = (mine?['projectRoot'] as String?) ?? _projectRoot();
+    if (_isWithin(myRoot, pointedRoot)) {
       await pointer.delete();
     }
   }
