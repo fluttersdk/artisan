@@ -20,8 +20,20 @@ void main() {
       }
     });
 
-    test('path resolves under <home>/.artisan/state.json', () {
-      expect(StateFile.path, '${tempHome.path}/.artisan/state.json');
+    test('path resolves to a per-project session file', () {
+      // One global slot let a sibling project's `artisan start` take over
+      // and silently repoint every connected command here.
+      expect(StateFile.path, startsWith('${tempHome.path}/.artisan/sessions/'));
+      expect(StateFile.path, endsWith('.json'));
+    });
+
+    test('the legacy pointer still resolves to the well-known path', () {
+      // Hand-writing this file is the documented recovery recipe when
+      // `artisan start` cannot boot an app, so the location is a contract.
+      expect(
+        StateFile.legacyPointerPath,
+        '${tempHome.path}/.artisan/state.json',
+      );
     });
 
     test('read returns null when the file does not exist', () async {

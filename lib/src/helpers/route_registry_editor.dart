@@ -182,10 +182,7 @@ class RouteRegistryEditor {
   ///   file that should receive the import.
   /// @param importStatement The full import statement string, e.g.
   ///   `"import 'package:my_plugin/routes.dart';"`.
-  static void addRouteImport(
-    String providerPath,
-    String importStatement,
-  ) {
+  static void addRouteImport(String providerPath, String importStatement) {
     ConfigEditor.addImportToFile(
       filePath: providerPath,
       importStatement: importStatement,

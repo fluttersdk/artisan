@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:fluttersdk_artisan/artisan.dart';
@@ -92,6 +93,33 @@ void main() {
 
       reader.kill();
       await reader.exitCode;
+    });
+
+    test('refuses a session that belongs to another project', () async {
+      // The legacy pointer describes whichever app started last, so without
+      // this a hot restart run from here writes `R` into a sibling project's FIFO
+      // and reports success while nothing in this project moved.
+      final Directory sibling =
+          Directory.systemTemp.createTempSync('artisan_sibling_');
+      addTearDown(() => sibling.deleteSync(recursive: true));
+
+      final Directory stateDir = Directory('${tempHome.path}/.artisan');
+      stateDir.createSync(recursive: true);
+      File('${stateDir.path}/state.json').writeAsStringSync(
+        jsonEncode(<String, dynamic>{
+          'pid': 4242,
+          'projectRoot': sibling.path,
+          'stdinPipe': '${sibling.path}/stdin.fifo',
+        }),
+      );
+
+      final output = BufferedOutput();
+      final int code = await HotRestartCommand().handle(
+        ArtisanContext.bare(MapInput(const {}), output),
+      );
+
+      expect(code, 1);
+      expect(output.content, contains('another project'));
     });
   });
 }

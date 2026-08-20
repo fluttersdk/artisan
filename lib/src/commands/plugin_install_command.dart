@@ -379,10 +379,7 @@ class PluginInstallCommand extends ArtisanInstallCommand {
 
   /// Maps a [TransactionResult] to the appropriate user-facing output +
   /// process exit code.
-  int _renderResultAndExit(
-    ArtisanContext ctx,
-    TransactionResult result,
-  ) {
+  int _renderResultAndExit(ArtisanContext ctx, TransactionResult result) {
     switch (result) {
       case Success():
         ctx.output.success(result.describe());

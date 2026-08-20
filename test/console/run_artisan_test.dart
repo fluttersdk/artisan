@@ -327,6 +327,79 @@ void main() {
 
       expect(code, 3);
     });
+
+    test('--state=<path> is consumed before dispatch and recorded', () async {
+      // A global flag rather than a per-command option: every connected
+      // command needs it and none of them owns it, so it must never reach
+      // the command's own parser.
+      addTearDown(() => StateFile.pathOverride = null);
+      List<String>? receivedArgs;
+
+      await runArtisan(
+        <String>['list', '--state=/tmp/named-session.json'],
+        wrapperExists: () => true,
+        delegate: (List<String> args) async {
+          receivedArgs = args;
+          return 0;
+        },
+      );
+
+      expect(StateFile.pathOverride, equals('/tmp/named-session.json'));
+      // Re-attached, not dropped: the delegate spawns a separate process,
+      // so a static on this isolate would never reach the command that
+      // actually runs.
+      expect(
+        receivedArgs,
+        equals(<String>[
+          ':dispatcher',
+          '--state=/tmp/named-session.json',
+          'list',
+        ]),
+      );
+    });
+
+    test('--state <path> in two tokens is consumed the same way', () async {
+      addTearDown(() => StateFile.pathOverride = null);
+      List<String>? receivedArgs;
+
+      await runArtisan(
+        <String>['--state', '/tmp/spaced-session.json', 'list'],
+        wrapperExists: () => true,
+        delegate: (List<String> args) async {
+          receivedArgs = args;
+          return 0;
+        },
+      );
+
+      expect(StateFile.pathOverride, equals('/tmp/spaced-session.json'));
+      expect(
+        receivedArgs,
+        equals(<String>[
+          ':dispatcher',
+          '--state=/tmp/spaced-session.json',
+          'list',
+        ]),
+      );
+    });
+
+    test('a trailing --state with no value is left for the parser', () async {
+      // Swallowing it would turn a typo into a silent no-op; the arg parser
+      // is the layer that reports an unknown flag.
+      addTearDown(() => StateFile.pathOverride = null);
+      List<String>? receivedArgs;
+
+      await runArtisan(
+        <String>['list', '--state'],
+        wrapperExists: () => true,
+        delegate: (List<String> args) async {
+          receivedArgs = args;
+          return 0;
+        },
+      );
+
+      expect(StateFile.pathOverride, isNull);
+      expect(receivedArgs, equals(<String>[':dispatcher', 'list', '--state']));
+    });
   });
 }
 

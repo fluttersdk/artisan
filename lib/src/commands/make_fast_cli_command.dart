@@ -86,9 +86,7 @@ final class MakeFastCliCommand extends ArtisanCommand {
     //    we scaffold the fast-CLI layer on top of it.
     final artisanBinPath = p.join(root, 'bin', 'dispatcher.dart');
     if (!File(artisanBinPath).existsSync()) {
-      ctx.output.error(
-        'bin/dispatcher.dart not found. Run `install` first.',
-      );
+      ctx.output.error('bin/dispatcher.dart not found. Run `install` first.');
       return 1;
     }
 
@@ -137,8 +135,9 @@ final class MakeFastCliCommand extends ArtisanCommand {
     // When bin/fsa was not rewritten (idempotent skip), skip the expensive
     // compile so repeated runs do not trigger a multi-second dart build cli.
     if (!wroteWrapper) {
-      ctx.output
-          .success('fsa: ready. Run ./bin/fsa <cmd> for a ~50ms startup.');
+      ctx.output.success(
+        'fsa: ready. Run ./bin/fsa <cmd> for a ~50ms startup.',
+      );
       return 0;
     }
 
@@ -160,17 +159,16 @@ final class MakeFastCliCommand extends ArtisanCommand {
     //    so the user sees compiler progress. On non-zero exit, report the
     //    error details and surface a non-zero exit code.
     final buildResult = await processRunner(
-      'dart',
-      [
-        'build',
-        'cli',
-        '-t',
-        'bin/dispatcher.dart',
-        '-o',
-        '.artisan/cli-bundle'
-      ],
-      workingDirectory: root,
-    );
+        'dart',
+        [
+          'build',
+          'cli',
+          '-t',
+          'bin/dispatcher.dart',
+          '-o',
+          '.artisan/cli-bundle',
+        ],
+        workingDirectory: root);
     if (buildResult.stdout is String &&
         (buildResult.stdout as String).isNotEmpty) {
       ctx.output.writeln(buildResult.stdout as String);

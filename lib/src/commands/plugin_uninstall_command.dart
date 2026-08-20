@@ -395,8 +395,11 @@ class PluginUninstallCommand extends ArtisanInstallCommand {
     required String pluginName,
     String? providerClassName,
   }) {
-    final wrapperPath =
-        p.join(installContext.projectRoot, 'bin', 'artisan.dart');
+    final wrapperPath = p.join(
+      installContext.projectRoot,
+      'bin',
+      'artisan.dart',
+    );
     if (!installContext.fs.exists(wrapperPath)) return;
 
     var content = installContext.fs.readAsString(wrapperPath);

@@ -96,7 +96,9 @@ abstract class ArtisanCommand {
         raw.endsWith('Command') ? raw.substring(0, raw.length - 7) : raw;
     final kebab = withoutSuffix
         .replaceAllMapped(
-            RegExp(r'([a-z0-9])([A-Z])'), (m) => '${m[1]}-${m[2]}')
+          RegExp(r'([a-z0-9])([A-Z])'),
+          (m) => '${m[1]}-${m[2]}',
+        )
         .toLowerCase();
     return kebab.isEmpty ? 'unnamed' : kebab;
   }

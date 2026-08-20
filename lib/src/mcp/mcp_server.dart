@@ -181,17 +181,14 @@ final class McpServer extends MCPServer with ToolsSupport {
     final pluginTools = registry.mcpTools;
     final substrateTools = _artisanCommandTools();
     final allTools = <McpToolDescriptor>[...pluginTools, ...substrateTools];
-    final filtered = filter.apply(
-      allTools,
-      (tool) {
-        // Substrate tools belong to the synthetic provider 'fluttersdk_artisan';
-        // plugin tools defer to the registry's provider lookup.
-        if (tool.extensionMethod.startsWith(_artisanDispatchPrefix)) {
-          return 'fluttersdk_artisan';
-        }
-        return registry.providerNameFor(tool.name) ?? '';
-      },
-    );
+    final filtered = filter.apply(allTools, (tool) {
+      // Substrate tools belong to the synthetic provider 'fluttersdk_artisan';
+      // plugin tools defer to the registry's provider lookup.
+      if (tool.extensionMethod.startsWith(_artisanDispatchPrefix)) {
+        return 'fluttersdk_artisan';
+      }
+      return registry.providerNameFor(tool.name) ?? '';
+    });
 
     // 4. Register each surviving tool with its dispatch handler. dart_mcp
     //    auto-validates arguments against the wrapped ObjectSchema. The
@@ -298,9 +295,7 @@ final class McpServer extends MCPServer with ToolsSupport {
         isolateId: isolateId,
         params: args,
       );
-      return CallToolResult(
-        content: [TextContent(text: jsonEncode(result))],
-      );
+      return CallToolResult(content: [TextContent(text: jsonEncode(result))]);
     } catch (e) {
       return CallToolResult(
         isError: true,
@@ -471,17 +466,19 @@ final class McpServer extends MCPServer with ToolsSupport {
       // `[a-zA-Z][a-zA-Z0-9_]*` cleanly.
       final toolName =
           'artisan_${command.name.replaceAll(':', '_').replaceAll('-', '_')}';
-      tools.add(McpToolDescriptor(
-        name: toolName,
-        // MCP descriptions are richer than the CLI command's one-liner
-        // `description` field so the LLM picks the right tool reliably.
-        // Format mirrors Claude Code's built-in tool descriptions
-        // (imperative opening + brief context + `Usage:` bullets +
-        // constraint-forward language; truncated by CC at 2KB chars).
-        description: _mcpDescriptionFor(command),
-        inputSchema: _commandInputSchema(command),
-        extensionMethod: '$_artisanDispatchPrefix${command.name}',
-      ));
+      tools.add(
+        McpToolDescriptor(
+          name: toolName,
+          // MCP descriptions are richer than the CLI command's one-liner
+          // `description` field so the LLM picks the right tool reliably.
+          // Format mirrors Claude Code's built-in tool descriptions
+          // (imperative opening + brief context + `Usage:` bullets +
+          // constraint-forward language; truncated by CC at 2KB chars).
+          description: _mcpDescriptionFor(command),
+          inputSchema: _commandInputSchema(command),
+          extensionMethod: '$_artisanDispatchPrefix${command.name}',
+        ),
+      );
     }
     return tools;
   }
@@ -815,8 +812,12 @@ final class McpServer extends MCPServer with ToolsSupport {
           ],
         );
       }
-      ctx =
-          ArtisanContext.connected(input, output, vmClient, registry: registry);
+      ctx = ArtisanContext.connected(
+        input,
+        output,
+        vmClient,
+        registry: registry,
+      );
     } else {
       ctx = ArtisanContext.bare(input, output, registry: registry);
     }
@@ -834,9 +835,7 @@ final class McpServer extends MCPServer with ToolsSupport {
     } catch (e, s) {
       return CallToolResult(
         isError: true,
-        content: [
-          TextContent(text: '### Error\n$e\n\n$s'),
-        ],
+        content: [TextContent(text: '### Error\n$e\n\n$s')],
       );
     }
   }

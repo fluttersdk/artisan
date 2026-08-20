@@ -35,15 +35,27 @@ class ReloadCommand extends ArtisanCommand {
 }
 
 /// Shared helper for [ReloadCommand] and [HotRestartCommand].
-Future<int> _sendKeystroke(
-  ArtisanContext ctx,
-  String key,
-  String label,
-) async {
+Future<int> _sendKeystroke(ArtisanContext ctx, String key, String label) async {
   final state = await StateFile.read();
+
+  // The legacy pointer describes whichever app started last, so a
+  // command that writes to the recorded FIFO would otherwise reach
+  // into a sibling project's running app.
+  final String? ownership = state == null
+      ? null
+      : sessionOwnershipError(
+          state: state,
+          workingDirectory: Directory.current.path,
+          explicitStatePath: StateFile.explicitPath(),
+        );
+  if (ownership != null) {
+    ctx.output.error(ownership);
+    return 1;
+  }
   if (state == null) {
-    ctx.output
-        .error('No state file; nothing to $label. Run `artisan start` first.');
+    ctx.output.error(
+      'No state file; nothing to $label. Run `artisan start` first.',
+    );
     return 2;
   }
   final pipePath = state['stdinPipe'] as String?;

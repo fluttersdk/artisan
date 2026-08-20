@@ -228,8 +228,10 @@ class MainDartEditor {
     }
 
     // 2. Locate the opening `(` of the anchored call; bail when absent.
-    final callPattern =
-        RegExp('${RegExp.escape(anchor)}\\s*\\(', multiLine: true);
+    final callPattern = RegExp(
+      '${RegExp.escape(anchor)}\\s*\\(',
+      multiLine: true,
+    );
     final match = callPattern.firstMatch(source);
     if (match == null) {
       return source;

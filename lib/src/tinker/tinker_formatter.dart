@@ -7,10 +7,7 @@ import 'tinker.dart';
 /// Walks [casters] in insertion order (default: `Tinker.casters`); the
 /// first non-null caster return wins. Falls through to [formatInstanceRef]
 /// when every caster returns null.
-String formatTinkerResult(
-  Object? value, {
-  List<TinkerCaster>? casters,
-}) {
+String formatTinkerResult(Object? value, {List<TinkerCaster>? casters}) {
   final chain = casters ?? Tinker.casters;
   for (final caster in chain) {
     final formatted = caster(value);

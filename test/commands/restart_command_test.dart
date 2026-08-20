@@ -35,6 +35,47 @@ void main() {
       // The parser accepts the flag the docblock promises wins on restart.
       expect(parser.parse(['--cdp-port=4444']).option('cdp-port'), '4444');
     });
+
+    test('configure declares every option a restart has to carry over', () {
+      // Only --cdp-port was preserved, so a restart relaunched on the default
+      // web port and VM Service port. Several worktrees run their own dev
+      // server here, so 3100 is usually held by a sibling: the stop half
+      // succeeded, the relaunch failed with `Address already in use`, and the
+      // app being driven was simply gone. The error names a port that appears
+      // in no command the caller ran, so it reads as a machine problem.
+      final parser = ArgParser();
+      RestartCommand().configure(parser);
+
+      expect(
+        parser.options.keys,
+        containsAll(<String>['cdp-port', 'port', 'vm-service-port', 'device']),
+      );
+    });
+
+    test('sessionOverridesFrom carries the prior ports and device', () {
+      final Map<String, Object?> forwarded =
+          RestartCommand.sessionOverridesFrom(
+        <String, dynamic>{
+          'cdpPort': 9333,
+          'webPort': 3180,
+          'vmServicePort': 8281,
+          'device': 'chrome',
+        },
+      );
+
+      expect(forwarded['cdpPort'], 9333);
+      expect(forwarded['webPort'], 3180);
+      expect(forwarded['vmServicePort'], 8281);
+      expect(forwarded['device'], 'chrome');
+    });
+
+    test('sessionOverridesFrom tolerates a missing or partial state', () {
+      expect(RestartCommand.sessionOverridesFrom(null), isEmpty);
+      expect(
+        RestartCommand.sessionOverridesFrom(<String, dynamic>{'cdpPort': 1}),
+        equals(<String, Object?>{'cdpPort': 1}),
+      );
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -273,6 +314,42 @@ void main() {
       final state = await StateFile.read();
       expect(state, isNotNull);
       expect(state!['cdpPort'], isNull);
+    });
+
+    test('a refused stop aborts the restart', () async {
+      // `stop` returns 1 when the recorded session belongs to another
+      // project. Proceeding past it relaunched THIS project on the OTHER
+      // project's ports and device, carried over by sessionOverridesFrom,
+      // which is the `Address already in use` restart exists to stop
+      // producing.
+      final Directory sibling =
+          Directory.systemTemp.createTempSync('artisan_restart_sibling_');
+      addTearDown(() => sibling.deleteSync(recursive: true));
+
+      final Directory stateDir = Directory('${tempHome.path}/.artisan');
+      stateDir.createSync(recursive: true);
+      File('${stateDir.path}/state.json').writeAsStringSync(
+        jsonEncode(<String, dynamic>{
+          'pid': 4242,
+          'projectRoot': sibling.path,
+          'webPort': 3100,
+          'cdpPort': 9222,
+          'device': 'chrome',
+        }),
+      );
+
+      final output = BufferedOutput();
+      final int code = await RestartCommand().handle(
+        ArtisanContext.bare(MapInput(const {}), output),
+      );
+
+      expect(code, 1);
+      expect(output.content, contains('another project'));
+      expect(
+        output.content,
+        isNot(contains('Address already in use')),
+        reason: 'it must not have reached the relaunch at all',
+      );
     });
   });
 
@@ -519,7 +596,10 @@ Future<void> _writeFakeState(Directory tempHome,
     'vmServicePort': 8181,
     'startedAt': '2026-06-16T00:00:00.000Z',
     'profile': 'debug',
-    'projectRoot': '/fake/project',
+    // This project's own directory: `restart` refuses a session that
+    // belongs to somebody else, so a fake root here would exercise the
+    // refusal path rather than the carry-over these cases are about.
+    'projectRoot': Directory.current.path,
     'device': 'chrome',
     'chromePid': null,
     'tmpProfileDir': null,

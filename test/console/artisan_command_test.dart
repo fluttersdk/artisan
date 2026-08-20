@@ -40,6 +40,34 @@ void main() {
 
       expect(parser.options.containsKey('force'), isTrue);
     });
+
+    test('a command with no name is refused with a kebab-case suggestion', () {
+      // The message is the whole value of the check: an author who forgot
+      // `name` gets the line to paste rather than a bare "override name".
+      expect(
+        () => _MakeFancyThingCommand().name,
+        throwsA(
+          isA<StateError>().having(
+            (StateError e) => e.message,
+            'message',
+            contains('make-fancy-thing'),
+          ),
+        ),
+      );
+    });
+
+    test('a single-word class name suggests it without separators', () {
+      expect(
+        () => _StatusCommand().name,
+        throwsA(
+          isA<StateError>().having(
+            (StateError e) => e.message,
+            'message',
+            contains('status'),
+          ),
+        ),
+      );
+    });
   });
 }
 
@@ -71,6 +99,30 @@ class _ConfigCommand extends ArtisanCommand {
   void configure(ArgParser parser) {
     parser.addFlag('force', negatable: false);
   }
+
+  @override
+  Future<int> handle(ArtisanContext ctx) async => 0;
+}
+
+/// Two commands that declare no `name`, so both fall through to the
+/// class-name derivation.
+class _MakeFancyThingCommand extends ArtisanCommand {
+  @override
+  String get description => 'derives its name from the class';
+
+  @override
+  CommandBoot get boot => CommandBoot.none;
+
+  @override
+  Future<int> handle(ArtisanContext ctx) async => 0;
+}
+
+class _StatusCommand extends ArtisanCommand {
+  @override
+  String get description => 'derives its name from the class';
+
+  @override
+  CommandBoot get boot => CommandBoot.none;
 
   @override
   Future<int> handle(ArtisanContext ctx) async => 0;

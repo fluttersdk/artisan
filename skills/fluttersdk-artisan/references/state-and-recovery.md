@@ -1,10 +1,11 @@
 # State, lifecycle, and recovery
 
 `fluttersdk_artisan` keeps three pieces of mutable state outside the
-source tree: `~/.artisan/state.json` (per-machine running-app pointer),
-the FIFO pipe at `~/.artisan/flutter-dev.fifo` (POSIX keystroke
-channel), and the AOT bundle at `.artisan/cli-bundle/` plus its stamp
-`.artisan/build.stamp` (per-project compiled wrapper). This file
+source tree: the session directory at
+`~/.artisan/sessions/<hash>/` (state, log and FIFO for ONE project's
+running app), the legacy pointer `~/.artisan/state.json` (whichever
+session started last), and the AOT bundle at `.artisan/cli-bundle/`
+plus its stamp `.artisan/build.stamp` (per-project compiled wrapper). This file
 documents each, the MCP boot path comparison (substrate vs dispatcher),
 and the recovery loop for every common failure substring.
 
@@ -17,20 +18,43 @@ and the recovery loop for every common failure substring.
 - [Diagnosing missing plugin tools](#diagnosing-missing-plugin-tools)
 - [Recovery loops by substring](#recovery-loops-by-substring)
 - [Quick state cleanup](#quick-state-cleanup)
+- [Running two projects at once](#running-two-projects-at-once)
 - [When to favour `./bin/fsa` over MCP](#when-to-favour-binfsa-over-mcp)
 
 ## state.json schema
 
-`lib/src/state/state_file.dart:6-26`
+`lib/src/state/state_file.dart`
 
-- **Absolute path**: `~/.artisan/state.json` (resolved from `$HOME`,
-  falls back to `$USERPROFILE`, then `/tmp` on systems with neither).
+- **Absolute path**: `~/.artisan/sessions/<hash>/state.json`, where
+  `<hash>` is a truncated SHA-256 of the project root (resolved from
+  `$HOME`, falling back to `$USERPROFILE`, then `/tmp`). The log and the
+  FIFO live beside it in the same directory.
+- **Per project, not per machine.** It used to be one global
+  `~/.artisan/state.json`. A second project's `artisan start` silently
+  took that slot, and every connected command from the first project then
+  drove the second app, succeeding each time: the measured case had a
+  worktree in another repository rewrite it mid-session, and two commands
+  later produced a screenshot of an entirely different product.
+- **The legacy pointer still exists** at `~/.artisan/state.json`, holding
+  whatever started last. `read()` falls back to it when this project has
+  no session, so the documented recovery recipe (hand-writing that file
+  when `artisan start` cannot boot an app) keeps working.
+- **Ownership is checked before acting.** Any command that connects to,
+  stops, reloads or hot-restarts the recorded app refuses when its
+  `projectRoot` is not this directory or an ancestor of it. A working
+  directory inside the project passes, and so does state with no recorded
+  `projectRoot` (hand-written recovery state usually omits it).
+- **Overrides**: `--state=<path>` (global flag, consumed before dispatch)
+  and `ARTISAN_STATE_FILE`. The flag wins. Naming the session explicitly
+  also bypasses the ownership check, because you have already answered
+  the question it asks.
+- **Two projects still need distinct ports.** `start` fails fast when the
+  web or CDP port is taken; pass `--port`, `--vm-service-port` and
+  `--cdp-port` per session.
 - **Atomicity**: every write goes through `.tmp` + rename; concurrent
   readers never see partial JSON.
 - **Soft-read**: missing file returns `null`, parse failure also
   returns `null` (no exception propagation).
-- **Single-slot**: ONE running app per machine. `artisan_start` fails
-  with "another app is recorded" when the file already exists.
 
 | Key | Type | Written by | Notes |
 |---|---|---|---|
@@ -384,13 +408,40 @@ start is preferred:
 
 ```bash
 ./bin/fsa stop                          # SIGTERM + cleanup if possible
-rm -f ~/.artisan/state.json             # force clean
-rm -f ~/.artisan/flutter-dev.fifo       # force FIFO cleanup
-rm -f ~/.artisan/flutter-dev.log        # discard captured log
+rm -rf ~/.artisan/sessions              # force clean (state + FIFO + log)
+rm -f  ~/.artisan/state.json            # the legacy pointer
 ./bin/fsa start --device=chrome         # fresh boot
 ```
 
+`rm -rf ~/.artisan/sessions` clears EVERY project's session, so prefer
+stopping the one you mean. `./bin/fsa doctor` prints the path this
+project resolves to when you want to remove just that directory.
+
 After this, the next MCP call automatically lazy-reconnects.
+
+## Running two projects at once
+
+Each project gets its own session directory, so state, log and FIFO no
+longer collide. Ports still do: give each session its own.
+
+```bash
+# project A
+./bin/fsa start --device=chrome --port=3100 --cdp-port=9333 --vm-service-port=8181
+
+# project B, in another checkout
+./bin/fsa start --device=chrome --port=3180 --cdp-port=9380 --vm-service-port=8281
+```
+
+Commands resolve the session from the working directory, so run them
+from inside the project they belong to. A command that would act on
+another project's app refuses instead, naming both paths; pass
+`--state=<path>` when you genuinely mean a session outside this
+directory.
+
+**Do not `fsa restart` blind in a worktree.** It carries the prior
+session's device and all three ports across now, but a restart still
+stops before it starts: if the relaunch fails, the app you were driving
+is already gone.
 
 ## When to favour `./bin/fsa` over MCP
 

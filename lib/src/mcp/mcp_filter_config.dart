@@ -104,7 +104,8 @@ final class McpFilterConfig {
       decoded = jsonDecode(raw);
     } on FormatException catch (e) {
       throw FormatException(
-          'McpFilterConfig: invalid JSON at $path: ${e.message}');
+        'McpFilterConfig: invalid JSON at $path: ${e.message}',
+      );
     }
 
     if (decoded is! Map<String, dynamic>) {
@@ -227,11 +228,7 @@ final class McpFilterConfig {
           ...env.packagesDeny,
           ...cli.packagesDeny,
         },
-        toolsDeny: {
-          ...file.toolsDeny,
-          ...env.toolsDeny,
-          ...cli.toolsDeny,
-        },
+        toolsDeny: {...file.toolsDeny, ...env.toolsDeny, ...cli.toolsDeny},
       );
 
   // ---------------------------------------------------------------------------
@@ -283,9 +280,7 @@ final class McpFilterConfig {
   static String _readFileOrThrow(String path) {
     final file = File(path);
     if (!file.existsSync()) {
-      throw FormatException(
-        'McpFilterConfig: file not found at $path.',
-      );
+      throw FormatException('McpFilterConfig: file not found at $path.');
     }
     return file.readAsStringSync();
   }

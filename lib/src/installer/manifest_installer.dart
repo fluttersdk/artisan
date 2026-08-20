@@ -90,8 +90,9 @@ class ManifestInstaller {
   final Map<String, String> _promptOverrides;
 
   /// Match `{{ prompts.KEY }}` references inside placeholder values.
-  static final RegExp _promptRefRegex =
-      RegExp(r'\{\{\s*prompts\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}');
+  static final RegExp _promptRefRegex = RegExp(
+    r'\{\{\s*prompts\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}',
+  );
 
   // ---------------------------------------------------------------------------
   // Public API
@@ -305,9 +306,7 @@ class ManifestInstaller {
       final rootUri = entry['rootUri'] as String;
       final pkgRoot = rootUri.startsWith('file://')
           ? Uri.parse(rootUri).toFilePath()
-          : p.normalize(
-              p.join(_ctx.projectRoot, '.dart_tool', rootUri),
-            );
+          : p.normalize(p.join(_ctx.projectRoot, '.dart_tool', rootUri));
       return p.join(pkgRoot, 'assets', 'stubs');
     }
     return null;
@@ -397,7 +396,9 @@ class ManifestInstaller {
       }
       for (final dep in gradle.deps) {
         installer.injectGradleDependency(
-            scope: dep.scope, notation: dep.notation);
+          scope: dep.scope,
+          notation: dep.notation,
+        );
       }
     }
   }
@@ -497,8 +498,10 @@ class ManifestInstaller {
     switch (prompt.type) {
       case 'bool':
         final defaultBool = prompt.defaultValue == 'true';
-        final answered =
-            _ctx.prompt.confirm(prompt.question, defaultValue: defaultBool);
+        final answered = _ctx.prompt.confirm(
+          prompt.question,
+          defaultValue: defaultBool,
+        );
         return answered ? 'true' : 'false';
       case 'choice':
         return _ctx.prompt.choice(
@@ -684,11 +687,7 @@ class ManifestInstaller {
         final key = entry['key'];
         final value = entry['value'];
         if (platform is String && key is String && value is String) {
-          return InjectInfoPlistKey(
-            key: key,
-            value: value,
-            platform: platform,
-          );
+          return InjectInfoPlistKey(key: key, value: value, platform: platform);
         }
         return null;
       case 'InjectEntitlement':
@@ -696,11 +695,7 @@ class ManifestInstaller {
         final key = entry['key'];
         final value = entry['value'];
         if (platform is String && key is String && value is String) {
-          return InjectEntitlement(
-            platform: platform,
-            key: key,
-            value: value,
-          );
+          return InjectEntitlement(platform: platform, key: key, value: value);
         }
         return null;
       case 'InjectPodfileLine':

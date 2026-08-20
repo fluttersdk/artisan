@@ -12,7 +12,7 @@ Pure Dart 3.4+ CLI framework. NO Flutter runtime dependency: the package is cons
 
 | Command | When |
 |---|---|
-| `dart test` | Run all tests (1060 baseline). |
+| `dart test` | Run all tests (1200+ baseline). Needs `--reporter=failures-only < /dev/null` outside a TTY: the default reporter redraws a terminal and the `prompt` suite reads stdin. |
 | `dart test --coverage=coverage && dart pub global run coverage:format_coverage --lcov --in=coverage --out=coverage/lcov.info` | Generate `coverage/lcov.info` for the 80% gate (Golden Rule 3). |
 | `dart format lib/ test/ bin/` | Format. Must produce no diff. |
 | `dart analyze` | Static analysis. Zero issues required across `lib/ test/ bin/`. |
@@ -24,7 +24,7 @@ Pure Dart 3.4+ CLI framework. NO Flutter runtime dependency: the package is cons
 
 1. **Doc sync (`doc/`)**. If a code change touches behavior described in `doc/**/*.md`, update the relevant doc page in the same change. New feature without an existing page: add one matching the `doc/{getting-started,commands,mcp,plugins,reference}/<name>.md` structure. URL routing is `https://fluttersdk.com/artisan/X/Y` per file path.
 2. **Skill sync (`skills/`)**. Same rule for `skills/fluttersdk-artisan/SKILL.md` and `skills/fluttersdk-artisan/references/*.md`. When a change shifts behavior the LLM-agent skill describes (commands surface, install.yaml schema, installer DSL, MCP tools, plugin authoring), edit the matching reference file and update the SKILL.md surface when the change affects the cached overview.
-3. **Test coverage stays at or above 80%**. Current line coverage is 83.79% (`coverage/lcov.info`). Run the coverage command above after behavioral changes; verify via `awk -F: '/^LF:/{lf+=$2} /^LH:/{lh+=$2} END{printf "%.2f%%\n", (lh/lf)*100}' coverage/lcov.info`. Drops below 80% block the change.
+3. **Test coverage stays at or above 80%**. Current line coverage is 84.93% (`coverage/lcov.info`). Run the coverage command above after behavioral changes; verify via `awk -F: '/^LF:/{lf+=$2} /^LH:/{lh+=$2} END{printf "%.2f%%\n", (lh/lf)*100}' coverage/lcov.info`. Drops below 80% block the change.
 4. **README sync**. When a change is significant enough for the package landing page (new command group, new MCP tool surface, new install flow, breaking change), update `README.md` and `llms.txt`. Use descriptive link labels pointing at `https://fluttersdk.com/artisan/...` paths.
 5. **CHANGELOG always under `[Unreleased]`**. Every behavioral or interface change lands an entry under `## [Unreleased]` in `CHANGELOG.md`. Categories: `Added` / `Changed` / `Fixed` / `Removed`. Promote to a dated section on `dart pub publish`.
 6. **Green gate plus TDD**. `dart format lib/ test/ bin/` produces zero diff, `dart analyze` returns zero issues, `dart test` returns all green. TDD red-green-refactor for behavioral changes: write the failing test first, then the implementation that turns it green. Reverting the implementation must turn the test red again.
@@ -49,7 +49,7 @@ Single barrel: `package:fluttersdk_artisan/artisan.dart` re-exports the full pub
 | `mcp/` | `McpServer extends MCPServer with ToolsSupport` (dart_mcp) + `McpToolDescriptor` + `McpFilterConfig` (3-layer Cargo-style: file + env + CLI). Substrate commands surface as `artisan_*` MCP tools via the 10-entry allowlist at `lib/src/mcp/mcp_server.dart:744-755`: `start` / `stop` / `status` / `logs` / `restart` / `reload` / `hot-restart` / `doctor` / `list` / `tinker`. |
 | `helpers/` | `FileHelper`, `ConfigEditor` (idempotent injects), `MainDartEditor`, `EnvEditor`, `PlistWriter`, `GradleEditor`, `PodfileEditor`, `HtmlEditor`, `JsonEditor`, `XmlEditor`, `RouteRegistryEditor`. |
 | `stubs/` | `StubLoader` (4-tier resolution: env, package_config, pubspec walk, fallback). Stub assets under `assets/stubs/`. |
-| `state/` | `StateFile` (`~/.artisan/state.json` for the running app: pid, vmServiceUri, device, FIFO pipe). |
+| `state/` | `StateFile`: one session directory PER PROJECT at `~/.artisan/sessions/<sha256(projectRoot)[0:12]>/` holding `state.json`, the log and the FIFO. `~/.artisan/state.json` remains a pointer to whichever session started last (read fallback, and the target of the hand-written recovery recipe). `--state=<path>` / `ARTISAN_STATE_FILE` override. `sessionOwnershipError` is what stops a command acting on another project's app. |
 | `tinker/`, `vm/` | REPL + `VmServiceClient` (wraps `package:vm_service`, no isolate-id cache to handle device-target switches). |
 
 User-facing assets:
@@ -90,7 +90,7 @@ User-facing assets:
 - Pub.dev topics (max 5, declared in `pubspec.yaml`): `cli`, `mcp-server`, `scaffolding`, `plugin-system`, `code-generation`.
 - Homepage and documentation URL: `https://fluttersdk.com/artisan`. Repository: `https://github.com/fluttersdk/artisan`.
 - `dart pub publish --dry-run` must end clean (0 errors). Dev-state warnings (uncommitted, gitignored-but-tracked) are acceptable in dev and cleared before publish via clean git checkout.
-- No CI workflow; releases are manual. Run `dart test` + `dart analyze` + `dart format --output=none --set-exit-if-changed lib/ test/ bin/` + `dart pub publish --dry-run` before tagging.
+- CI (`.github/workflows/ci.yml`) runs format, analyze, test with coverage, the 80% floor and `dart pub publish --dry-run` on every PR into `master`. `codecov.yml` pins Codecov to the same 80% floor so its verdict cannot drift from the build's. Tagging still publishes manually; run the same four locally before cutting a tag.
 
 ## Path-scoped rules
 

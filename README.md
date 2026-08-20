@@ -126,7 +126,7 @@ Highlights:
 
 ```bash
 # Lifecycle
-dart run artisan start --device=chrome   # spawn flutter run, record VM Service URI to ~/.artisan/state.json
+dart run artisan start --device=chrome   # spawn flutter run, record the session under ~/.artisan/sessions/<project>/
 dart run artisan reload                  # send r (hot reload) via FIFO bridge to detached process
 dart run artisan hot-restart             # send R (hot restart, drops Dart state)
 
@@ -274,7 +274,7 @@ After `mcp:install` writes the client config entry, every MCP-capable agent can 
 
 When `bin/fsa` is absent (or the host is Windows, where the POSIX shim never applies), `mcp:install` writes `{"command": "dart", "args": ["run", ":dispatcher", "mcp:serve"]}` instead. Pass `--invocation=<executable>` to override the fallback entry point: `mcp:install` then writes `{"command": "dart", "args": ["run", "<executable>", "mcp:serve"]}`, which is the correct shape when the consumer's entry point is a plugin wrapper rather than the generic `:dispatcher` (for example, `dart run fluttersdk_artisan mcp:install --invocation=fluttersdk_dusk`). Precedence: if the host is POSIX and `bin/fsa` is present then `bin/fsa` wins, otherwise `--invocation` wins when supplied, otherwise the `:dispatcher` default applies.
 
-When `~/.artisan/state.json` is absent at `initialize` time (no Flutter app running), the server stays online with the 10 substrate tools available and 0 plugin tools registered. On the next `tools/call` requiring VM Service, the server lazy-reconnects via a memoized in-flight future so MCP clients survive the natural dev cycle of starting and stopping the Flutter app without reconnecting.
+When no session is recorded for the project at `initialize` time (no Flutter app running), the server stays online with the 10 substrate tools available and 0 plugin tools registered. On the next `tools/call` requiring VM Service, the server lazy-reconnects via a memoized in-flight future so MCP clients survive the natural dev cycle of starting and stopping the Flutter app without reconnecting.
 
 Setup walkthrough at [MCP setup guide](https://fluttersdk.com/artisan/mcp/setup). Full tool reference at [tool reference](https://fluttersdk.com/artisan/mcp/tool-reference).
 

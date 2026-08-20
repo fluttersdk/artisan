@@ -139,11 +139,13 @@ class ConflictDetector {
         // 5b. Whole-file writes (WriteFile / PublishFile / CopyFile) do
         //     overwrite arbitrary content. Surface unmanaged-file so the
         //     operator confirms with --force before clobbering.
-        conflicts.add(FileConflict(
-          absPath: absPath,
-          reason: 'unmanaged-file',
-          currentHash: currentHash,
-        ));
+        conflicts.add(
+          FileConflict(
+            absPath: absPath,
+            reason: 'unmanaged-file',
+            currentHash: currentHash,
+          ),
+        );
         continue;
       }
 
@@ -151,12 +153,14 @@ class ConflictDetector {
       if (lastKnownHash == currentHash) continue;
 
       // 7. Hash mismatch: user modified the file. Surface the conflict.
-      conflicts.add(FileConflict(
-        absPath: absPath,
-        reason: 'modified-since-last-known-stub',
-        lastKnownHash: lastKnownHash,
-        currentHash: currentHash,
-      ));
+      conflicts.add(
+        FileConflict(
+          absPath: absPath,
+          reason: 'modified-since-last-known-stub',
+          lastKnownHash: lastKnownHash,
+          currentHash: currentHash,
+        ),
+      );
     }
 
     return conflicts;
@@ -247,10 +251,12 @@ class ConflictDetector {
       RemoveDependency() => _abs('pubspec.yaml'),
       AddPubspecAsset() => _abs('pubspec.yaml'),
       // Android native writes.
-      InjectAndroidPermission() =>
-        PlatformHelper.androidManifestPath(_ctx.projectRoot),
-      InjectAndroidMetaData() =>
-        PlatformHelper.androidManifestPath(_ctx.projectRoot),
+      InjectAndroidPermission() => PlatformHelper.androidManifestPath(
+          _ctx.projectRoot,
+        ),
+      InjectAndroidMetaData() => PlatformHelper.androidManifestPath(
+          _ctx.projectRoot,
+        ),
       InjectGradlePlugin() => _appBuildGradlePath(),
       InjectGradleDependency() => _appBuildGradlePath(),
       // iOS / macOS native writes.
@@ -283,12 +289,7 @@ class ConflictDetector {
 
   /// Mirrors [InstallTransaction]'s entitlements resolution.
   String _entitlementsPathFor(String platform) {
-    return p.join(
-      _ctx.projectRoot,
-      platform,
-      'Runner',
-      'Runner.entitlements',
-    );
+    return p.join(_ctx.projectRoot, platform, 'Runner', 'Runner.entitlements');
   }
 
   /// Mirrors [InstallTransaction]'s Podfile resolution.

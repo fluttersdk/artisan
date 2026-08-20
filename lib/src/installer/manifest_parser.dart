@@ -36,8 +36,9 @@ class ManifestParser {
   /// Match `{{ prompts.KEY }}` references inside placeholder values. Allows
   /// any whitespace around the dotted reference so authors can use either
   /// `{{prompts.x}}` or `{{ prompts.x }}` per taste.
-  static final RegExp _promptRefRegex =
-      RegExp(r'\{\{\s*prompts\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}');
+  static final RegExp _promptRefRegex = RegExp(
+    r'\{\{\s*prompts\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}',
+  );
 
   /// Private to disable instantiation; the class is a static namespace.
   const ManifestParser._();
@@ -228,9 +229,7 @@ class ManifestParser {
 
   static void _validatePluginName(String name) {
     if (name.isEmpty) {
-      throw const ManifestValidationException(
-        'plugin_name must not be empty.',
-      );
+      throw const ManifestValidationException('plugin_name must not be empty.');
     }
     if (!_pluginNameRegex.hasMatch(name)) {
       throw ManifestValidationException(

@@ -52,7 +52,7 @@ Reverting the production change in step 2 must turn the test back red. If revert
 
 ## Coverage discipline
 
-Line coverage stays at or above 80% (currently 83.79%). Per behavioral change:
+Line coverage stays at or above 80% (currently 84.93%). Per behavioral change:
 
 1. Run the coverage flow from root CLAUDE.md `## Commands`: `dart test --coverage=coverage && dart pub global run coverage:format_coverage --lcov --in=coverage --out=coverage/lcov.info`.
 2. Compute the line-coverage percentage from `LF`/`LH` totals: `awk -F: '/^LF:/{lf+=$2} /^LH:/{lh+=$2} END{printf "%.2f%%\n", (lh/lf)*100}' coverage/lcov.info`.
@@ -62,4 +62,4 @@ Coverage is line coverage only (Dart's `package:coverage` does not emit branch o
 
 ## Baseline
 
-`dart test` exits 0 with 1060+ tests passing on the touched-files scope. Pre-existing unrelated failures are flagged in the PR description and not blocking. Wave-after commits in multi-wave plans run the full suite once per wave before the commit lands.
+`dart test --timeout=30s --reporter=failures-only < /dev/null` exits 0 with 1200+ tests passing. The reporter and the stdin redirect are not optional outside a TTY: the default reporter redraws a terminal and the `prompt` suite reads stdin, so a plain `dart test` looks like a hang. Pre-existing unrelated failures are flagged in the PR description and not blocking. Wave-after commits in multi-wave plans run the full suite once per wave before the commit lands.

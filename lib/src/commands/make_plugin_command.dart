@@ -108,10 +108,7 @@ class MakePluginCommand extends ArtisanCommand {
     (stub: 'bin_artisan.dart', target: 'bin/{{ name }}.dart'),
     (stub: 'cli.dart', target: 'lib/cli.dart'),
     (stub: 'runtime.dart', target: 'lib/{{ name }}.dart'),
-    (
-      stub: 'provider.dart',
-      target: 'lib/src/{{ name }}_artisan_provider.dart',
-    ),
+    (stub: 'provider.dart', target: 'lib/src/{{ name }}_artisan_provider.dart'),
     (
       stub: 'provider_test.dart',
       target: 'test/{{ name }}_artisan_provider_test.dart',
@@ -322,8 +319,9 @@ class MakePluginCommand extends ArtisanCommand {
     //     it behind produces a compile error on the first `flutter analyze`.
     //     Our provider_test.dart stub renders to a different path
     //     (test/<name>_artisan_provider_test.dart) so there is no conflict.
-    final defaultTestFile =
-        File(p.join(targetRoot, 'test', '${name}_test.dart'));
+    final defaultTestFile = File(
+      p.join(targetRoot, 'test', '${name}_test.dart'),
+    );
     if (defaultTestFile.existsSync()) defaultTestFile.deleteSync();
 
     // 6. Render the generic scaffold over `flutter create`'s defaults. In

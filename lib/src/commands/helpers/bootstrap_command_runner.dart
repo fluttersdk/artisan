@@ -19,11 +19,7 @@ Future<ProcessResult> _defaultRunner(
   List<String> arguments, {
   String? workingDirectory,
 }) {
-  return Process.run(
-    executable,
-    arguments,
-    workingDirectory: workingDirectory,
-  );
+  return Process.run(executable, arguments, workingDirectory: workingDirectory);
 }
 
 /// Outcome of a [BootstrapCommandRunner.run] attempt.
@@ -33,10 +29,7 @@ Future<ProcessResult> _defaultRunner(
 /// - [notResolvable]: no dispatcher could be resolved (no `bin/fsa` wrapper
 ///   and no consumer package name in `pubspec.yaml`), so nothing was spawned
 ///   and the caller should fall back to the one-line bootstrap hint.
-enum BootstrapRunOutcome {
-  invoked,
-  notResolvable,
-}
+enum BootstrapRunOutcome { invoked, notResolvable }
 
 /// Result of a [BootstrapCommandRunner.run] attempt.
 ///
@@ -49,11 +42,8 @@ final class BootstrapRunResult {
   /// The [invoked] outcome MUST carry an [exitCode]: a subprocess that ran
   /// always has one, and the invariant stops an incomplete result from
   /// producing operator messages like "exited with code null".
-  const BootstrapRunResult({
-    required this.outcome,
-    this.exitCode,
-    this.stderr,
-  }) : assert(
+  const BootstrapRunResult({required this.outcome, this.exitCode, this.stderr})
+      : assert(
           outcome != BootstrapRunOutcome.invoked || exitCode != null,
           'an invoked BootstrapRunResult must carry a subprocess exit code',
         );
@@ -196,9 +186,10 @@ class BootstrapCommandRunner {
     } on FileSystemException {
       return null;
     }
-    final match = RegExp(r'^name:\s*(\S+)', multiLine: true).firstMatch(
-      content,
-    );
+    final match = RegExp(
+      r'^name:\s*(\S+)',
+      multiLine: true,
+    ).firstMatch(content);
     return match?.group(1);
   }
 }

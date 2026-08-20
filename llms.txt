@@ -8,7 +8,7 @@ Pure Dart 3.4+ CLI framework. Consumed via `dart run fluttersdk_artisan <command
 - [Installation](https://fluttersdk.com/artisan/getting-started/installation.md)
 - [Quickstart](https://fluttersdk.com/artisan/getting-started/quickstart.md)
 - [Command catalog](https://fluttersdk.com/artisan/commands/index.md)
-- [start](https://fluttersdk.com/artisan/commands/start.md)
+- [start](https://fluttersdk.com/artisan/commands/start.md): records the session per project under `~/.artisan/sessions/<hash>/`, so two apps can be driven at once. `~/.artisan/state.json` stays as a pointer to whichever started last. Override with `--state=<path>` or `ARTISAN_STATE_FILE`; commands refuse to act on another project's app.
 - [plugin:install](https://fluttersdk.com/artisan/commands/plugin-install.md)
 - [mcp:serve](https://fluttersdk.com/artisan/commands/mcp-serve.md)
 - [make:plugin](https://fluttersdk.com/artisan/commands/make-plugin.md)
