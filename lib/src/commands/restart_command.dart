@@ -32,6 +32,16 @@ class RestartCommand extends ArtisanCommand {
   @override
   CommandBoot get boot => CommandBoot.none;
 
+  /// The `state.json` keys a restart carries into the relaunch. They are
+  /// also the [StartCommand] parameter names, which is why no translation
+  /// table sits between the two.
+  static const List<String> _carriedKeys = <String>[
+    'cdpPort',
+    'webPort',
+    'vmServicePort',
+    'device',
+  ];
+
   /// The session settings a restart carries over, read from [priorState].
   ///
   /// Empty when there is nothing to carry. Exposed for testing because the
@@ -42,13 +52,8 @@ class RestartCommand extends ArtisanCommand {
   ) {
     if (priorState == null) return const <String, Object?>{};
     return <String, Object?>{
-      for (final MapEntry<String, String> pair in const <String, String>{
-        'cdpPort': 'cdpPort',
-        'webPort': 'webPort',
-        'vmServicePort': 'vmServicePort',
-        'device': 'device',
-      }.entries)
-        if (priorState[pair.value] != null) pair.key: priorState[pair.value],
+      for (final String key in _carriedKeys)
+        if (priorState[key] != null) key: priorState[key],
     };
   }
 

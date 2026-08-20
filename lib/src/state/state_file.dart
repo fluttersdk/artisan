@@ -6,8 +6,8 @@ import 'package:meta/meta.dart';
 
 /// Atomic JSON read/write for the artisan state file.
 ///
-/// The file is PER PROJECT: `~/.artisan/sessions/<hash>.json`, keyed by the
-/// project root. It used to be one global `~/.artisan/state.json`, which
+/// The file is PER PROJECT: `~/.artisan/sessions/<hash>/state.json`, keyed by
+/// the project root. It used to be one global `~/.artisan/state.json`, which
 /// meant a second project's `artisan start` silently took the slot and every
 /// connected command from the first project then drove the second app,
 /// succeeding each time. The measured case had a worktree in another
@@ -84,7 +84,7 @@ class StateFile {
 
   /// The directory holding one session's state, log and FIFO.
   static String sessionDirFor(String projectRoot) {
-    final String key = _canonical(projectRoot);
+    final String key = _canonicalPath(projectRoot);
     final String digest =
         sha256.convert(utf8.encode(key)).toString().substring(0, 12);
     return '${_homePath()}/.artisan/sessions/$digest';
@@ -98,18 +98,6 @@ class StateFile {
 
   static String _projectRoot() =>
       debugProjectRootOverride ?? Directory.current.path;
-
-  /// Normalises a root for hashing: a trailing separator and a symlinked
-  /// path (a git worktree checkout is often one) must not produce a second
-  /// session for the same directory.
-  static String _canonical(String raw) {
-    final String trimmed =
-        raw.endsWith(Platform.pathSeparator) && raw.length > 1
-            ? raw.substring(0, raw.length - 1)
-            : raw;
-    final Directory dir = Directory(trimmed);
-    return dir.existsSync() ? dir.resolveSymbolicLinksSync() : trimmed;
-  }
 
   /// Read the state for this project. Returns null when absent.
   ///
@@ -227,16 +215,21 @@ String? sessionOwnershipError({
 /// True when [child] is [parent] or sits beneath it, comparing resolved
 /// paths so a symlinked worktree checkout does not read as a mismatch.
 bool _isWithin(String child, String parent) {
-  String normalise(String raw) {
-    final String trimmed =
-        raw.endsWith(Platform.pathSeparator) && raw.length > 1
-            ? raw.substring(0, raw.length - 1)
-            : raw;
-    final Directory dir = Directory(trimmed);
-    return dir.existsSync() ? dir.resolveSymbolicLinksSync() : trimmed;
-  }
-
-  final String c = normalise(child);
-  final String p = normalise(parent);
+  final String c = _canonicalPath(child);
+  final String p = _canonicalPath(parent);
   return c == p || c.startsWith('$p${Platform.pathSeparator}');
+}
+
+/// Normalises a path for comparison and for hashing.
+///
+/// A trailing separator and a symlinked path (a git worktree checkout is
+/// often one) must resolve to the same string, otherwise one project gets
+/// two session directories and the ownership check reads its own session as
+/// somebody else's.
+String _canonicalPath(String raw) {
+  final String trimmed = raw.endsWith(Platform.pathSeparator) && raw.length > 1
+      ? raw.substring(0, raw.length - 1)
+      : raw;
+  final Directory dir = Directory(trimmed);
+  return dir.existsSync() ? dir.resolveSymbolicLinksSync() : trimmed;
 }
