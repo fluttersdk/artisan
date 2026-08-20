@@ -6,6 +6,14 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **The per-project session was keyed on the working directory, not the project, so the isolation only held for callers standing in the repo root.** `sessionOwnershipError` deliberately blesses running from `backend/` or a package subdirectory, but `sessionPathFor` hashed the cwd: a command from there missed its own session file, fell back to the shared `~/.artisan/state.json` pointer, and with two apps up was then refused for driving somebody else's. A false refusal, and the defeat of the very isolation 0.0.10 shipped.
+
+  `StateFile.projectRootFor` now walks up to the nearest ancestor holding a `pubspec.yaml`. Nearest rather than outermost, because that is the unit `artisan start` boots: two packages in one repository are two apps and want two sessions. No pubspec anywhere up the chain falls back to the directory itself, so non-Dart callers and the hand-written recovery recipe do not all land in one shared session. `start` records the same walked root in `projectRoot`, since a raw cwd there would make a start from a subdirectory record a root the ownership check then measures every later command against.
+
 ## [0.0.10] - 2026-08-20
 
 ### Added

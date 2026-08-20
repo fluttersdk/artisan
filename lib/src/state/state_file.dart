@@ -111,7 +111,34 @@ class StateFile {
       Platform.environment['ARTISAN_STATE_FILE'];
 
   static String _projectRoot() =>
-      debugProjectRootOverride ?? Directory.current.path;
+      projectRootFor(debugProjectRootOverride ?? Directory.current.path);
+
+  /// The package root [from] belongs to: the nearest ancestor holding a
+  /// `pubspec.yaml`, or [from] itself when there is none.
+  ///
+  /// The session key has to be the PROJECT, not the working directory.
+  /// `sessionOwnershipError` blesses running from `backend/` or a package
+  /// subdirectory, but keying the file on the cwd meant a command from there
+  /// missed its own session, fell back to the shared pointer, and with two
+  /// apps up got refused for driving somebody else's. The isolation only
+  /// held for callers standing in the repo root.
+  ///
+  /// The walk stops at the NEAREST pubspec rather than the outermost,
+  /// because that is the unit `artisan start` boots: two packages in one
+  /// repository are two apps and want two sessions.
+  ///
+  /// No pubspec anywhere up the chain falls back to [from]. Climbing to the
+  /// filesystem root instead would land every such caller in one shared
+  /// session, which is the failure this whole file exists to remove.
+  static String projectRootFor(String from) {
+    Directory dir = Directory(from);
+    while (true) {
+      if (File('${dir.path}/pubspec.yaml').existsSync()) return dir.path;
+      final Directory parent = dir.parent;
+      if (parent.path == dir.path) return from;
+      dir = parent;
+    }
+  }
 
   /// Read the state for this project. Returns null when absent.
   ///
