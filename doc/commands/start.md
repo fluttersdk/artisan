@@ -60,7 +60,7 @@ dart run artisan start [--device=<target>] [--port=<n>] [--vm-service-port=<n>]
 <a name="state-file"></a>
 ## State File
 
-`start` writes `~/.artisan/state.json` atomically after a successful spawn. The schema (from `lib/src/state/state_file.dart:13-24`):
+`start` writes the session atomically, once as soon as the child PIDs are known and again when the VM Service URI lands. The schema (from `lib/src/state/state_file.dart:13-24`):
 
 ```json
 {
@@ -159,4 +159,4 @@ Allows up to 180 seconds for the VM Service URI to appear in the log. Use this w
 - [restart](index.md): full stop + start cycle; preserves the prior session's `--cdp-port` (read from `state.json` before `stop` deletes it, then forwarded into `start`). An explicit `--cdp-port` on the `restart` invocation wins.
 - [reload](index.md): send `r\n` to the FIFO for a hot reload without a full restart.
 - [hot-restart](index.md): send `R\n` to the FIFO for a hot restart that resets app state.
-- [mcp:serve](mcp-serve.md): start the stdio JSON-RPC MCP server; reads `~/.artisan/state.json` to discover the running app.
+- [mcp:serve](mcp-serve.md): start the stdio JSON-RPC MCP server; reads this project's session to discover the running app.

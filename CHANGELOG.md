@@ -6,6 +6,16 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ---
 
+## [Unreleased]
+
+### Documentation
+
+- **The docs still told readers the session is one global file, in ten files.** 0.0.10 moved the session to `~/.artisan/sessions/<hash>/` and the code changed with it, but the skill, the MCP tool descriptions and the command pages kept describing `~/.artisan/state.json` as the place the running app is recorded. This is not cosmetic: a field report has an agent concluding it had corrupted a sibling's session, because the tooling it was reading said there was only one slot to corrupt. It had reasoned correctly from a document that was wrong.
+
+  Swept `skills/fluttersdk-artisan/SKILL.md` (including law 2, which stated the old model as a rule), `references/mcp-tools.md`, `references/tinker-eval.md`, `references/state-and-recovery.md`, `doc/mcp/{overview,setup,tool-reference}.md`, `doc/getting-started/quickstart.md`, `doc/commands/{index,start,tinker,mcp-serve}.md`. The mentions that remain are the ones that are still true: the legacy pointer exists, is read as a fallback, and is what the hand-written recovery recipe targets.
+
+  Also corrected while there: the recovery for "no app detected" said to remove `~/.artisan/state.json`, which clears the pointer and not the session; the troubleshooting table quoted two error strings that no longer exist; and neither carried the `booting: true` path. Skill version 0.0.5 -> 0.0.6.
+
 ## [0.0.12] - 2026-08-20
 
 ### Fixed

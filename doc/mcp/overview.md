@@ -117,7 +117,7 @@ the CLI REPL host for `dart run artisan tinker`, but its MCP surface is now the 
 
 ## State File Contract
 
-`artisan start` writes a single JSON file at `~/.artisan/state.json` (the path is machine-local and
+`artisan start` writes a JSON file per project at `~/.artisan/sessions/<hash>/state.json` (the path is machine-local and
 user-scoped). The MCP server reads this file during `initialize` to discover the running Flutter
 app's VM Service WebSocket URI. If the file is absent or lacks a `vmServiceUri` key, the server
 stays online and registers all tools, but VM Service dispatch calls return an actionable error until
@@ -182,7 +182,7 @@ Fields (from `lib/src/state/state_file.dart`):
 **Flow summary:**
 
 1. The MCP client (Claude Code) connects to the server over stdio and calls `initialize`.
-2. `McpServer` reads `~/.artisan/state.json` and opens a VM Service WebSocket to the running Flutter
+2. `McpServer` reads this project's session and opens a VM Service WebSocket to the running Flutter
    app.
 3. All registered tools become available to the client model.
 4. Substrate tool calls (prefix `artisan:`) route in-process through `ArtisanRegistry` without VM

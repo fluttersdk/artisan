@@ -221,8 +221,10 @@ message. Branch on substring, not full text.
 
 ### `No Flutter app detected` / `Run `artisan start` first`
 
-Cause: `~/.artisan/state.json` is absent (app never started, or `stop`
-ran).
+Cause: this project has no session (app never started, or `stop` ran).
+Note that a sibling project's running app does NOT satisfy this: sessions
+are per project, so a pointer describing somebody else's app is refused
+rather than driven.
 
 ```
 artisan_start { device: "chrome" }   # or whatever target
@@ -241,8 +243,10 @@ artisan_start { device: ... }
 ```
 
 If `artisan_stop` returns "No state file" but `artisan_start` still
-fails, the state file is mid-write (race) or owned by a different user;
-`rm ~/.artisan/state.json` + retry.
+fails, the session file is mid-write (race) or owned by a different user.
+Remove the session directory for this project (`artisan_status` reports its
+`projectRoot`; the path is `~/.artisan/sessions/<hash>/`) and retry. Removing
+only `~/.artisan/state.json` clears the pointer, not the session.
 
 ### The session says `booting: true` and has no `vmServiceUri`
 
