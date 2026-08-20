@@ -49,8 +49,19 @@ class StatusCommand extends ArtisanCommand {
         'device': state['device'],
         'projectRoot': state['projectRoot'],
         'ownedByThisProject': foreign == null,
+        // Present when `start` was cut short between spawning the app and
+        // scraping its VM Service URI. The app is up and drivable through
+        // the FIFO, but connected commands have nothing to dial yet.
+        if (state['booting'] == true) 'booting': true,
       }),
     );
+    if (state['booting'] == true) {
+      ctx.output.warning(
+        'The app is running but its start did not finish recording: no '
+        'vmServiceUri yet. Connected commands recover it from the session '
+        'log on their next call, or re-run `artisan start`.',
+      );
+    }
     if (foreign != null) ctx.output.warning(foreign);
     return 0;
   }

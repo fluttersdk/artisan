@@ -49,6 +49,7 @@ export 'src/helpers/plist_writer.dart';
 // State + VM Service + extension registration (substrate ported from ai-test).
 export 'src/extensions/register_extension_idempotent.dart';
 export 'src/state/state_file.dart';
+export 'src/state/vm_service_log.dart';
 export 'src/stubs/stub_loader.dart';
 export 'src/vm/vm_service_client.dart';
 

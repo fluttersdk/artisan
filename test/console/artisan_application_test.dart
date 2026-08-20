@@ -233,6 +233,50 @@ void main() {
 
       expect(code, 1);
     });
+
+    test('a booting session recovers its URI from the session log', () async {
+      // The field case: the MCP client killed `artisan_start` at 60s while an
+      // iOS build was still compiling, so the app came up and the URI landed
+      // in the log after the process that would have recorded it was gone.
+      // The next command reads it back instead of the operator hand-writing
+      // the file.
+      final Directory tempHome =
+          Directory.systemTemp.createTempSync('artisan_recover_');
+      addTearDown(() {
+        StateFile.debugHomeOverride = null;
+        StateFile.debugProjectRootOverride = null;
+        tempHome.deleteSync(recursive: true);
+      });
+      StateFile.debugHomeOverride = tempHome.path;
+      StateFile.debugProjectRootOverride = Directory.current.path;
+
+      await StateFile.write(<String, dynamic>{
+        'pid': 4242,
+        'stdinPipe': '/tmp/x.fifo',
+        'vmServiceUri': null,
+        'booting': true,
+        'projectRoot': Directory.current.path,
+      });
+      File('${File(StateFile.path).parent.path}/flutter-dev.log')
+          .writeAsStringSync(
+        'Launching lib/main.dart on iPhone in debug mode...\n'
+        'A Dart VM Service on iPhone is available at: '
+        'http://127.0.0.1:8183/AbC=/\n',
+      );
+
+      final registry = ArtisanRegistry();
+      registry.register(_ConnectedCommand());
+      final app = ArtisanApplication(registry: registry);
+      await app.dispatch(<String>['connected']);
+
+      final Map<String, dynamic>? healed = await StateFile.read();
+      expect(healed!['vmServiceUri'], equals('ws://127.0.0.1:8183/AbC=/ws'));
+      expect(
+        healed.containsKey('booting'),
+        isFalse,
+        reason: 'the record is complete now',
+      );
+    });
   });
 }
 

@@ -71,6 +71,7 @@ and the recovery loop for every common failure substring.
 | `chromePid` | int / null | `start --cdp-port` | Chrome subprocess pid; null on non-CDP runs |
 | `tmpProfileDir` | string / null | `start --cdp-port` | Chrome temp profile dir; null otherwise |
 | `cdpPort` | int / null | `start --cdp-port` | the `--cdp-port` value; null when CDP is disabled |
+| `booting` | bool / absent | `start` | present and true only between the spawn and the URI landing; says the record is incomplete rather than wrong |
 
 `restart` preserves `cdpPort` across the stop+start cycle: it reads the value from `state.json` before `stop` deletes the file, then forwards it into `start`, so a CDP-enabled session survives a restart. An explicit `--cdp-port` on the `restart` invocation wins over the preserved value.
 
@@ -243,13 +244,32 @@ If `artisan_stop` returns "No state file" but `artisan_start` still
 fails, the state file is mid-write (race) or owned by a different user;
 `rm ~/.artisan/state.json` + retry.
 
+### The session says `booting: true` and has no `vmServiceUri`
+
+Cause: `start` was cut short between spawning the app and scraping its URI.
+Almost always the CALLER gave up, not the app: an MCP client kills a tool
+call at 60s and a cold iOS or Android build routinely takes longer. The app
+is up, the session records everything except the URI, and the marker says so.
+
+Do NOT re-run `start` and do NOT hand-write the file. The next connected
+tool call reads the URI out of the session log and keeps it:
+
+```
+artisan_status         # booting: true, vmServiceUri null
+<any connected tool>   # recovers the URI and completes the record
+artisan_status         # booting gone, vmServiceUri present
+```
+
+If it does not clear, the underlying flutter run is failing rather than
+slow, and `artisan_logs` shows what it printed. From Bash the scrape window
+itself is adjustable: `./bin/fsa start -d chrome --timeout=180`. The MCP
+tool has no timeout parameter, so that path is CLI-only.
+
 ### `state.json missing vmServiceUri`
 
-Cause: `start` wrote a partial state, usually because flutter run
-crashed during boot before the VM Service URI was scraped (90s by default).
-When the boot is merely slow rather than broken, raise the window from Bash:
-`./bin/fsa start -d chrome --timeout=180`. The MCP tool has no timeout
-parameter, so that path is CLI-only.
+Cause: a state file that records no URI and carries no `booting` marker, so
+it was not an interrupted start: flutter run crashed during boot before the
+URI was scraped.
 
 ```
 artisan_status         # confirm the bad state
@@ -257,9 +277,6 @@ artisan_stop           # clean
 artisan_start { ... }  # retry
 artisan_logs           # check what flutter run actually printed during boot
 ```
-
-If `artisan_start` consistently times out at the URI scrape, the
-underlying flutter run is failing (build error, device unavailable).
 Read the captured log.
 
 ### `Pipe missing: <path>. Run `artisan restart``
@@ -273,12 +290,16 @@ artisan_restart
 
 Or, if that loops: `artisan_stop` (forces cleanup), then `artisan_start`.
 
-### `state.json has no stdinPipe entry; ... older artisan`
+### `The session has no stdinPipe entry`
 
-Cause: state.json predates the FIFO refactor.
+Cause: either the app was started by an artisan predating the FIFO refactor,
+or the state file was hand-written without it. The second is the likelier one
+now, and it is why hand-writing is the wrong recovery: `stdinPipe` holds the
+path `start` creates for `flutter run`'s stdin, and `reload` / `hot-restart`
+write their keystroke into it, so a file without it cannot hot restart.
 
 ```
-artisan_restart        # rewrites state.json with the current schema
+artisan_restart        # rewrites the session with the current schema
 ```
 
 ### `Expression compilation error` / `RPCError(code: 113)` (tinker only)

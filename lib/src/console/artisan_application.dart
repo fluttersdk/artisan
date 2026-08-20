@@ -4,6 +4,7 @@ import 'package:args/args.dart';
 
 import '../helpers/console_style.dart';
 import '../state/state_file.dart';
+import '../state/vm_service_log.dart';
 import '../vm/vm_service_client.dart';
 import 'artisan_command.dart';
 import 'artisan_context.dart';
@@ -143,9 +144,29 @@ class ArtisanApplication {
       return 1;
     }
 
-    final wsUri = state['vmServiceUri'] as String?;
+    // A `start` cut short by its caller records the session without the URI
+    // (see StartCommand.bootingState): the MCP client gives up at 60s and an
+    // iOS build routinely takes longer, so the URI lands in the log after the
+    // process that was going to write it is gone. Read it back and keep it,
+    // rather than making the operator hand-write the file.
+    String? wsUri = state['vmServiceUri'] as String?;
     if (wsUri == null) {
-      output.error('state.json missing vmServiceUri; re-run `artisan start`.');
+      wsUri = vmServiceUriFromLog(
+        File('${File(StateFile.path).parent.path}/flutter-dev.log'),
+      );
+      if (wsUri != null) {
+        await StateFile.write(<String, dynamic>{
+          ...state,
+          'vmServiceUri': wsUri,
+        }..remove('booting'));
+      }
+    }
+    if (wsUri == null) {
+      output.error(
+        'The session has no vmServiceUri yet and the log has not announced '
+        'one. The app may still be building: run `artisan status` and retry, '
+        'or `artisan start` again if it is not.',
+      );
       return 1;
     }
     final vmClient = VmServiceClient(wsUri);

@@ -26,7 +26,17 @@ import 'package:meta/meta.dart';
 ///
 /// Schema:
 /// - `pid` (int, required): the flutter run process PID
-/// - `vmServiceUri` (string, required): canonical `ws://host:port/<token>/ws`
+/// - `stdinPipe` (string, required): path to the FIFO `flutter run`'s stdin
+///   reads from. `reload` and `hot-restart` write `r` / `R` into it, so a
+///   hand-written state without this key cannot hot restart
+/// - `stdinHolderPid` (int, required): PID of the process holding the FIFO
+///   open for writing, reaped by `stop`
+/// - `booting` (bool, optional): present and true only between the spawn and
+///   the VM Service URI landing. A caller that gave up in that window left
+///   the app running, and this says the record is incomplete rather than
+///   wrong
+/// - `vmServiceUri` (string, null while `booting`): canonical
+///   `ws://host:port/<token>/ws`
 /// - `webPort` (int, required): `--web-port` passed to flutter
 /// - `vmServicePort` (int, optional, informational, default 8181)
 /// - `startedAt` (ISO 8601 UTC string, required)
