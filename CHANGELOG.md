@@ -14,6 +14,8 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
   The session is now written as soon as the child PIDs are known, carrying the pid, the FIFO, the ports and the device, with `vmServiceUri: null` and `booting: true` saying the record is incomplete rather than wrong. The URI is filled in when the scrape lands. And a connected command that finds no URI reads the last one out of the session log and keeps it, so an interrupted start heals on the next call instead of needing a hand-written file.
 
+- **`status` reported an unfinished start as a healthy session.** That is where the reported symptom chain started: the operator read `running: false` about an app that was serving, concluded the start had failed, and went looking for a recovery. It now reports `booting: true` alongside the record and says in plain words that the URI is not there yet and how it gets filled in.
+
 - **The documented state schema omitted `stdinPipe`, so following it produced a file that could not hot restart.** The docblock is the recipe an operator reaches for precisely when `start` has failed them, and it listed eleven keys without the one `reload` and `hot-restart` need. Both now document `stdinPipe`, `stdinHolderPid` and `booting`.
 
 - **`reload` and `hot-restart` blamed an old artisan for a missing `stdinPipe`.** "the app was started by an older artisan that pre-dates the FIFO refactor" is one cause; a state file hand-written from the schema above is the likelier one now, and the message said nothing about what the key holds. Both messages name both causes and describe the value.

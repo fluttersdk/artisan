@@ -145,5 +145,38 @@ void main() {
       expect(output.content, contains('"ownedByThisProject":true'));
       expect(output.content, isNot(contains('another project')));
     });
+
+    test('an unfinished start is reported as such, not as healthy', () async {
+      // The reported symptom chain started here: the operator read `status`
+      // and it said `running: false` about an app that was serving. It now
+      // says running, and says what is missing.
+      final Directory tempHome =
+          Directory.systemTemp.createTempSync('artisan_status_booting_');
+      addTearDown(() {
+        StateFile.debugHomeOverride = null;
+        StateFile.debugProjectRootOverride = null;
+        tempHome.deleteSync(recursive: true);
+      });
+      StateFile.debugHomeOverride = tempHome.path;
+      StateFile.debugProjectRootOverride = Directory.current.path;
+
+      await StateFile.write(<String, dynamic>{
+        'pid': 4242,
+        'stdinPipe': '/tmp/x.fifo',
+        'vmServiceUri': null,
+        'booting': true,
+        'projectRoot': Directory.current.path,
+      });
+
+      final output = BufferedOutput();
+      final int code = await StatusCommand().handle(
+        ArtisanContext.bare(MapInput(const {}), output),
+      );
+
+      expect(code, 0);
+      expect(output.content, contains('"running":true'));
+      expect(output.content, contains('"booting":true'));
+      expect(output.content, contains('did not finish recording'));
+    });
   });
 }
