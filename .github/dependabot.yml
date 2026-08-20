@@ -23,3 +23,13 @@ updates:
     labels:
       - "ci"
     open-pull-requests-limit: 3
+    ignore:
+      # The pub.dev publish workflow stays on the floating major tag, which
+      # is what dart.dev's automated-publishing guide prescribes for it:
+      # https://dart.dev/tools/pub/automated-publishing
+      #
+      # The OIDC handshake this workflow performs evolves with the pub.dev
+      # side of it, so `@v1` is the channel those fixes arrive through.
+      # Pinning an exact version closes that channel, and the closure only
+      # becomes visible at the moment a release will not publish.
+      - dependency-name: "dart-lang/setup-dart/.github/workflows/publish.yml"
