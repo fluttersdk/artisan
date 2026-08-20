@@ -157,5 +157,38 @@ void main() {
 
       expect(runner.arguments, contains('--non-interactive'));
     });
+
+    test('the default runner really spawns the subprocess', () {
+      // Every other case here injects a recording fake, so the one line that
+      // reaches Process.run has never run under test. It is the line that
+      // decides whether a chained install happens at all.
+      final Directory root =
+          Directory.systemTemp.createTempSync('artisan_bootstrap_real_');
+      addTearDown(() => root.deleteSync(recursive: true));
+      File('${root.path}/pubspec.yaml').writeAsStringSync('name: demo_app\n');
+
+      // No bin/fsa and a pubspec name, so it resolves to `dart run
+      // demo_app:artisan ...`, which fails fast in an empty directory. The
+      // assertion is that a subprocess ran and its code came back, not that
+      // the chained command succeeded.
+      final runner = BootstrapCommandRunner();
+
+      expect(
+        runner.run(bootstrapCommand: 'demo:install', projectRoot: root.path),
+        completion(
+          isA<BootstrapRunResult>()
+              .having(
+                (BootstrapRunResult r) => r.outcome,
+                'outcome',
+                BootstrapRunOutcome.invoked,
+              )
+              .having(
+                (BootstrapRunResult r) => r.exitCode,
+                'exitCode',
+                isNotNull,
+              ),
+        ),
+      );
+    });
   });
 }

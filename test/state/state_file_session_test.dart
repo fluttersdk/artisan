@@ -155,5 +155,50 @@ void main() {
           jsonDecode(pointer.readAsStringSync()) as Map<String, dynamic>;
       expect(decoded['pid'], equals(222));
     });
+
+    test('a trailing separator resolves to the same session', () {
+      // `artisan start` records `Directory.current.path`; a shell or a script
+      // that appends a separator would otherwise open a SECOND session for
+      // the same project and every connected command would miss the first.
+      StateFile.debugProjectRootOverride = projectA.path;
+      final String plain = StateFile.path;
+      StateFile.debugProjectRootOverride =
+          '${projectA.path}${Platform.pathSeparator}';
+      final String trailing = StateFile.path;
+
+      expect(trailing, equals(plain));
+    });
+
+    test('the same directory reached through a symlink is one session', () {
+      // A git worktree checkout is routinely a symlink, and two sessions for
+      // one project is the bug this whole file exists to prevent.
+      final Link link = Link('${tempHome.path}/link-to-a');
+      link.createSync(projectA.path);
+      addTearDown(() => link.deleteSync());
+
+      StateFile.debugProjectRootOverride = projectA.path;
+      final String direct = StateFile.path;
+      StateFile.debugProjectRootOverride = link.path;
+      final String viaLink = StateFile.path;
+
+      expect(viaLink, equals(direct));
+    });
+
+    test('without the debug override the session lands under the real home',
+        () {
+      // Every other test in this file pins the home directory, so the
+      // production resolution has never run: a regression there would move
+      // every session on every machine and no test would notice.
+      StateFile.debugHomeOverride = null;
+      StateFile.debugProjectRootOverride = projectA.path;
+
+      final String home = Platform.environment['HOME'] ??
+          Platform.environment['USERPROFILE'] ??
+          '/tmp';
+
+      expect(StateFile.path, startsWith('$home/.artisan/sessions/'));
+      expect(StateFile.legacyPointerPath, equals('$home/.artisan/state.json'));
+      expect(StateFile.homeDir, equals('$home/.artisan'));
+    });
   });
 }

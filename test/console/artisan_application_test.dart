@@ -197,6 +197,42 @@ void main() {
 
       expect(capturingCommand.capturedRegistry, same(registry));
     });
+
+    test('a connected command refuses a foreign session before dialling',
+        () async {
+      // The guard has to fire BEFORE the VM Service connect: reaching the
+      // socket first means the command succeeds against the wrong app, which
+      // is the failure that once produced a screenshot of another product.
+      final Directory tempHome =
+          Directory.systemTemp.createTempSync('artisan_app_own_');
+      final Directory sibling =
+          Directory.systemTemp.createTempSync('artisan_app_sibling_');
+      addTearDown(() {
+        StateFile.debugHomeOverride = null;
+        tempHome.deleteSync(recursive: true);
+        sibling.deleteSync(recursive: true);
+      });
+      StateFile.debugHomeOverride = tempHome.path;
+
+      final Directory stateDir = Directory('${tempHome.path}/.artisan');
+      stateDir.createSync(recursive: true);
+      File('${stateDir.path}/state.json').writeAsStringSync(
+        jsonEncode(<String, dynamic>{
+          'pid': 4242,
+          'projectRoot': sibling.path,
+          // A URI that would hang or throw if the guard let it through.
+          'vmServiceUri': 'ws://127.0.0.1:1/ws',
+        }),
+      );
+
+      final registry = ArtisanRegistry();
+      registry.register(_ConnectedCommand());
+      final app = ArtisanApplication(registry: registry);
+
+      final code = await app.dispatch(<String>['connected']);
+
+      expect(code, 1);
+    });
   });
 }
 
