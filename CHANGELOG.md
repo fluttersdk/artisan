@@ -6,6 +6,18 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **A `start` interrupted by its caller left the app running and unrecorded.** The session was written only after the VM Service URI was scraped, which is the last and longest thing `start` waits for. An MCP client kills a tool call at 60s and an iOS build routinely takes longer, so the app came up, the process survived (the wrapper detaches it), and nothing recorded it: `status` answered `running: false` about an app that was listening on 8183, `stop` had no pid to reap, and the operator had to hand-write the state file. Reported from the field on `device=50BAD9FA-...`.
+
+  The session is now written as soon as the child PIDs are known, carrying the pid, the FIFO, the ports and the device, with `vmServiceUri: null` and `booting: true` saying the record is incomplete rather than wrong. The URI is filled in when the scrape lands. And a connected command that finds no URI reads the last one out of the session log and keeps it, so an interrupted start heals on the next call instead of needing a hand-written file.
+
+- **The documented state schema omitted `stdinPipe`, so following it produced a file that could not hot restart.** The docblock is the recipe an operator reaches for precisely when `start` has failed them, and it listed eleven keys without the one `reload` and `hot-restart` need. Both now document `stdinPipe`, `stdinHolderPid` and `booting`.
+
+- **`reload` and `hot-restart` blamed an old artisan for a missing `stdinPipe`.** "the app was started by an older artisan that pre-dates the FIFO refactor" is one cause; a state file hand-written from the schema above is the likelier one now, and the message said nothing about what the key holds. Both messages name both causes and describe the value.
+
 ## [0.0.11] - 2026-08-20
 
 ### Fixed

@@ -11,6 +11,7 @@ import '../console/command_boot.dart';
 import '../console/pid_parser.dart';
 import '../console/shell_quote.dart';
 import '../state/state_file.dart';
+import '../state/vm_service_log.dart';
 
 /// Signature for [Process.start] test seam. Mirrors the upstream subset
 /// [StartCommand] needs. The [mode] parameter is nullable so test fakes can
@@ -242,6 +243,63 @@ class StartCommand extends ArtisanCommand {
       );
   }
 
+  /// The session record written the moment the child PIDs are known, before
+  /// the VM Service URI is scraped.
+  ///
+  /// The scrape is the last and longest thing `start` waits for, and it used
+  /// to gate the write. So a caller that gave up first, which an MCP client
+  /// does at 60s while an iOS build is still compiling, left the app running
+  /// and unrecorded: `status` answered `running: false` about an app that was
+  /// listening, `stop` had no pid to reap, and the operator had to hand-write
+  /// the file to get any of it back.
+  ///
+  /// Everything an interrupted start still needs is here: the pid to stop,
+  /// the FIFO to hot-restart through, and the ports to reach it on. Only
+  /// [vmServiceUri] is missing, and `booting` says so out loud so a reader
+  /// can tell an interrupted start from a finished one.
+  static Map<String, dynamic> bootingState({
+    required int pid,
+    required String stdinPipe,
+    required int stdinHolderPid,
+    required int webPort,
+    required int vmServicePort,
+    required bool profileStatic,
+    required String device,
+    required int? chromePid,
+    required String? tmpProfileDir,
+    required int? cdpPort,
+  }) {
+    return <String, dynamic>{
+      'pid': pid,
+      'stdinPipe': stdinPipe,
+      'stdinHolderPid': stdinHolderPid,
+      'vmServiceUri': null,
+      'webPort': webPort,
+      'vmServicePort': vmServicePort,
+      'startedAt': DateTime.now().toUtc().toIso8601String(),
+      'profile': profileStatic ? 'static' : 'debug',
+      // The package root, matching what the session key hashes. A raw cwd
+      // here would make a start from a subdirectory record a root the
+      // ownership check then measures every later command against.
+      'projectRoot': StateFile.projectRootFor(Directory.current.path),
+      'device': device,
+      'chromePid': chromePid,
+      'tmpProfileDir': tmpProfileDir,
+      'cdpPort': cdpPort,
+      'booting': true,
+    };
+  }
+
+  /// [booting] with the scraped [vmServiceUri] filled in and the marker gone.
+  static Map<String, dynamic> readyState(
+    Map<String, dynamic> booting, {
+    required String vmServiceUri,
+  }) {
+    return Map<String, dynamic>.from(booting)
+      ..['vmServiceUri'] = vmServiceUri
+      ..remove('booting');
+  }
+
   @override
   Future<int> handle(
     ArtisanContext ctx, {
@@ -349,27 +407,26 @@ class StartCommand extends ArtisanCommand {
       );
     }
 
+    // Record the session BEFORE the scrape. The scrape is the longest thing
+    // this command waits for, and a caller that gives up first used to leave
+    // the app running with nothing written down.
+    final Map<String, dynamic> booting = bootingState(
+      pid: childPid,
+      stdinPipe: fifoPath,
+      stdinHolderPid: holderPid,
+      webPort: resolvedWebPort,
+      vmServicePort: resolvedVmServicePort,
+      profileStatic: profileStatic,
+      device: resolvedDevice,
+      chromePid: null,
+      tmpProfileDir: null,
+      cdpPort: null,
+    );
+    await StateFile.write(booting);
+
     final vmServiceUri = await _runVmServiceScrape(logFile, 90);
 
-    await StateFile.write(<String, dynamic>{
-      'pid': childPid,
-      'stdinPipe': fifoPath,
-      'stdinHolderPid': holderPid,
-      'vmServiceUri': vmServiceUri,
-      'webPort': resolvedWebPort,
-      'vmServicePort': resolvedVmServicePort,
-      'startedAt': DateTime.now().toUtc().toIso8601String(),
-      'profile': profileStatic ? 'static' : 'debug',
-      // The package root, matching what the session key hashes. A raw
-      // cwd here would make a start from a subdirectory record a
-      // root the ownership check then measures every later command
-      // against, refusing the ones run from the package root.
-      'projectRoot': StateFile.projectRootFor(Directory.current.path),
-      'device': resolvedDevice,
-      'chromePid': null,
-      'tmpProfileDir': null,
-      'cdpPort': null,
-    });
+    await StateFile.write(readyState(booting, vmServiceUri: vmServiceUri));
 
     ctx.output.success('flutter run pid=$childPid');
     ctx.output.success('vmServiceUri=$vmServiceUri');
@@ -571,29 +628,27 @@ class StartCommand extends ArtisanCommand {
       await _runWebServerReadyWait(logFile);
       await cdpChromeNavigator(cdpPort, 'http://localhost:$webPort/');
 
-      // 11. NOW scrape the VM Service URI emitted by DWDS once Chrome connected.
+      // 11. Record the session BEFORE the scrape, so a caller that gives up
+      //     during it still has the Chrome pid to reap and the FIFO to drive.
+      final Map<String, dynamic> booting = bootingState(
+        pid: childPid,
+        stdinPipe: fifoPath,
+        stdinHolderPid: holderPid,
+        webPort: webPort,
+        vmServicePort: vmServicePort,
+        profileStatic: profileStatic,
+        device: device,
+        chromePid: chromeProcess.pid,
+        tmpProfileDir: tmpProfileDir,
+        cdpPort: cdpPort,
+      );
+      await StateFile.write(booting);
+
+      // 12. NOW scrape the VM Service URI emitted by DWDS once Chrome
+      //     connected, and complete the record.
       final vmServiceUri = await _runVmServiceScrape(logFile, scrapeTimeout);
 
-      // 12. Write state with the new CDP fields so StopCommand can reap Chrome.
-      await StateFile.write(<String, dynamic>{
-        'pid': childPid,
-        'stdinPipe': fifoPath,
-        'stdinHolderPid': holderPid,
-        'vmServiceUri': vmServiceUri,
-        'webPort': webPort,
-        'vmServicePort': vmServicePort,
-        'startedAt': DateTime.now().toUtc().toIso8601String(),
-        'profile': profileStatic ? 'static' : 'debug',
-        // The package root, matching what the session key hashes. A raw
-        // cwd here would make a start from a subdirectory record a
-        // root the ownership check then measures every later command
-        // against, refusing the ones run from the package root.
-        'projectRoot': StateFile.projectRootFor(Directory.current.path),
-        'device': device,
-        'chromePid': chromeProcess.pid,
-        'tmpProfileDir': tmpProfileDir,
-        'cdpPort': cdpPort,
-      });
+      await StateFile.write(readyState(booting, vmServiceUri: vmServiceUri));
 
       ctx.output.success('chrome pid=${chromeProcess.pid} (cdpPort=$cdpPort)');
       ctx.output.success('flutter run pid=$childPid');
@@ -977,21 +1032,10 @@ class StartCommand extends ArtisanCommand {
         }
       };
 
-  static final RegExp _uriPattern = RegExp(
-    r'(?:Debug service listening on|Dart VM Service on .+? is available at:?)\s+(\S+)',
-  );
-
-  static String normalizeVmServiceUri(String raw) {
-    String uri = raw;
-    if (uri.startsWith('http://')) {
-      uri = 'ws://${uri.substring('http://'.length)}';
-    } else if (uri.startsWith('https://')) {
-      uri = 'wss://${uri.substring('https://'.length)}';
-    }
-    if (uri.endsWith('/ws')) return uri;
-    if (uri.endsWith('/ws/')) return uri.substring(0, uri.length - 1);
-    return uri.endsWith('/') ? '${uri}ws' : '$uri/ws';
-  }
+  /// Delegates to [normalizeVmServiceUriString]; kept as a static so the
+  /// existing public entry point does not move.
+  static String normalizeVmServiceUri(String raw) =>
+      normalizeVmServiceUriString(raw);
 
   /// Parses `HOLDER=<int>` and `FLUTTER=<int>` lines emitted by the start
   /// wrapper. Delegates the line-to-map parse to [parsePidLines]; this method
@@ -1033,7 +1077,7 @@ class StartCommand extends ArtisanCommand {
         if (size > lastSize) {
           final chunk = logFile.readAsStringSync();
           for (final line in const LineSplitter().convert(chunk)) {
-            final match = _uriPattern.firstMatch(line);
+            final match = vmServiceUriPattern.firstMatch(line);
             if (match != null) return normalizeVmServiceUri(match.group(1)!);
           }
           lastSize = size;

@@ -61,8 +61,11 @@ Future<int> _sendKeystroke(ArtisanContext ctx, String key, String label) async {
   final pipePath = state['stdinPipe'] as String?;
   if (pipePath == null) {
     ctx.output.error(
-      'state.json has no stdinPipe entry; the app was started by an older '
-      'artisan that pre-dates the FIFO refactor. Run `artisan restart`.',
+      'The session has no stdinPipe entry, so there is no FIFO to send the '
+      'keystroke through. Either the app was started by an artisan that '
+      'pre-dates the FIFO refactor, or the state file was hand-written '
+      'without it: it holds the path `artisan start` creates for '
+      '`flutter run`\'s stdin. Run `artisan restart` to have one made.',
     );
     return 2;
   }
