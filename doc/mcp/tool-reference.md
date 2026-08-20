@@ -71,7 +71,7 @@ via `BufferedOutput`, and returns the combined stdout + exit code as MCP text co
 Maps to artisan command: `start`
 
 Starts the Flutter app in debug mode and records the process PID and VM Service URI in
-`~/.artisan/state.json`. Once the state file exists the plugin tools (dusk, telescope,
+this project's session file. Once it exists the plugin tools (dusk, telescope,
 tinker) can connect to the running VM.
 
 | Parameter | Type | Default | Description |
@@ -86,7 +86,7 @@ tinker) can connect to the running VM.
 
 Maps to artisan command: `stop`
 
-Sends `SIGTERM` to the recorded Flutter process and deletes `~/.artisan/state.json`. After
+Sends `SIGTERM` to the recorded Flutter process and deletes this project's session. After
 this call, plugin tools will fail until `artisan_start` is called again.
 
 No parameters.
@@ -95,7 +95,7 @@ No parameters.
 
 Maps to artisan command: `status`
 
-Reads `~/.artisan/state.json` and returns the current process state as JSON: PID, device,
+Reads this project's session and returns the current process state as JSON: PID, device,
 VM Service URI, start timestamp, and whether the process is still alive.
 
 No parameters.

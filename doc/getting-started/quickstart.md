@@ -85,7 +85,7 @@ commits. Pass `--use-yaml-only` to error out instead of falling back when no
 ### 4. Start a Flutter app (optional)
 
 If your project ships a Flutter app, `start` boots `flutter run` in a detached
-process and writes `~/.artisan/state.json` with the VM Service URI. The state file
+process and writes a per-project session with the VM Service URI. The session file
 is what lets MCP clients and hot-reload/hot-restart commands locate the running
 instance without you providing the URI each time.
 
@@ -96,8 +96,10 @@ dart run fluttersdk_artisan start --device=chrome
 The default target is `chrome`. Pass `--device=macos` (or any Flutter device
 identifier) for desktop or mobile targets. The command scrapes the VM Service URI
 from the flutter run output, normalizes it to a `ws://` WebSocket address, and
-writes the full state (PID, VM URI, web port, device, project root) to
-`~/.artisan/state.json`.
+writes the full state (PID, VM URI, web port, device, project root) to this
+project's session at `~/.artisan/sessions/<hash>/state.json`. Sessions are per
+project, so a second app can be driven at the same time without either
+overwriting the other.
 
 Once the state file is present, `reload`, `hot-restart`, `logs`, and `stop` all
 resolve the running process automatically from the file without extra flags.

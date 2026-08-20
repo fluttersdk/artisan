@@ -136,7 +136,7 @@ responses with `isError: true` text.
 # `artisan start` exit 0
 Spawned flutter run (pid=12345).
 VM Service: ws://127.0.0.1:8181/<token>/ws
-Recorded to ~/.artisan/state.json
+Recorded to ~/.artisan/sessions/<hash>/state.json
 ```
 
 **Returns on error**:
@@ -175,13 +175,13 @@ artisan_start { device: "chrome", port: "3200" }    # alt web port
 > Stop the currently-running Flutter app and clear its state file.
 >
 > Sends SIGTERM to the `flutter run` process recorded in
-> `~/.artisan/state.json`, then deletes the state file. Safe to call when
+> the session, then deletes it. Safe to call when
 > no app is running (returns success, no-op).
 >
 > Usage:
 > - Call after development is done OR before `artisan_start` if the
 >   previous app process is stale.
-> - No-op when `~/.artisan/state.json` is absent; never errors on
+> - No-op when this project has no session; never errors on
 >   missing state.
 
 **Input schema**: `{ "type": "object", "properties": {} }`
@@ -219,7 +219,7 @@ No state file; nothing to stop.
 
 > Return the JSON status of the recorded Flutter app.
 >
-> Reads `~/.artisan/state.json` and reports pid, vmServiceUri, device,
+> Reads this project's session and reports pid, vmServiceUri, device,
 > webPort, profile, startedAt. Also probes whether the recorded pid is
 > still alive (process may have crashed without cleaning state).
 >
@@ -356,7 +356,7 @@ Sent SIGTERM to pid=12345.
 state.json removed.
 Spawned flutter run (pid=67890).
 VM Service: ws://127.0.0.1:8181/<new-token>/ws
-Recorded to ~/.artisan/state.json
+Recorded to ~/.artisan/sessions/<hash>/state.json
 ```
 
 **Notes**:
@@ -630,7 +630,7 @@ Available commands (60):
 ## artisan_tinker
 
 - **Maps to CLI**: `tinker --eval=<expr>`
-- **Boot mode**: `connected` (requires `~/.artisan/state.json` with
+- **Boot mode**: `connected` (requires a session with
   `vmServiceUri`)
 - **Handler**: `lib/src/commands/tinker_command.dart:35`
 
@@ -653,7 +653,7 @@ Available commands (60):
 > - Use to TRIGGER an action programmatically (call a method, fire an
 >   event, mutate a singleton) without going through the UI surface.
 > - Requires an artisan-managed running app: call `artisan_start` first
->   so `~/.artisan/state.json` records the VM Service URI.
+>   so the session records the VM Service URI.
 > - Errors (compile, runtime, breakpoints) surface as the evaluate RPC's
 >   error response; the model receives the error text and can self-correct.
 
@@ -710,7 +710,7 @@ Runtime exception: NoSuchMethodError: The getter 'foo' was called on null.
 ```
 # `artisan tinker` exit 1
 ### Error
-Not connected to a running Flutter app. Run `dart run fluttersdk_artisan start` first so `~/.artisan/state.json` records the VM Service URI.
+Not connected to a running Flutter app. Run `dart run fluttersdk_artisan start` first so the session records the VM Service URI.
 ```
 
 **Notes**:

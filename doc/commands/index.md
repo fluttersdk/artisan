@@ -22,7 +22,7 @@ Each group section ships a single table with four columns:
 
 - **Command** is the canonical name you type after `dart run fluttersdk_artisan` (or `dart run artisan`).
 - **Description** is the one-line summary returned by the command's `description` getter; the same string surfaces in `dart run artisan list`.
-- **Boot Mode** is the `CommandBoot` value the dispatcher reads before invoking `handle()` (see `lib/src/console/command_boot.dart`). `none` means pure CLI: no Flutter binding, no VM Service connection. `connected` means the command dials `~/.artisan/state.json` and fails fast if no app is running.
+- **Boot Mode** is the `CommandBoot` value the dispatcher reads before invoking `handle()` (see `lib/src/console/command_boot.dart`). `none` means pure CLI: no Flutter binding, no VM Service connection. `connected` means the command dials this project's session and fails fast if no app is running.
 - **MCP Tool** is the canonical `artisan_*` tool name surfaced over stdio JSON-RPC by `mcp:serve`, or the literal `no` when the command is not in the substrate allowlist. The allowlist lives in `lib/src/mcp/mcp_server.dart` (`_safeArtisanCommandNames`) and intentionally omits interactive, codegen, installer, and MCP-meta commands.
 
 ## Naming conventions
@@ -42,8 +42,8 @@ These seven are the only commands surfaced as MCP tools today, which makes them 
 
 | Command | Description | Boot Mode | MCP Tool |
 |---------|-------------|-----------|----------|
-| `start` | Boot `flutter run -d <device>` detached and record the VM Service URI to `~/.artisan/state.json`. | none | artisan_start |
-| `stop` | Stop the running flutter app and delete `~/.artisan/state.json`. | none | artisan_stop |
+| `start` | Boot `flutter run -d <device>` detached and record the VM Service URI to this project's session. | none | artisan_start |
+| `stop` | Stop the running flutter app and delete this project's session. | none | artisan_stop |
 | `status` | Print JSON status of the recorded flutter app. | none | artisan_status |
 | `logs` | Print or `--follow` the captured flutter run log. | none | artisan_logs |
 | `restart` | Stop and start the running flutter app; carries the prior session's device, web port, VM Service port and CDP port across. | none | artisan_restart |

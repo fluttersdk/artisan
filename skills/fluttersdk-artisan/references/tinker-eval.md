@@ -230,14 +230,14 @@ clean isolate, then retry.
 
 ### 4. Disconnected VM Service (no app, dead WS, DDS down)
 
-Trigger: `~/.artisan/state.json` is absent, or the recorded
+Trigger: this project has no session, or the recorded
 `vmServiceUri` no longer accepts a WebSocket.
 
 Shape:
 
 ```
 ### Error
-Not connected to a running Flutter app. Run `dart run fluttersdk_artisan start` first so `~/.artisan/state.json` records the VM Service URI.
+Not connected to a running Flutter app. Run `dart run fluttersdk_artisan start` first so the session records the VM Service URI.
 ```
 
 Substring contract: `Not connected to a running Flutter app`.

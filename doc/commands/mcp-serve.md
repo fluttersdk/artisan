@@ -61,7 +61,7 @@ All four flags are **repeatable**. Each can also be set via environment variable
 ## Soft-Fail Behavior
 
 The server does **not** require a running Flutter app at startup. When
-`~/.artisan/state.json` is absent or contains no `vmServiceUri`, initialization
+the session is absent or contains no `vmServiceUri`, initialization
 completes normally: all tools register and the server stays online
 (source: `mcp_server.dart:137-149`).
 
@@ -69,7 +69,7 @@ Tool calls that need the VM Service attempt a **lazy reconnect** on first
 invocation (source: `mcp_server.dart:228-256`):
 
 - Dispatch checks whether `_vmClient` is null.
-- If null, a single shared in-flight future reads `~/.artisan/state.json`,
+- If null, a single shared in-flight future reads the session,
   connects the WebSocket, and captures the main isolate ID.
 - Concurrent calls that arrive during the reconnect await the same future,
   preventing a client-leak race.

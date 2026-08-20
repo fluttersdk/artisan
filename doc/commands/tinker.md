@@ -48,7 +48,7 @@ tinker {--eval=expr}
 ## Connected Mode
 
 `tinker` sets `CommandBoot.connected` as its boot mode. Before `handle` runs, the
-dispatcher reads `~/.artisan/state.json` (written by `start`) and dials the VM
+dispatcher reads this project's session (written by `start`) and dials the VM
 Service WebSocket URI recorded there. If no state file is present, or the app
 is not running, the command exits with an error.
 
@@ -107,7 +107,7 @@ dart run artisan tinker --eval "DateTime.now().toIso8601String()"
 ## VM Service Evaluate
 
 Expression evaluation routes through `VmServiceClient.evaluate`, which opens a
-WebSocket to the DDS endpoint recorded in `~/.artisan/state.json`. On each
+WebSocket to the DDS endpoint recorded in the session. On each
 evaluation, the client calls `getVM()` for a fresh isolate ID (no cache, so
 device-target switches and app restarts do not produce stale isolate references),
 then resolves the isolate's root library ID and delegates to the VM Service
