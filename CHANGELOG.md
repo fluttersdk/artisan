@@ -6,7 +6,7 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ---
 
-## [Unreleased]
+## [0.0.12] - 2026-08-20
 
 ### Fixed
 
@@ -282,6 +282,7 @@ Both write through `.tmp` + atomic rename; never hand-edit.
 
 ---
 
+[0.0.12]: https://github.com/fluttersdk/artisan/compare/0.0.11...0.0.12
 [0.0.11]: https://github.com/fluttersdk/artisan/compare/0.0.10...0.0.11
 [0.0.10]: https://github.com/fluttersdk/artisan/compare/0.0.9...0.0.10
 [0.0.9]: https://github.com/fluttersdk/artisan/compare/0.0.8...0.0.9

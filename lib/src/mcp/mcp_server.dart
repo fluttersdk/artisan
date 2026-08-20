@@ -74,7 +74,7 @@ final class McpServer extends MCPServer with ToolsSupport {
             // cut, and test/mcp/mcp_server_version_test.dart fails the
             // build when it is not. The 0.0.9 cut missed it and shipped a
             // handshake one release behind.
-            version: '0.0.11',
+            version: '0.0.12',
           ),
         );
 
