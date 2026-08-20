@@ -253,5 +253,52 @@ void main() {
 
       expect(leftovers, isEmpty, reason: 'staging files are renamed away');
     });
+
+    test('a subdirectory of the project resolves to the project session', () {
+      // `sessionOwnershipError` blesses running from `backend/` or a package
+      // subdirectory, but the session FILE was keyed on the working
+      // directory, so a command from there missed its own session, fell back
+      // to the shared pointer, and with two apps up got refused for driving
+      // somebody else's. The isolation only held for callers standing in the
+      // repo root.
+      File('${projectA.path}/pubspec.yaml').writeAsStringSync('name: proj_a\n');
+      final Directory nested = Directory('${projectA.path}/packages/app');
+      nested.createSync(recursive: true);
+
+      StateFile.debugProjectRootOverride = projectA.path;
+      final String fromRoot = StateFile.path;
+      StateFile.debugProjectRootOverride = nested.path;
+      final String fromNested = StateFile.path;
+
+      expect(fromNested, equals(fromRoot));
+    });
+
+    test('a nested package with its own pubspec keeps its own session', () {
+      // The walk stops at the NEAREST pubspec, because that is the unit
+      // `artisan start` boots. Two packages in one repo are two apps.
+      File('${projectA.path}/pubspec.yaml').writeAsStringSync('name: proj_a\n');
+      final Directory inner = Directory('${projectA.path}/example');
+      inner.createSync(recursive: true);
+      File('${inner.path}/pubspec.yaml').writeAsStringSync('name: inner\n');
+
+      StateFile.debugProjectRootOverride = projectA.path;
+      final String outer = StateFile.path;
+      StateFile.debugProjectRootOverride = inner.path;
+      final String innerPath = StateFile.path;
+
+      expect(innerPath, isNot(equals(outer)));
+    });
+
+    test('a directory with no pubspec anywhere above it keys on itself', () {
+      // Non-Dart callers and the hand-written recovery recipe must not hit a
+      // walk that climbs to the filesystem root and lands everyone in one
+      // shared session.
+      StateFile.debugProjectRootOverride = projectB.path;
+      expect(StateFile.path, contains('/.artisan/sessions/'));
+      expect(
+        StateFile.path,
+        equals(StateFile.sessionPathFor(projectB.path)),
+      );
+    });
   });
 }

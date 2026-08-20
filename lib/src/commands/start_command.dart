@@ -360,7 +360,11 @@ class StartCommand extends ArtisanCommand {
       'vmServicePort': resolvedVmServicePort,
       'startedAt': DateTime.now().toUtc().toIso8601String(),
       'profile': profileStatic ? 'static' : 'debug',
-      'projectRoot': Directory.current.path,
+      // The package root, matching what the session key hashes. A raw
+      // cwd here would make a start from a subdirectory record a
+      // root the ownership check then measures every later command
+      // against, refusing the ones run from the package root.
+      'projectRoot': StateFile.projectRootFor(Directory.current.path),
       'device': resolvedDevice,
       'chromePid': null,
       'tmpProfileDir': null,
@@ -580,7 +584,11 @@ class StartCommand extends ArtisanCommand {
         'vmServicePort': vmServicePort,
         'startedAt': DateTime.now().toUtc().toIso8601String(),
         'profile': profileStatic ? 'static' : 'debug',
-        'projectRoot': Directory.current.path,
+        // The package root, matching what the session key hashes. A raw
+        // cwd here would make a start from a subdirectory record a
+        // root the ownership check then measures every later command
+        // against, refusing the ones run from the package root.
+        'projectRoot': StateFile.projectRootFor(Directory.current.path),
         'device': device,
         'chromePid': chromeProcess.pid,
         'tmpProfileDir': tmpProfileDir,
