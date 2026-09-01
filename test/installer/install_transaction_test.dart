@@ -116,6 +116,59 @@ class _FailingFs implements VirtualFs {
   String md5(String absPath) => inner.md5(absPath);
 }
 
+/// Smallest `project.pbxproj` the Xcode arm can act on: one application
+/// target, its configuration list and three build configurations. Xcode's own
+/// tab indentation and comment shapes are irrelevant here (the parser ignores
+/// whitespace) and are covered against a real project file in
+/// `test/helpers/xcode_project_editor_test.dart`.
+const String _miniPbxproj = '''// !\$*UTF8*\$!
+{
+  archiveVersion = 1;
+  objectVersion = 54;
+  objects = {
+    1A00000000000000000001 /* Runner */ = {
+      isa = PBXNativeTarget;
+      buildConfigurationList = 1A00000000000000000002 /* Runner */;
+      name = Runner;
+      productType = "com.apple.product-type.application";
+    };
+    1A00000000000000000002 /* Runner */ = {
+      isa = XCConfigurationList;
+      buildConfigurations = (
+        1A00000000000000000003 /* Debug */,
+        1A00000000000000000004 /* Release */,
+        1A00000000000000000005 /* Profile */,
+      );
+    };
+    1A00000000000000000003 /* Debug */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        PRODUCT_BUNDLE_IDENTIFIER = com.example.demo;
+        SWIFT_VERSION = 5.0;
+      };
+      name = Debug;
+    };
+    1A00000000000000000004 /* Release */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        PRODUCT_BUNDLE_IDENTIFIER = com.example.demo;
+        SWIFT_VERSION = 5.0;
+      };
+      name = Release;
+    };
+    1A00000000000000000005 /* Profile */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        PRODUCT_BUNDLE_IDENTIFIER = com.example.demo;
+        SWIFT_VERSION = 5.0;
+      };
+      name = Profile;
+    };
+  };
+  rootObject = 1A00000000000000000000 /* Project object */;
+}
+''';
+
 InstallContext _makeCtx({
   VirtualFs? fs,
   DateTime? fixedTime,
@@ -908,6 +961,129 @@ class RouteServiceProvider {
               'failure leaves the install state recoverable via uninstall');
       // File written before shell phase should also be on disk.
       expect(File('${tmp.path}/lib/a.dart').existsSync(), isTrue);
+    });
+  });
+
+  group('InjectEntitlement — Xcode build setting', () {
+    Directory seedIosProject({String? pbxproj}) {
+      final root = Directory.systemTemp.createTempSync('artisan_tx_xcode_');
+      addTearDown(() {
+        if (root.existsSync()) root.deleteSync(recursive: true);
+      });
+      File('${root.path}/ios/Runner/Runner.entitlements')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('''
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+</dict>
+</plist>
+''');
+      File('${root.path}/ios/Runner.xcodeproj/project.pbxproj')
+        ..createSync(recursive: true)
+        ..writeAsStringSync(pbxproj ?? _miniPbxproj);
+      return root;
+    }
+
+    InstallContext realCtx(Directory root) {
+      return InstallContext.test(
+        fs: RealFs(),
+        prompt: _SilentPromptDriver(),
+        stubs: _SilentStubDriver(),
+        clock: () => DateTime.utc(2025, 6, 1),
+        projectRoot: root.path,
+      );
+    }
+
+    String pbxprojOf(Directory root) =>
+        File('${root.path}/ios/Runner.xcodeproj/project.pbxproj')
+            .readAsStringSync();
+
+    test('points the application target at the entitlements file it wrote',
+        () async {
+      final root = seedIosProject();
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(const InjectEntitlement(
+        platform: 'ios',
+        key: 'aps-environment',
+        value: 'development',
+      ));
+
+      final result = await tx.commit();
+
+      expect(result, isA<Success>(), reason: 'Got: ${result.describe()}');
+      // The plist write is the pre-existing half; the build setting is what
+      // makes Xcode read that file at all.
+      expect(
+        File('${root.path}/ios/Runner/Runner.entitlements').readAsStringSync(),
+        contains('aps-environment'),
+      );
+      expect(
+        pbxprojOf(root),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;'),
+      );
+    });
+
+    test('a project signing with another file keeps it and gets a warning',
+        () async {
+      final root = seedIosProject(
+        pbxproj: _miniPbxproj.replaceAll(
+          '        SWIFT_VERSION = 5.0;\n',
+          '        CODE_SIGN_ENTITLEMENTS = Runner/Custom.entitlements;\n'
+              '        SWIFT_VERSION = 5.0;\n',
+        ),
+      );
+      final before = pbxprojOf(root);
+      final ctx = realCtx(root);
+      final tx = InstallTransaction(ctx, pluginName: 'demo');
+      tx.stage(const InjectEntitlement(
+        platform: 'ios',
+        key: 'aps-environment',
+        value: 'development',
+      ));
+
+      final result = await tx.commit();
+
+      expect(result, isA<Success>());
+      expect(pbxprojOf(root), before, reason: 'must not repoint the signing');
+      expect(
+        (ctx.artisanContext.output as BufferedOutput).content,
+        contains('Runner/Custom.entitlements'),
+      );
+    });
+
+    test('a project without an .xcodeproj is a skip, not a failure', () async {
+      final root = seedIosProject();
+      File('${root.path}/ios/Runner.xcodeproj/project.pbxproj').deleteSync();
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(const InjectEntitlement(
+        platform: 'ios',
+        key: 'aps-environment',
+        value: 'development',
+      ));
+
+      expect(await tx.commit(), isA<Success>());
+    });
+
+    test('a malformed project surfaces as an Error and is left untouched',
+        () async {
+      final malformed = _miniPbxproj.replaceFirst(
+        'objectVersion = 54;',
+        'objectVersion = 54',
+      );
+      final root = seedIosProject(pbxproj: malformed);
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(const InjectEntitlement(
+        platform: 'ios',
+        key: 'aps-environment',
+        value: 'development',
+      ));
+
+      final result = await tx.commit();
+
+      expect(result, isA<Error>());
+      expect((result as Error).error, contains('InjectEntitlement'));
+      expect(pbxprojOf(root), malformed);
     });
   });
 

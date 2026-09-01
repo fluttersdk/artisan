@@ -528,7 +528,16 @@ final class InjectEntitlement extends InstallOperation {
   });
 
   @override
-  String describe() => '[inject-entitlement] $platform: $key = $value';
+
+  /// Names BOTH writes, because this op performs two.
+  ///
+  /// It sets the key in the entitlements plist AND points the Xcode project's
+  /// application target at that file through `CODE_SIGN_ENTITLEMENTS`, without
+  /// which Xcode never reads the plist and the entitlement is inert. A dry run
+  /// that mentioned only the plist would under-report what the real run does to
+  /// the consumer's project, which is the one thing a preview exists to prevent.
+  String describe() => '[inject-entitlement] $platform: $key = $value '
+      '(plus CODE_SIGN_ENTITLEMENTS on the application target)';
 }
 
 /// Appends a line to the `Podfile` target block for [platform].

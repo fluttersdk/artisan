@@ -170,5 +170,28 @@ void main() {
     test('hasPod returns false when pod is not present', () {
       expect(PodfileEditor.hasPod(podfilePath, 'SomeNonExistentPod'), isFalse);
     });
+
+    // -------------------------------------------------------------------------
+    // Create-if-absent
+    // -------------------------------------------------------------------------
+
+    test('addPodLine creates a Flutter-shaped Podfile when absent', () {
+      final absentPodfilePath = p.join(tempDir.path, 'absent_ios', 'Podfile');
+      expect(File(absentPodfilePath).existsSync(), isFalse);
+
+      PodfileEditor.addPodLine(
+        absentPodfilePath,
+        'Runner',
+        "pod 'Firebase/Core', '~> 10.0'",
+      );
+
+      final content = File(absentPodfilePath).readAsStringSync();
+      expect(content, contains("platform :ios, '12.0'"));
+      expect(content, contains("target 'Runner' do"));
+      expect(content, contains('use_frameworks!'));
+      expect(content, contains('use_modular_headers!'));
+      expect(content, contains("pod 'Firebase/Core', '~> 10.0'"));
+      expect(content, contains('end'));
+    });
   });
 }

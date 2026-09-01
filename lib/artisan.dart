@@ -43,6 +43,7 @@ export 'src/helpers/main_dart_editor.dart';
 export 'src/helpers/platform_helper.dart';
 export 'src/helpers/podfile_editor.dart';
 export 'src/helpers/route_registry_editor.dart';
+export 'src/helpers/xcode_project_editor.dart';
 export 'src/helpers/xml_editor.dart';
 export 'src/helpers/plist_writer.dart';
 

@@ -6,6 +6,17 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **`injectEntitlement` wrote a file Xcode never read.** The op set the key in `ios/Runner/Runner.entitlements` and stopped, so unless somebody had already opened Xcode and added the capability by hand, `CODE_SIGN_ENTITLEMENTS` was unset and the entitlement was inert. The op now also points the application target at that file. Concretely this is what made an installer-driven iOS push setup impossible: the plist was correct and the build ignored it.
+- **`PlistWriter` and `PodfileEditor` refused to edit a file that did not exist yet**, which is every Flutter project's entitlements file until somebody opens Xcode, and every Swift Package Manager project's Podfile always. Both now create the file first. `PlistWriter` creates ONLY an `.entitlements` path: an absent `Info.plist` still throws, because that means the caller has the wrong path and inventing one would hide it.
+
+### Added
+
+- **`XcodeProjectEditor.setEntitlementsPath()`**, a trivia-preserving OpenStep-plist reader and writer for `.pbxproj`, with one public setter and no general mutation API. Three properties are load-bearing rather than incidental. It scopes the write to the `PBXNativeTarget` whose `productType` is `com.apple.product-type.application`, reached through its `buildConfigurationList`: a stock Flutter project holds nine `XCBuildConfiguration` blocks and only three are the app's, so a naive sweep would put a signing entitlement on the test bundle and the project defaults. It parses, re-emits and compares byte for byte before touching disk, and refuses rather than writing a partially-edited project, because a truncated `.pbxproj` cannot be opened and the installer's helper-backed ops do not roll back. And it never REPOINTS a configuration that already names a different entitlements file: every macOS Flutter project carries `Runner/DebugProfile.entitlements` and `Runner/Release.entitlements`, and silently overwriting those would drop the sandbox grants they hold.
+
 ## [0.0.13] - 2026-08-20
 
 ### Documentation

@@ -47,13 +47,31 @@ class PodfileEditor {
 
   /// Read [podfilePath] and return its contents.
   ///
-  /// @throws [FileSystemException] if the file does not exist.
+  /// When the file does not exist yet, a Flutter-shaped Podfile is created
+  /// first (matching the layout `flutter create` generates), since a
+  /// consumer that resolves plugins through Swift Package Manager may never
+  /// have had a Podfile at all.
   static String _read(String podfilePath) {
     final file = File(podfilePath);
     if (!file.existsSync()) {
-      throw FileSystemException('Podfile not found', podfilePath);
+      _createFlutterPodfile(file);
     }
     return file.readAsStringSync();
+  }
+
+  /// Create [file] with a minimal Flutter-shaped Podfile, creating parent
+  /// directories as needed.
+  static void _createFlutterPodfile(File file) {
+    file.parent.createSync(recursive: true);
+    file.writeAsStringSync(
+      "platform :ios, '12.0'\n"
+      '\n'
+      "target 'Runner' do\n"
+      '  use_frameworks!\n'
+      '  use_modular_headers!\n'
+      '  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))\n'
+      'end\n',
+    );
   }
 
   /// Overwrite [podfilePath] with [content].
@@ -80,8 +98,10 @@ class PodfileEditor {
   /// @param platform     Either `'ios'` or `'macos'`.
   /// @param version      CocoaPods deployment target string, e.g. `'13.0'`.
   ///
-  /// @throws [FileSystemException] if the file does not exist.
-  /// @throws [ArgumentError]       if [platform] is not `'ios'` or `'macos'`.
+  /// If [podfilePath] does not exist, a Flutter-shaped Podfile is created
+  /// first (see [_read]).
+  ///
+  /// @throws [ArgumentError] if [platform] is not `'ios'` or `'macos'`.
   static void setPlatformVersion(
     String podfilePath,
     String platform,
@@ -133,7 +153,8 @@ class PodfileEditor {
   /// @param podfilePath  Absolute or relative path to the `Podfile`.
   /// @param hookContent  One or more Ruby statement lines to inject.
   ///
-  /// @throws [FileSystemException] if the file does not exist.
+  /// If [podfilePath] does not exist, a Flutter-shaped Podfile is created
+  /// first (see [_read]).
   static void addPostInstallHook(String podfilePath, String hookContent) {
     var content = _read(podfilePath);
 
@@ -184,9 +205,11 @@ class PodfileEditor {
   /// @param targetName   CocoaPods target name, typically `'Runner'`.
   /// @param podLine      Full `pod '...'` declaration line.
   ///
-  /// @throws [FileSystemException] if the file does not exist.
-  /// @throws [StateError]          if no target block matching [targetName]
-  ///                               is found in the file.
+  /// If [podfilePath] does not exist, a Flutter-shaped Podfile is created
+  /// first (see [_read]).
+  ///
+  /// @throws [StateError] if no target block matching [targetName] is found
+  ///                      in the file.
   static void addPodLine(
     String podfilePath,
     String targetName,
