@@ -208,5 +208,45 @@ void main() {
       final content = File(plistPath).readAsStringSync();
       expect(() => XmlDocument.parse(content), returnsNormally);
     });
+
+    // -------------------------------------------------------------------------
+    // Create-if-absent (entitlements only)
+    // -------------------------------------------------------------------------
+
+    test(
+        'setStringKey creates a minimal plist when the entitlements path is absent',
+        () {
+      final entitlementsPath =
+          p.join(tempDir.path, 'ios', 'Runner', 'Runner.entitlements');
+      expect(File(entitlementsPath).existsSync(), isFalse);
+
+      PlistWriter.setStringKey(
+          entitlementsPath, 'aps-environment', 'development');
+
+      final content = File(entitlementsPath).readAsStringSync();
+      expect(() => XmlDocument.parse(content), returnsNormally);
+      expect(content, contains('<key>aps-environment</key>'));
+      expect(content, contains('<string>development</string>'));
+
+      // The key round-trips through PlistWriter's own reading path: a second
+      // call with the same value is idempotent and does not duplicate the key.
+      PlistWriter.setStringKey(
+          entitlementsPath, 'aps-environment', 'development');
+      final keyCount = '<key>aps-environment</key>'
+          .allMatches(File(entitlementsPath).readAsStringSync())
+          .length;
+      expect(keyCount, 1);
+    });
+
+    test('setStringKey still throws for a missing Info.plist', () {
+      final missingInfoPlist = p.join(tempDir.path, 'MissingInfo.plist');
+      expect(File(missingInfoPlist).existsSync(), isFalse);
+
+      expect(
+        () => PlistWriter.setStringKey(
+            missingInfoPlist, 'NSCameraUsageDescription', 'Camera access'),
+        throwsA(isA<FileSystemException>()),
+      );
+    });
   });
 }

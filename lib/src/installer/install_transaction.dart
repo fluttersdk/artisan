@@ -14,6 +14,7 @@ import '../helpers/platform_helper.dart';
 import '../helpers/plist_writer.dart';
 import '../helpers/podfile_editor.dart';
 import '../helpers/route_registry_editor.dart';
+import '../helpers/xcode_project_editor.dart';
 import '../helpers/xml_editor.dart';
 import 'conflict_detector.dart';
 import 'dry_run_renderer.dart';
@@ -65,6 +66,16 @@ class InstallTransaction {
   InstallTransaction(InstallContext ctx, {required String pluginName})
       : _ctx = ctx,
         _pluginName = pluginName;
+
+  /// Build setting Xcode reads to find the entitlements file that signs the
+  /// product. Named in the operator-facing lines [_pointXcodeAtEntitlements]
+  /// emits.
+  static const String _entitlementsSetting = 'CODE_SIGN_ENTITLEMENTS';
+
+  /// Value written into that setting. Xcode resolves it relative to the
+  /// directory holding the `.xcodeproj`, which is exactly where
+  /// [_entitlementsPathFor] writes the file.
+  static const String _entitlementsSettingValue = 'Runner/Runner.entitlements';
 
   final InstallContext _ctx;
   final String _pluginName;
@@ -490,11 +501,13 @@ class InstallTransaction {
           if (value is bool) {
             PlistWriter.setBoolKey(entitlementsPath, op.key, value);
             _helperWrittenTargets.add(entitlementsPath);
+            _pointXcodeAtEntitlements(platform);
             return null;
           }
           if (value is String) {
             PlistWriter.setStringKey(entitlementsPath, op.key, value);
             _helperWrittenTargets.add(entitlementsPath);
+            _pointXcodeAtEntitlements(platform);
             return null;
           }
           return Error(
@@ -509,7 +522,17 @@ class InstallTransaction {
             return null;
           }
           final podfile = _podfilePathFor(op.platform);
-          PodfileEditor.addPodLine(podfile, 'Runner', op.line);
+          // Forward the platform: a Swift Package Manager project has no
+          // Podfile at all, and the helper refuses to create one it cannot
+          // shape (the platform picks the podhelper functions the file
+          // calls). Without this argument the op throws on every such
+          // project instead of creating the file it was asked to edit.
+          PodfileEditor.addPodLine(
+            podfile,
+            'Runner',
+            op.line,
+            platform: op.platform,
+          );
           _helperWrittenTargets.add(podfile);
           return null;
 
@@ -594,6 +617,55 @@ class InstallTransaction {
   /// Resolves `<projectRoot>/<ios|macos>/Runner/Runner.entitlements`.
   String _entitlementsPathFor(String platform) {
     return p.join(_ctx.projectRoot, platform, 'Runner', 'Runner.entitlements');
+  }
+
+  /// Resolves `<projectRoot>/<ios|macos>/Runner.xcodeproj/project.pbxproj`.
+  String _pbxprojPathFor(String platform) {
+    return p.join(
+      _ctx.projectRoot,
+      platform,
+      'Runner.xcodeproj',
+      'project.pbxproj',
+    );
+  }
+
+  /// Points the application target's build configurations at the entitlements
+  /// file the [InjectEntitlement] arm just wrote.
+  ///
+  /// Xcode ignores an entitlements plist that no build setting names, so the
+  /// plist write alone leaves the entitlement inert. Two non-fatal cases keep
+  /// the install going: a platform directory with no `.xcodeproj` (nothing to
+  /// point at), and a project already signing with a different entitlements
+  /// file (repointing it would drop whatever that file grants, which the
+  /// macOS Flutter template relies on). Anything else throws out of
+  /// [XcodeProjectEditor] and the dispatcher's catch turns it into an [Error]
+  /// before a single byte of the project is written.
+  ///
+  /// @param platform  `ios` or `macos`.
+  void _pointXcodeAtEntitlements(String platform) {
+    final pbxprojPath = _pbxprojPathFor(platform);
+    if (!File(pbxprojPath).existsSync()) {
+      _ctx.artisanContext.output.info(
+        'Skipping the $_entitlementsSetting build setting: no '
+        '$platform/Runner.xcodeproj at ${_ctx.projectRoot}.',
+      );
+      return;
+    }
+
+    final blocked = XcodeProjectEditor.setEntitlementsPath(
+      pbxprojPath,
+      _entitlementsSettingValue,
+    );
+    if (blocked.isNotEmpty) {
+      _ctx.artisanContext.output.warning(
+        'Left $_entitlementsSetting alone in $platform/Runner.xcodeproj: it '
+        'already signs with ${blocked.join(', ')}. Copy the keys from '
+        '$platform/Runner/Runner.entitlements into that file, or repoint '
+        '$_entitlementsSetting by hand.',
+      );
+      return;
+    }
+    _helperWrittenTargets.add(pbxprojPath);
   }
 
   /// Resolves `<projectRoot>/<ios|macos>/Podfile`.

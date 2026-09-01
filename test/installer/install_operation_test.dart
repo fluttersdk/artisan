@@ -217,8 +217,25 @@ void main() {
       key: 'com.apple.security.network.client',
       value: true,
     );
-    expect(op.describe(),
-        '[inject-entitlement] ios: com.apple.security.network.client = true');
+    expect(
+      op.describe(),
+      '[inject-entitlement] ios: com.apple.security.network.client = true '
+      '(plus CODE_SIGN_ENTITLEMENTS on the application target)',
+    );
+  });
+
+  test('InjectEntitlement.describe names the Xcode write, not only the plist',
+      () {
+    // A dry run exists to tell an operator what the real run will do to their
+    // project. This op performs TWO writes, and until the second was named the
+    // preview under-reported it: nothing in `--dry-run` mentioned that the
+    // consumer's `.pbxproj` was about to be edited.
+    const op = InjectEntitlement(
+      platform: 'ios',
+      key: 'aps-environment',
+      value: 'development',
+    );
+    expect(op.describe(), contains('CODE_SIGN_ENTITLEMENTS'));
   });
 
   // ---------------------------------------------------------------------------

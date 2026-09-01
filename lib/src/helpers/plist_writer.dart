@@ -219,13 +219,47 @@ class PlistWriter {
 
   /// Parse [plistPath] into an [XmlDocument].
   ///
-  /// @throws [FileSystemException] if the file does not exist.
+  /// When [plistPath] is an entitlements file (`.entitlements` extension)
+  /// and does not exist yet, a minimal well-formed plist with an empty root
+  /// `<dict>` is created first. This is the only path allowed to spring into
+  /// existence: an absent `Info.plist` or any other plist means the caller
+  /// passed the wrong path, and inventing one would hide that mistake.
+  ///
+  /// @throws [FileSystemException] if the file does not exist and is not an
+  ///                                entitlements path.
   static XmlDocument _parse(String plistPath) {
     final file = File(plistPath);
     if (!file.existsSync()) {
-      throw FileSystemException('Plist file not found', plistPath);
+      if (!_isEntitlementsPath(plistPath)) {
+        throw FileSystemException('Plist file not found', plistPath);
+      }
+      _createMinimalPlist(file);
     }
     return XmlDocument.parse(file.readAsStringSync());
+  }
+
+  /// Whether [plistPath] points at an iOS/macOS entitlements file.
+  ///
+  /// Entitlements files always carry the `.entitlements` extension (Apple's
+  /// own naming convention, e.g. `Runner.entitlements`); `Info.plist` and
+  /// every other plist consumed by this helper never do.
+  static bool _isEntitlementsPath(String plistPath) {
+    return plistPath.endsWith('.entitlements');
+  }
+
+  /// Create [file] with a minimal well-formed plist containing an empty
+  /// root `<dict>`, creating parent directories as needed.
+  static void _createMinimalPlist(File file) {
+    file.parent.createSync(recursive: true);
+    file.writeAsStringSync(
+      '<?xml version="1.0" encoding="UTF-8"?>\n'
+      '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+      '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+      '<plist version="1.0">\n'
+      '<dict>\n'
+      '</dict>\n'
+      '</plist>\n',
+    );
   }
 
   /// Locate the root `<dict>` element inside the `<plist>` element.

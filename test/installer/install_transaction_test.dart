@@ -116,6 +116,59 @@ class _FailingFs implements VirtualFs {
   String md5(String absPath) => inner.md5(absPath);
 }
 
+/// Smallest `project.pbxproj` the Xcode arm can act on: one application
+/// target, its configuration list and three build configurations. Xcode's own
+/// tab indentation and comment shapes are irrelevant here (the parser ignores
+/// whitespace) and are covered against a real project file in
+/// `test/helpers/xcode_project_editor_test.dart`.
+const String _miniPbxproj = '''// !\$*UTF8*\$!
+{
+  archiveVersion = 1;
+  objectVersion = 54;
+  objects = {
+    1A00000000000000000001 /* Runner */ = {
+      isa = PBXNativeTarget;
+      buildConfigurationList = 1A00000000000000000002 /* Runner */;
+      name = Runner;
+      productType = "com.apple.product-type.application";
+    };
+    1A00000000000000000002 /* Runner */ = {
+      isa = XCConfigurationList;
+      buildConfigurations = (
+        1A00000000000000000003 /* Debug */,
+        1A00000000000000000004 /* Release */,
+        1A00000000000000000005 /* Profile */,
+      );
+    };
+    1A00000000000000000003 /* Debug */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        PRODUCT_BUNDLE_IDENTIFIER = com.example.demo;
+        SWIFT_VERSION = 5.0;
+      };
+      name = Debug;
+    };
+    1A00000000000000000004 /* Release */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        PRODUCT_BUNDLE_IDENTIFIER = com.example.demo;
+        SWIFT_VERSION = 5.0;
+      };
+      name = Release;
+    };
+    1A00000000000000000005 /* Profile */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        PRODUCT_BUNDLE_IDENTIFIER = com.example.demo;
+        SWIFT_VERSION = 5.0;
+      };
+      name = Profile;
+    };
+  };
+  rootObject = 1A00000000000000000000 /* Project object */;
+}
+''';
+
 InstallContext _makeCtx({
   VirtualFs? fs,
   DateTime? fixedTime,
@@ -911,6 +964,210 @@ class RouteServiceProvider {
     });
   });
 
+  group('InjectEntitlement — Xcode build setting', () {
+    Directory seedIosProject({String? pbxproj}) {
+      final root = Directory.systemTemp.createTempSync('artisan_tx_xcode_');
+      addTearDown(() {
+        if (root.existsSync()) root.deleteSync(recursive: true);
+      });
+      File('${root.path}/ios/Runner/Runner.entitlements')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('''
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+</dict>
+</plist>
+''');
+      File('${root.path}/ios/Runner.xcodeproj/project.pbxproj')
+        ..createSync(recursive: true)
+        ..writeAsStringSync(pbxproj ?? _miniPbxproj);
+      return root;
+    }
+
+    InstallContext realCtx(Directory root) {
+      return InstallContext.test(
+        fs: RealFs(),
+        prompt: _SilentPromptDriver(),
+        stubs: _SilentStubDriver(),
+        clock: () => DateTime.utc(2025, 6, 1),
+        projectRoot: root.path,
+      );
+    }
+
+    String pbxprojOf(Directory root) =>
+        File('${root.path}/ios/Runner.xcodeproj/project.pbxproj')
+            .readAsStringSync();
+
+    test('points the application target at the entitlements file it wrote',
+        () async {
+      final root = seedIosProject();
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(const InjectEntitlement(
+        platform: 'ios',
+        key: 'aps-environment',
+        value: 'development',
+      ));
+
+      final result = await tx.commit();
+
+      expect(result, isA<Success>(), reason: 'Got: ${result.describe()}');
+      // The plist write is the pre-existing half; the build setting is what
+      // makes Xcode read that file at all.
+      expect(
+        File('${root.path}/ios/Runner/Runner.entitlements').readAsStringSync(),
+        contains('aps-environment'),
+      );
+      expect(
+        pbxprojOf(root),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;'),
+      );
+    });
+
+    test('a project signing with another file keeps it and gets a warning',
+        () async {
+      final root = seedIosProject(
+        pbxproj: _miniPbxproj.replaceAll(
+          '        SWIFT_VERSION = 5.0;\n',
+          '        CODE_SIGN_ENTITLEMENTS = Runner/Custom.entitlements;\n'
+              '        SWIFT_VERSION = 5.0;\n',
+        ),
+      );
+      final before = pbxprojOf(root);
+      final ctx = realCtx(root);
+      final tx = InstallTransaction(ctx, pluginName: 'demo');
+      tx.stage(const InjectEntitlement(
+        platform: 'ios',
+        key: 'aps-environment',
+        value: 'development',
+      ));
+
+      final result = await tx.commit();
+
+      expect(result, isA<Success>());
+      expect(pbxprojOf(root), before, reason: 'must not repoint the signing');
+      expect(
+        (ctx.artisanContext.output as BufferedOutput).content,
+        contains('Runner/Custom.entitlements'),
+      );
+    });
+
+    test('a project without an .xcodeproj is a skip, not a failure', () async {
+      final root = seedIosProject();
+      File('${root.path}/ios/Runner.xcodeproj/project.pbxproj').deleteSync();
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(const InjectEntitlement(
+        platform: 'ios',
+        key: 'aps-environment',
+        value: 'development',
+      ));
+
+      expect(await tx.commit(), isA<Success>());
+    });
+
+    test('a malformed project surfaces as an Error and is left untouched',
+        () async {
+      final malformed = _miniPbxproj.replaceFirst(
+        'objectVersion = 54;',
+        'objectVersion = 54',
+      );
+      final root = seedIosProject(pbxproj: malformed);
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(const InjectEntitlement(
+        platform: 'ios',
+        key: 'aps-environment',
+        value: 'development',
+      ));
+
+      final result = await tx.commit();
+
+      expect(result, isA<Error>());
+      expect((result as Error).error, contains('InjectEntitlement'));
+      expect(pbxprojOf(root), malformed);
+    });
+  });
+
+  group('InjectPodfileLine — create-if-absent, through the installer', () {
+    Directory seedProject(String platform) {
+      final root = Directory.systemTemp.createTempSync('artisan_tx_podfile_');
+      addTearDown(() {
+        if (root.existsSync()) root.deleteSync(recursive: true);
+      });
+      // A platform directory with no Podfile at all: what a Swift Package
+      // Manager project looks like on disk.
+      Directory('${root.path}/$platform').createSync(recursive: true);
+      return root;
+    }
+
+    InstallContext realCtx(Directory root) {
+      return InstallContext.test(
+        fs: RealFs(),
+        prompt: _SilentPromptDriver(),
+        stubs: _SilentStubDriver(),
+        clock: () => DateTime.utc(2025, 6, 1),
+        projectRoot: root.path,
+      );
+    }
+
+    Future<String> installPodLine(Directory root, String platform) async {
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(InjectPodfileLine(
+        platform: platform,
+        line: "pod 'OneSignalXCFramework', '5.2.7'",
+      ));
+      final result = await tx.commit();
+      expect(result, isA<Success>(), reason: 'Got: ${result.describe()}');
+
+      final podfile = File('${root.path}/$platform/Podfile');
+      expect(
+        podfile.existsSync(),
+        isTrue,
+        reason: 'The op must create the Podfile it was asked to edit.',
+      );
+      return podfile.readAsStringSync();
+    }
+
+    test('an iOS project with no Podfile ends up with an iOS-shaped one',
+        () async {
+      final content = await installPodLine(seedProject('ios'), 'ios');
+
+      expect(_platformLinesIn(content), ["platform :ios, '15.0'"]);
+      expect(content, contains('flutter_install_all_ios_pods'));
+      expect(content, contains(_podhelperRequire));
+      expect(content, contains('flutter_ios_podfile_setup'));
+      expect(content, contains("pod 'OneSignalXCFramework', '5.2.7'"));
+    });
+
+    test('a macOS project with no Podfile ends up with a macOS-shaped one',
+        () async {
+      final content = await installPodLine(seedProject('macos'), 'macos');
+
+      expect(_platformLinesIn(content), ["platform :osx, '12.0'"]);
+      expect(content, contains('flutter_install_all_macos_pods'));
+      expect(content, isNot(contains('flutter_install_all_ios_pods')));
+      expect(content, contains(_podhelperRequire));
+      expect(content, contains('flutter_macos_podfile_setup'));
+      expect(content, contains("pod 'OneSignalXCFramework', '5.2.7'"));
+    });
+
+    test('an existing Podfile is edited, not replaced', () async {
+      final root = seedProject('ios');
+      File('${root.path}/ios/Podfile').writeAsStringSync("""
+platform :ios, '14.0'
+
+target 'Runner' do
+  use_frameworks!
+end
+""");
+
+      final content = await installPodLine(root, 'ios');
+
+      expect(_platformLinesIn(content), ["platform :ios, '14.0'"]);
+      expect(content, contains("pod 'OneSignalXCFramework', '5.2.7'"));
+      expect(content, isNot(contains(_podhelperRequire)));
+    });
+  });
+
   group('TransactionResult.describe()', () {
     test('each subclass produces a non-empty human-readable describe', () {
       expect(
@@ -930,4 +1187,25 @@ class RouteServiceProvider {
       );
     });
   });
+}
+
+/// The `require` line Flutter's `templates/cocoapods/Podfile-*` emit, and the
+/// only thing that defines the `flutter_install_all_*_pods` a created Podfile
+/// calls. Without it `pod install` fails with `undefined method`.
+const String _podhelperRequire =
+    "require File.expand_path(File.join('packages', 'flutter_tools', 'bin', "
+    "'podhelper'), flutter_root)";
+
+/// Return every `platform :<token>, '<version>'` declaration in [content].
+///
+/// The Podfile DSL takes a single global platform, so a file carrying two of
+/// them is broken regardless of which two.
+///
+/// @param content  Full Podfile text read back off disk.
+/// @return The matched declaration lines, in file order.
+List<String> _platformLinesIn(String content) {
+  return RegExp(r"^platform :\w+, '[^']*'", multiLine: true)
+      .allMatches(content)
+      .map((match) => match.group(0)!)
+      .toList();
 }
