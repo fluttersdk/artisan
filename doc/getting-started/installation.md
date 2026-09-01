@@ -32,7 +32,7 @@ Alternatively, add it manually to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  fluttersdk_artisan: ^0.0.10
+  fluttersdk_artisan: ^0.0.14
 ```
 
 Then fetch dependencies:
@@ -71,7 +71,7 @@ dart run fluttersdk_artisan install --force
 The injection is automatic and follows two modes:
 
 - **Monorepo / path-dep workflow**: when your project already resolves `fluttersdk_artisan` via a local path (detected from `.dart_tool/package_config.json`), the scaffold injects a `path:` reference pointing to the same checkout. This avoids a pub.dev fetch against a version that may not yet be published.
-- **pub.dev workflow**: when no local resolution is found, the scaffold injects the `any` constraint and lets pub resolve the version transitively. Replace `any` with a pinned range (e.g. `^0.0.10`) before committing.
+- **pub.dev workflow**: when no local resolution is found, the scaffold injects the `any` constraint and lets pub resolve the version transitively. Replace `any` with a pinned range (e.g. `^0.0.14`) before committing.
 
 <a name="verify-installation"></a>
 ## Verify Installation
