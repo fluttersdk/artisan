@@ -1087,6 +1087,87 @@ class RouteServiceProvider {
     });
   });
 
+  group('InjectPodfileLine — create-if-absent, through the installer', () {
+    Directory seedProject(String platform) {
+      final root = Directory.systemTemp.createTempSync('artisan_tx_podfile_');
+      addTearDown(() {
+        if (root.existsSync()) root.deleteSync(recursive: true);
+      });
+      // A platform directory with no Podfile at all: what a Swift Package
+      // Manager project looks like on disk.
+      Directory('${root.path}/$platform').createSync(recursive: true);
+      return root;
+    }
+
+    InstallContext realCtx(Directory root) {
+      return InstallContext.test(
+        fs: RealFs(),
+        prompt: _SilentPromptDriver(),
+        stubs: _SilentStubDriver(),
+        clock: () => DateTime.utc(2025, 6, 1),
+        projectRoot: root.path,
+      );
+    }
+
+    Future<String> installPodLine(Directory root, String platform) async {
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(InjectPodfileLine(
+        platform: platform,
+        line: "pod 'OneSignalXCFramework', '5.2.7'",
+      ));
+      final result = await tx.commit();
+      expect(result, isA<Success>(), reason: 'Got: ${result.describe()}');
+
+      final podfile = File('${root.path}/$platform/Podfile');
+      expect(
+        podfile.existsSync(),
+        isTrue,
+        reason: 'The op must create the Podfile it was asked to edit.',
+      );
+      return podfile.readAsStringSync();
+    }
+
+    test('an iOS project with no Podfile ends up with an iOS-shaped one',
+        () async {
+      final content = await installPodLine(seedProject('ios'), 'ios');
+
+      expect(_platformLinesIn(content), ["platform :ios, '15.0'"]);
+      expect(content, contains('flutter_install_all_ios_pods'));
+      expect(content, contains(_podhelperRequire));
+      expect(content, contains('flutter_ios_podfile_setup'));
+      expect(content, contains("pod 'OneSignalXCFramework', '5.2.7'"));
+    });
+
+    test('a macOS project with no Podfile ends up with a macOS-shaped one',
+        () async {
+      final content = await installPodLine(seedProject('macos'), 'macos');
+
+      expect(_platformLinesIn(content), ["platform :osx, '12.0'"]);
+      expect(content, contains('flutter_install_all_macos_pods'));
+      expect(content, isNot(contains('flutter_install_all_ios_pods')));
+      expect(content, contains(_podhelperRequire));
+      expect(content, contains('flutter_macos_podfile_setup'));
+      expect(content, contains("pod 'OneSignalXCFramework', '5.2.7'"));
+    });
+
+    test('an existing Podfile is edited, not replaced', () async {
+      final root = seedProject('ios');
+      File('${root.path}/ios/Podfile').writeAsStringSync("""
+platform :ios, '14.0'
+
+target 'Runner' do
+  use_frameworks!
+end
+""");
+
+      final content = await installPodLine(root, 'ios');
+
+      expect(_platformLinesIn(content), ["platform :ios, '14.0'"]);
+      expect(content, contains("pod 'OneSignalXCFramework', '5.2.7'"));
+      expect(content, isNot(contains(_podhelperRequire)));
+    });
+  });
+
   group('TransactionResult.describe()', () {
     test('each subclass produces a non-empty human-readable describe', () {
       expect(
@@ -1106,4 +1187,25 @@ class RouteServiceProvider {
       );
     });
   });
+}
+
+/// The `require` line Flutter's `templates/cocoapods/Podfile-*` emit, and the
+/// only thing that defines the `flutter_install_all_*_pods` a created Podfile
+/// calls. Without it `pod install` fails with `undefined method`.
+const String _podhelperRequire =
+    "require File.expand_path(File.join('packages', 'flutter_tools', 'bin', "
+    "'podhelper'), flutter_root)";
+
+/// Return every `platform :<token>, '<version>'` declaration in [content].
+///
+/// The Podfile DSL takes a single global platform, so a file carrying two of
+/// them is broken regardless of which two.
+///
+/// @param content  Full Podfile text read back off disk.
+/// @return The matched declaration lines, in file order.
+List<String> _platformLinesIn(String content) {
+  return RegExp(r"^platform :\w+, '[^']*'", multiLine: true)
+      .allMatches(content)
+      .map((match) => match.group(0)!)
+      .toList();
 }

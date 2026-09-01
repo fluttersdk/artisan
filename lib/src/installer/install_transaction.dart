@@ -522,7 +522,17 @@ class InstallTransaction {
             return null;
           }
           final podfile = _podfilePathFor(op.platform);
-          PodfileEditor.addPodLine(podfile, 'Runner', op.line);
+          // Forward the platform: a Swift Package Manager project has no
+          // Podfile at all, and the helper refuses to create one it cannot
+          // shape (the platform picks the podhelper functions the file
+          // calls). Without this argument the op throws on every such
+          // project instead of creating the file it was asked to edit.
+          PodfileEditor.addPodLine(
+            podfile,
+            'Runner',
+            op.line,
+            platform: op.platform,
+          );
           _helperWrittenTargets.add(podfile);
           return null;
 
