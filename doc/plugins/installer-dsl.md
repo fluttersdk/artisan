@@ -162,9 +162,13 @@ install finish instead of aborting on top of the writes that already landed:
   project does (`Runner/DebugProfile.entitlements` plus `Runner/Release.entitlements`), so a macOS
   consumer normally takes this path: repointing would drop the sandbox grants those files hold, and
   the operator copies the keys across by hand instead.
-- The `.pbxproj` reader cannot re-emit the project byte for byte and refuses to write a file it
-  cannot reproduce exactly. Xcode escapes non-ASCII in that file as `\Uxxxx`, so an accented
-  `PRODUCT_NAME` is enough to reach this.
+- The reader read the project and declined to edit it. Two shapes reach this. The re-emission does
+  not match byte for byte, so it refuses to write a file it cannot reproduce exactly: Xcode escapes
+  non-ASCII in that file as `\Uxxxx`, and an accented `PRODUCT_NAME` is enough. Or the project is
+  readable but not addressable: no application target at all, two applications and neither named
+  `Runner`, or a target carrying no build configurations. Both shapes answer to the same remedy,
+  which is why they warn alike: the file is one Xcode can open, so setting the build setting there by
+  hand works.
 
 A `project.pbxproj` that is not a valid project file at all still fails the install with an `Error`,
 and the project file is left untouched in every one of these cases.
