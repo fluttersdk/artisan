@@ -140,10 +140,34 @@ allow source values to overwrite conflicting target keys.
 | Method | Operation | Description |
 |---|---|---|
 | `injectInfoPlistKey(key:, value:, [platform:])` | `InjectInfoPlistKey` | Sets a key in `ios/Runner/Info.plist` or `macos/Runner/Info.plist`; value may be `String`, `bool`, or `List<String>` |
-| `injectEntitlement(platform:, key:, value:)` | `InjectEntitlement` | Sets a key in `Runner.entitlements` for `'ios'` or `'macos'` |
+| `injectEntitlement(platform:, key:, value:)` | `InjectEntitlement` | Sets a key in `<platform>/Runner/Runner.entitlements` AND writes `CODE_SIGN_ENTITLEMENTS` into `<platform>/Runner.xcodeproj/project.pbxproj`; `platform` is `'ios'` or `'macos'` |
 | `injectPodfileLine([platform:], line:)` | `InjectPodfileLine` | Appends a CocoaPods pod declaration to the `target 'Runner'` Podfile block |
 
 Platform-scoped ops are silently skipped when the target platform directory is absent.
+
+#### injectEntitlement writes two files
+
+Xcode reads an entitlements plist only when the application target's `CODE_SIGN_ENTITLEMENTS` build
+setting names it, so writing the plist alone leaves the entitlement inert. That is why the op also
+edits `<platform>/Runner.xcodeproj/project.pbxproj`, scoped to the build configurations of the target
+whose `productType` is `com.apple.product-type.application` (never the test bundle, never the
+project-level defaults). Both writes are helper-backed, so neither is covered by the transaction's
+`.tmp` rollback. Plan for that when you stage this op.
+
+Three cases leave the build setting alone, print a warning naming what to set by hand, and let the
+install finish instead of aborting on top of the writes that already landed:
+
+- The project has no `<platform>/Runner.xcodeproj` at all, so there is nothing to point at.
+- The application target already signs with a DIFFERENT entitlements file. Every macOS Flutter
+  project does (`Runner/DebugProfile.entitlements` plus `Runner/Release.entitlements`), so a macOS
+  consumer normally takes this path: repointing would drop the sandbox grants those files hold, and
+  the operator copies the keys across by hand instead.
+- The `.pbxproj` reader cannot re-emit the project byte for byte and refuses to write a file it
+  cannot reproduce exactly. Xcode escapes non-ASCII in that file as `\Uxxxx`, so an accented
+  `PRODUCT_NAME` is enough to reach this.
+
+A `project.pbxproj` that is not a valid project file at all still fails the install with an `Error`,
+and the project file is left untouched in every one of these cases.
 
 ### Web Operations
 

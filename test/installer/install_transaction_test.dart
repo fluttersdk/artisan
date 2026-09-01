@@ -1065,6 +1065,59 @@ class RouteServiceProvider {
       expect(await tx.commit(), isA<Success>());
     });
 
+    test('a project the round-trip guard refuses warns and keeps installing',
+        () async {
+      // Xcode escapes non-ASCII in a .pbxproj as \Uxxxx, an escape the parser
+      // resolves to the bare character, so the document cannot be re-emitted
+      // byte for byte and the editor refuses to touch it. An accented product
+      // name is the whole trigger; nothing exotic is required.
+      final unreproducible = _miniPbxproj.replaceAll(
+        '        SWIFT_VERSION = 5.0;\n',
+        '        PRODUCT_NAME = "Caf\\U00e9";\n'
+            '        SWIFT_VERSION = 5.0;\n',
+      );
+      final root = seedIosProject(pbxproj: unreproducible);
+      final ctx = realCtx(root);
+      final tx = InstallTransaction(ctx, pluginName: 'demo');
+      tx.stage(const InjectEntitlement(
+        platform: 'ios',
+        key: 'aps-environment',
+        value: 'development',
+      ));
+      tx.stage(const WriteFile(targetPath: 'lib/after.dart', content: 'x'));
+
+      final result = await tx.commit();
+
+      // Assert what the operator is left with: a finished install carrying one
+      // warning, not an abort stacked on top of the writes that already landed
+      // and cannot be rolled back.
+      expect(result, isA<Success>(), reason: 'Got: ${result.describe()}');
+      expect(
+        File('${root.path}/lib/after.dart').existsSync(),
+        isTrue,
+        reason: 'ops staged after the entitlement must still apply',
+      );
+      expect(
+        File('${root.path}/ios/Runner/Runner.entitlements').readAsStringSync(),
+        contains('aps-environment'),
+      );
+      expect(
+        File('${root.path}/.artisan/installed/demo.json').existsSync(),
+        isTrue,
+        reason: 'the install must be recorded so uninstall can reverse it',
+      );
+      expect(
+        pbxprojOf(root),
+        unreproducible,
+        reason: 'the project the editor refused must stay byte-identical',
+      );
+
+      final out = (ctx.artisanContext.output as BufferedOutput).content;
+      expect(out, contains('CODE_SIGN_ENTITLEMENTS'));
+      expect(out, contains('by hand'));
+      expect(out, contains('Runner/Runner.entitlements'));
+    });
+
     test('a malformed project surfaces as an Error and is left untouched',
         () async {
       final malformed = _miniPbxproj.replaceFirst(

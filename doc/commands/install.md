@@ -31,7 +31,7 @@ Equivalent manual edit, then `dart pub get`:
 
 ```yaml
 dependencies:
-  fluttersdk_artisan: ^0.0.4
+  fluttersdk_artisan: ^0.0.14
 ```
 
 `install` itself re-injects the dep at scaffold time (path-dep when `.dart_tool/package_config.json` resolves `fluttersdk_artisan` to a relative `rootUri`, otherwise `fluttersdk_artisan: any`), so the pub-add step is idempotent with the scaffold's own pubspec writes.
@@ -132,7 +132,7 @@ dependencies:
   fluttersdk_artisan: any
 ```
 
-Run `dart pub get` (or `flutter pub get`) after `install` completes to resolve to a concrete version. Tighten the constraint by hand (e.g. `^0.0.10`) once the consumer has chosen a baseline.
+Run `dart pub get` (or `flutter pub get`) after `install` completes to resolve to a concrete version. Tighten the constraint by hand (e.g. `^0.0.14`) once the consumer has chosen a baseline.
 
 The injection is idempotent: if `pubspec.yaml` already contains a `fluttersdk_artisan:` key under `dependencies:`, neither form is written again (regardless of `--force`).
 
@@ -180,7 +180,7 @@ Output:
   write   bin/dispatcher.dart
   write   lib/app/_plugins.g.dart
   write   lib/app/commands/_index.g.dart
-  inject  pubspec.yaml (fluttersdk_artisan: ^0.0.10)
+  inject  pubspec.yaml (fluttersdk_artisan: ^0.0.14)
   write   bin/fsa (Building artisan CLI, one-time ~8s...)
 Done. Run './bin/fsa status' to verify.
 ```

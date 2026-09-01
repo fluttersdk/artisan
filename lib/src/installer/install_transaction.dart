@@ -633,13 +633,32 @@ class InstallTransaction {
   /// file the [InjectEntitlement] arm just wrote.
   ///
   /// Xcode ignores an entitlements plist that no build setting names, so the
-  /// plist write alone leaves the entitlement inert. Two non-fatal cases keep
-  /// the install going: a platform directory with no `.xcodeproj` (nothing to
-  /// point at), and a project already signing with a different entitlements
-  /// file (repointing it would drop whatever that file grants, which the
-  /// macOS Flutter template relies on). Anything else throws out of
-  /// [XcodeProjectEditor] and the dispatcher's catch turns it into an [Error]
-  /// before a single byte of the project is written.
+  /// plist write alone leaves the entitlement inert. Three cases leave the
+  /// setting alone, warn, and let the install finish:
+  ///
+  /// 1. A platform directory with no `.xcodeproj`: nothing to point at.
+  /// 2. A project already signing with a different entitlements file:
+  ///    repointing would drop whatever that file grants, which the macOS
+  ///    Flutter template relies on.
+  /// 3. A project [XcodeProjectEditor] refuses to edit, which its round-trip
+  ///    guard does for anything it cannot re-emit byte for byte. Xcode writes
+  ///    non-ASCII in a `.pbxproj` as `\Uxxxx` and the parser does not model
+  ///    that escape, so an accented product name is enough to reach this.
+  ///
+  /// Case 3 continues rather than aborting because by the time this method
+  /// runs the entitlements plist and every earlier helper-backed write
+  /// (`pubspec.yaml`, the gradle files, `Info.plist`, `.env`) have already
+  /// landed and none of them roll back. Returning an [Error] would abandon a
+  /// half-applied install whose only remaining instruction is an exception
+  /// string. What the editor's guard protects is the project FILE, and that
+  /// file is untouched in all three cases; it is not what the abort would have
+  /// protected.
+  ///
+  /// A [FormatException] (a file that is not a valid `.pbxproj` at all) and a
+  /// filesystem failure still throw out of [XcodeProjectEditor] into the
+  /// dispatcher's catch and abort the transaction. Neither is the editor
+  /// declining to write a project it read, and neither is answered by editing
+  /// the setting by hand.
   ///
   /// @param platform  `ios` or `macos`.
   void _pointXcodeAtEntitlements(String platform) {
@@ -652,10 +671,26 @@ class InstallTransaction {
       return;
     }
 
-    final blocked = XcodeProjectEditor.setEntitlementsPath(
-      pbxprojPath,
-      _entitlementsSettingValue,
-    );
+    final Set<String> blocked;
+    try {
+      blocked = XcodeProjectEditor.setEntitlementsPath(
+        pbxprojPath,
+        _entitlementsSettingValue,
+      );
+    } on StateError catch (e) {
+      // The editor read the project and declined to write it: either the
+      // round-trip guard refused, or the application target's configurations
+      // could not be resolved unambiguously. Same operator remedy as the two
+      // skips above, so it reads as the same kind of line rather than as an
+      // aborted install.
+      _ctx.artisanContext.output.warning(
+        'Left $_entitlementsSetting alone in $platform/Runner.xcodeproj: '
+        '${e.message} The value it wants is $_entitlementsSettingValue on the '
+        'application target; until the setting carries that, '
+        '$platform/Runner/Runner.entitlements is written but inert.',
+      );
+      return;
+    }
     if (blocked.isNotEmpty) {
       _ctx.artisanContext.output.warning(
         'Left $_entitlementsSetting alone in $platform/Runner.xcodeproj: it '
