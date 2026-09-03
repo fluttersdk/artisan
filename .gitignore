@@ -41,3 +41,8 @@ migrate_working_dir/
 .ac/
 CLAUDE.local.md
 .sync-agents-cache.json
+
+# Worktrees Claude Code creates for parallel sessions and isolated subagents.
+# Only this subdirectory: the rest of `.claude/` is tracked, because the rules
+# under it are part of the repository.
+.claude/worktrees/
