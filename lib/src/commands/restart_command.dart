@@ -40,6 +40,12 @@ class RestartCommand extends ArtisanCommand {
     'webPort',
     'vmServicePort',
     'device',
+    // Whatever the session was started with beyond this command's own flags.
+    // A restart that dropped them relaunched the app in a different build
+    // configuration from the one that was running, which is the failure this
+    // list exists to prevent and is worse for a define than for a port: a
+    // wrong port refuses to bind and says so, a missing define compiles.
+    'flutterArgs',
   ];
 
   /// The session settings a restart carries over, read from [priorState].
@@ -92,6 +98,14 @@ class RestartCommand extends ArtisanCommand {
           'device; a restart onto the default web-server device renders in no '
           'browser and every later screenshot comes back stale.',
     );
+    parser.addMultiOption(
+      'flutter-arg',
+      // See `StartCommand.configure` for why the comma split is off.
+      splitCommas: false,
+      help: 'Extra argument forwarded verbatim to flutter run, repeatable. '
+          'Omit to keep the previous session\'s arguments; passing any '
+          'replaces the whole carried set, so this is also how to clear one.',
+    );
   }
 
   @override
@@ -119,6 +133,11 @@ class RestartCommand extends ArtisanCommand {
       webPort: carried['webPort'] as int?,
       vmServicePort: carried['vmServicePort'] as int?,
       device: carried['device'] as String?,
+      // Through `List<String>.from` rather than a cast: the value came back
+      // out of JSON, so it is a `List<dynamic>` whatever was written into it.
+      flutterArgs: carried['flutterArgs'] == null
+          ? null
+          : List<String>.from(carried['flutterArgs']! as List<Object?>),
     );
   }
 }
