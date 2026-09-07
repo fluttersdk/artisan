@@ -173,4 +173,74 @@ void main() {
       expect(carried['flutterArgs'], <String>['--dart-define=SCALE=5000']);
     });
   });
+
+  group('the --flutter-arg parse layer', () {
+    /// The parser `start` actually installs, so these assert the declaration
+    /// rather than a copy of it.
+    ArgParser startParser() {
+      final ArgParser parser = ArgParser();
+      StartCommand().configure(parser);
+      return parser;
+    }
+
+    test('keeps a value containing commas whole', () {
+      // `addMultiOption` splits on commas by default (`args-2.7.0`,
+      // `arg_parser.dart:275`), so this arrived as two tokens,
+      // `--dart-define=TAGS=a` and a bare `b`. `flutter run` then read the `b`
+      // as a positional target and the define the caller wrote was gone,
+      // silently, against a help text and a doc page that both promise the
+      // argument is forwarded verbatim.
+      final ArgvInput input = ArgvInput.parse(
+        startParser(),
+        <String>['--flutter-arg=--dart-define=TAGS=a,b'],
+      );
+
+      expect(
+        input.option('flutter-arg'),
+        <String>['--dart-define=TAGS=a,b'],
+      );
+    });
+
+    test('collects one entry per occurrence, in order', () {
+      final ArgvInput input = ArgvInput.parse(
+        startParser(),
+        <String>[
+          '--flutter-arg=--dart-define=A=1',
+          '--flutter-arg=--flavor=dev',
+        ],
+      );
+
+      expect(
+        input.option('flutter-arg'),
+        <String>['--dart-define=A=1', '--flavor=dev'],
+      );
+    });
+
+    test('is an empty list when the flag was never passed', () {
+      final ArgvInput input = ArgvInput.parse(startParser(), <String>[]);
+
+      expect(input.option('flutter-arg'), isEmpty);
+    });
+  });
+
+  group('the restart parse layer', () {
+    /// `restart` declares every carried setting as its own option so an
+    /// explicit flag can win over the value from the prior session. This one
+    /// was carried without being declared, so the only way to change it was to
+    /// stop and start again by hand.
+    test('accepts --flutter-arg so a carried value can be overridden', () {
+      final ArgParser parser = ArgParser();
+      RestartCommand().configure(parser);
+
+      final ArgvInput input = ArgvInput.parse(
+        parser,
+        <String>['--flutter-arg=--dart-define=SCALE=500'],
+      );
+
+      expect(
+        input.option('flutter-arg'),
+        <String>['--dart-define=SCALE=500'],
+      );
+    });
+  });
 }

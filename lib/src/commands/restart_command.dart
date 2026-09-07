@@ -98,6 +98,14 @@ class RestartCommand extends ArtisanCommand {
           'device; a restart onto the default web-server device renders in no '
           'browser and every later screenshot comes back stale.',
     );
+    parser.addMultiOption(
+      'flutter-arg',
+      // See `StartCommand.configure` for why the comma split is off.
+      splitCommas: false,
+      help: 'Extra argument forwarded verbatim to flutter run, repeatable. '
+          'Omit to keep the previous session\'s arguments; passing any '
+          'replaces the whole carried set, so this is also how to clear one.',
+    );
   }
 
   @override

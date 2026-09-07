@@ -243,6 +243,14 @@ class StartCommand extends ArtisanCommand {
       )
       ..addMultiOption(
         'flutter-arg',
+        // `args` splits a multi-option value on commas by default
+        // (`arg_parser.dart:275`), which is the wrong shape for a passthrough
+        // and breaks the exact case this flag exists for:
+        // `--flutter-arg=--dart-define=TAGS=a,b` arrived as two tokens, so
+        // `flutter run` read the bare `b` as a positional target and the define
+        // the caller wrote was gone. Silently, against a help text that says
+        // verbatim. Repetition is how a caller passes more than one.
+        splitCommas: false,
         help: 'Extra argument forwarded verbatim to flutter run, repeatable. '
             'Use it for anything this command has no flag of its own for: '
             '--flutter-arg=--dart-define=KEY=VALUE, --flutter-arg=--flavor=dev, '
