@@ -240,7 +240,50 @@ class StartCommand extends ArtisanCommand {
         help: 'Seconds to wait for the VM Service URI to appear in the flutter '
             'run log. Increase on cold starts where build + DartDev init takes '
             'longer than the default. Applies to the --cdp-port branch only.',
+      )
+      ..addMultiOption(
+        'flutter-arg',
+        help: 'Extra argument forwarded verbatim to flutter run, repeatable. '
+            'Use it for anything this command has no flag of its own for: '
+            '--flutter-arg=--dart-define=KEY=VALUE, --flutter-arg=--flavor=dev, '
+            '--flutter-arg=--web-renderer=html. Forwarded after the arguments '
+            'this command builds, so a repeated flag overrides the default it '
+            'chose. Carried across a restart.',
       );
+  }
+
+  /// The `flutter run` argv, as a pure function of the settings.
+  ///
+  /// Extracted so the argv can be asserted without spawning a real
+  /// `flutter run`, which is the same reason [bootingState] is exposed. It also
+  /// removes the second copy: the plain branch and the CDP branch each built
+  /// this list from their own literal, so a flag added to one silently did not
+  /// reach the other.
+  ///
+  /// [extra] lands LAST, and that ordering is the contract. `flutter run` takes
+  /// the last occurrence of a repeated flag, so a caller passing
+  /// `--dart-define=AI_TEST=0` can override the one this command sets rather
+  /// than being quietly outranked by it.
+  static List<String> flutterArgsFor({
+    required String device,
+    required int webPort,
+    required int vmServicePort,
+    required bool ddsOn,
+    required bool isChromeTarget,
+    bool webExperimentalHotReload = false,
+    List<String> extra = const <String>[],
+  }) {
+    return <String>[
+      'run',
+      '-d',
+      device,
+      if (isChromeTarget) '--web-port=$webPort',
+      if (webExperimentalHotReload) '--web-experimental-hot-reload',
+      '--host-vmservice-port=$vmServicePort',
+      if (!ddsOn) '--no-dds',
+      '--dart-define=AI_TEST=1',
+      ...extra,
+    ];
   }
 
   /// The session record written the moment the child PIDs are known, before
@@ -268,8 +311,14 @@ class StartCommand extends ArtisanCommand {
     required int? chromePid,
     required String? tmpProfileDir,
     required int? cdpPort,
+    List<String> flutterArgs = const <String>[],
   }) {
     return <String, dynamic>{
+      // Absent rather than empty when there were none. A reader of this file
+      // (and `RestartCommand.sessionOverridesFrom` is one) treats a null as
+      // "nothing to carry"; an empty list would be a value it has to decide
+      // what to do with.
+      if (flutterArgs.isNotEmpty) 'flutterArgs': flutterArgs,
       'pid': pid,
       'stdinPipe': stdinPipe,
       'stdinHolderPid': stdinHolderPid,
@@ -307,6 +356,7 @@ class StartCommand extends ArtisanCommand {
     int? webPort,
     int? vmServicePort,
     String? device,
+    List<String>? flutterArgs,
   }) async {
     // Flag wins, then the value carried from a prior session (RestartCommand
     // passes those), then the default. A restart that fell back to the
@@ -324,6 +374,14 @@ class StartCommand extends ArtisanCommand {
     final ddsOn = (ctx.input.option('dds') as bool?) ?? false;
     final profileStatic =
         (ctx.input.option('profile-static') as bool?) ?? false;
+    // Flag wins over the value a restart carried, same as every setting above.
+    // An empty flag list means "not given" rather than "given as empty": the
+    // multi-option always parses to a list, so there is no null to test.
+    final List<String> flagFlutterArgs =
+        (ctx.input.option('flutter-arg') as List<String>?) ?? const <String>[];
+    final List<String> resolvedFlutterArgs = flagFlutterArgs.isNotEmpty
+        ? flagFlutterArgs
+        : (flutterArgs ?? const <String>[]);
 
     // 1. Resolve the CDP port: an explicit --cdp-port flag wins; otherwise the
     //    forwarded `cdpPort` parameter (passed by RestartCommand from prior
@@ -371,6 +429,7 @@ class StartCommand extends ArtisanCommand {
         profileStatic: profileStatic,
         cdpPort: resolvedCdpPort,
         scrapeTimeout: resolvedTimeout,
+        extraFlutterArgs: resolvedFlutterArgs,
       );
     }
 
@@ -382,18 +441,17 @@ class StartCommand extends ArtisanCommand {
     final fifoPath = '${_logDir()}/flutter-dev.fifo';
     await _ensureFifo(fifoPath);
 
-    final flutterArgs = <String>[
-      'run',
-      '-d',
-      resolvedDevice,
-      if (isChromeTarget) '--web-port=$resolvedWebPort',
-      '--host-vmservice-port=$resolvedVmServicePort',
-      if (!ddsOn) '--no-dds',
-      '--dart-define=AI_TEST=1',
-    ];
+    final argv = flutterArgsFor(
+      device: resolvedDevice,
+      webPort: resolvedWebPort,
+      vmServicePort: resolvedVmServicePort,
+      ddsOn: ddsOn,
+      isChromeTarget: isChromeTarget,
+      extra: resolvedFlutterArgs,
+    );
 
     final process = await _spawnFlutterWrapper(
-      flutterArgs: flutterArgs,
+      flutterArgs: argv,
       fifoPath: fifoPath,
       logFile: logFile,
     );
@@ -421,6 +479,7 @@ class StartCommand extends ArtisanCommand {
       chromePid: null,
       tmpProfileDir: null,
       cdpPort: null,
+      flutterArgs: resolvedFlutterArgs,
     );
     await StateFile.write(booting);
 
@@ -447,6 +506,7 @@ class StartCommand extends ArtisanCommand {
     required bool profileStatic,
     required int cdpPort,
     int scrapeTimeout = 90,
+    List<String> extraFlutterArgs = const <String>[],
   }) async {
     // 1. Validate device value: only chrome (default) and web-server accepted.
     if (device != 'chrome' && device != 'web-server') {
@@ -580,16 +640,15 @@ class StartCommand extends ArtisanCommand {
     final logFile = File('${_logDir()}/flutter-dev.log');
     final fifoPath = '${_logDir()}/flutter-dev.fifo';
 
-    final flutterArgs = <String>[
-      'run',
-      '-d',
-      'web-server',
-      '--web-port=$webPort',
-      '--web-experimental-hot-reload',
-      '--host-vmservice-port=$vmServicePort',
-      if (!ddsOn) '--no-dds',
-      '--dart-define=AI_TEST=1',
-    ];
+    final flutterArgs = flutterArgsFor(
+      device: 'web-server',
+      webPort: webPort,
+      vmServicePort: vmServicePort,
+      ddsOn: ddsOn,
+      isChromeTarget: true,
+      webExperimentalHotReload: true,
+      extra: extraFlutterArgs,
+    );
 
     // The flutter wrapper handle + captured PIDs are held nullable so the
     // failure-cleanup catch can reap whatever was already spawned, regardless
@@ -641,6 +700,7 @@ class StartCommand extends ArtisanCommand {
         chromePid: chromeProcess.pid,
         tmpProfileDir: tmpProfileDir,
         cdpPort: cdpPort,
+        flutterArgs: extraFlutterArgs,
       );
       await StateFile.write(booting);
 

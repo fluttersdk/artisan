@@ -6,6 +6,16 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`start --flutter-arg=<arg>`, repeatable, forwards an argument verbatim to `flutter run`.** `start` assembled its argv from a fixed literal, so a caller who needed `--dart-define`, `--flavor`, `--web-renderer` or any other `flutter run` flag had no way to ask for it, and the only workaround was to stop using `start` and lose the session record with it: `state.json` is what gives `stop`, `status`, `hot-restart` and every MCP tool something to act on, and nothing else writes it. Reported from a consumer that wanted a compile-time define to switch a fixture size for a performance run and had to move the switch onto a URL query parameter instead. The values land after the arguments `start` builds, so a repeated flag overrides the default it chose (`flutter run` takes the last occurrence), they are recorded in `state.json` as `flutterArgs`, and `restart` replays them. Carrying them matters more than carrying a port: a dropped port refuses to bind and says so, while a dropped define compiles clean and the app behaves differently.
+
+### Changed
+
+- **The two `flutter run` argv literals became one function.** The plain branch and the `--cdp-port` branch each built the list from their own copy, so a flag added to one silently did not reach the other. `StartCommand.flutterArgsFor` is now the single builder and is pure, which is what lets the argv be asserted without spawning a real `flutter run`, the same reason `bootingState` is exposed.
+
 ## [0.0.14] - 2026-09-01
 
 ### Fixed

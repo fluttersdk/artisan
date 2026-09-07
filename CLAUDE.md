@@ -13,7 +13,7 @@ Pure Dart 3.4+ CLI framework. NO Flutter runtime dependency: the package is cons
 | Command | When |
 |---|---|
 | `dart test` | Run all tests (1200+ baseline). Needs `--reporter=failures-only < /dev/null` outside a TTY: the default reporter redraws a terminal and the `prompt` suite reads stdin. |
-| `dart test --coverage=coverage && dart pub global run coverage:format_coverage --lcov --in=coverage --out=coverage/lcov.info` | Generate `coverage/lcov.info` for the 80% gate (Golden Rule 3). |
+| `dart test --coverage=coverage && dart pub global run coverage:format_coverage --lcov --in=coverage --out=coverage/lcov.info --packages=.dart_tool/package_config.json --report-on=lib` | Generate `coverage/lcov.info` for the 80% gate (Golden Rule 3). Both trailing flags are load-bearing and match `.github/workflows/ci.yml`: without `--report-on=lib` the report carries 736 files (551 of them dependencies, 100 of them tests) and reads 48% against a real 86%, which looks exactly like a change that broke the floor. |
 | `dart format lib/ test/ bin/` | Format. Must produce no diff. |
 | `dart analyze` | Static analysis. Zero issues required across `lib/ test/ bin/`. |
 | `dart run fluttersdk_artisan <cmd>` | Run a builtin command standalone (no consumer wrapper needed). |
