@@ -118,6 +118,13 @@ final class XcodeProjectEditor {
   /// @throws [ArgumentError]  if [byConfiguration] is empty, which would be a
   ///                          silent no-op the caller cannot distinguish from
   ///                          a successful write.
+  /// @throws [StateError]     if NONE of the named configurations exist in the
+  ///                          project. Same condition one step later, and the
+  ///                          one a Flutter flavour produces: the
+  ///                          configurations are `Release-production`, so
+  ///                          `Release` matches nothing. A partial miss is
+  ///                          silent, because the return type carries no
+  ///                          channel for "some of them".
   /// @throws Everything [setEntitlementsPath] throws, for the same reasons.
   static Set<String> setEntitlementsPaths(
     String pbxprojPath,
@@ -170,30 +177,56 @@ final class XcodeProjectEditor {
     final target = _applicationTarget(objects, pbxprojPath);
     final settings = _buildSettingsOf(objects, target, pbxprojPath);
 
-    // 4. All-or-nothing: one configuration pointing somewhere else blocks the
+    // 4. Refuse a call that names no configuration this project has, rather
+    //    than returning the value success returns. It is the same "nothing
+    //    will be written" condition the empty map throws on, found one step
+    //    later, and it is what a Flutter FLAVOUR produces by default: the
+    //    configurations are `Release-production` and `Release-staging`, so
+    //    asking for `Release` matches nothing, reports success, and leaves an
+    //    app that still cannot archive. That is the exact failure this API
+    //    exists to prevent, so it must not be spelled like the success.
+    //
+    //    A PARTIAL miss stays quiet: naming Debug and Release on a project
+    //    that has only Debug writes Debug and says nothing, because a project
+    //    is free to have configurations this caller has never heard of and
+    //    the return type carries no channel for "some of them".
+    if (!settings.any((c) => wanted(c.name) != null)) {
+      throw StateError(
+        'None of the named build configurations exist in $pbxprojPath, which '
+        'declares ${settings.map((c) => c.name).join(', ')}. Nothing would '
+        'have been written and the result would have read as success.',
+      );
+    }
+
+    // 5. All-or-nothing: one configuration pointing somewhere else blocks the
     //    whole write, because signing the same product against two different
     //    entitlements files depending on the configuration is worse than not
-    //    writing at all.
+    //    writing at all. Scoped to the NAMED configurations, so a caller
+    //    repointing Release is not blocked by what Debug already signs with.
     final conflicting = <String>{};
     for (final configuration in settings) {
-      final target = wanted(configuration.name);
-      if (target == null) continue;
+      final wantedPath = wanted(configuration.name);
+      if (wantedPath == null) continue;
       final current = configuration.settings.valueFor(_entitlementsSetting);
       if (current == null) continue;
-      if (current is _PbxString && current.value == target) continue;
+      if (current is _PbxString && current.value == wantedPath) continue;
       conflicting.add(
         current is _PbxString ? current.value : _nonStringValue,
       );
     }
     if (conflicting.isNotEmpty) return conflicting;
 
-    // 5. Insert where missing, and skip the write entirely when nothing
+    // 6. Insert where missing, and skip the write entirely when nothing
     //    changed so a re-install leaves the file (and its hash) alone.
     var changed = false;
     for (final configuration in settings) {
-      final target = wanted(configuration.name);
-      if (target == null) continue;
-      if (_insertString(configuration.settings, _entitlementsSetting, target)) {
+      final wantedPath = wanted(configuration.name);
+      if (wantedPath == null) continue;
+      if (_insertString(
+        configuration.settings,
+        _entitlementsSetting,
+        wantedPath,
+      )) {
         changed = true;
       }
     }

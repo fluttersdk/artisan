@@ -454,19 +454,70 @@ void main() {
       );
     });
 
-    test('names a configuration the project does not have without writing', () {
+    test('refuses when none of the named configurations exist', () {
       final before = _md5(pbxprojPath);
 
-      final blocked = XcodeProjectEditor.setEntitlementsPaths(
-        pbxprojPath,
-        {'Staging': 'Runner/Staging.entitlements'},
+      // The Flutter FLAVOUR case, reached by default rather than by accident:
+      // the configurations are `Release-production` and `Release-staging`, so
+      // asking for `Release` matches nothing. Returning the empty set would
+      // spell that exactly like a successful write and leave an app that
+      // still cannot archive, which is the failure this API exists to
+      // prevent.
+      expect(
+        () => XcodeProjectEditor.setEntitlementsPaths(
+          pbxprojPath,
+          {'Staging': 'Runner/Staging.entitlements'},
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(_md5(pbxprojPath), before);
+    });
+
+    test('writes a partial match and stays quiet about the miss', () {
+      // A project is free to have configurations this caller never heard of,
+      // and the return type carries no channel for "some of them". Writing
+      // what it can is better than refusing the ones that do exist.
+      final blocked = XcodeProjectEditor.setEntitlementsPaths(pbxprojPath, {
+        'Release': 'Runner/RunnerRelease.entitlements',
+        'Staging': 'Runner/Staging.entitlements',
+      });
+
+      expect(blocked, isEmpty);
+      expect(
+        _objectBody(
+          File(pbxprojPath).readAsStringSync(),
+          '97C147071CF9000F007C117D',
+        ),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/RunnerRelease.entitlements;'),
+      );
+    });
+
+    test('refuses a build configuration with no name', () {
+      // Reached through `_buildSettingsOf`. A configuration nothing can
+      // address is a project this should report rather than quietly halve.
+      // `InstallTransaction` catches StateError and degrades to a warning, so
+      // this skips the setting rather than aborting an install.
+      // Scoped to the RUNNER target's Release block. The first
+      // `name = Release;` in the file belongs to RunnerTests, whose
+      // configurations this walk never reaches, so a blind replaceFirst
+      // changed nothing and the test passed against an untouched project.
+      final content = File(pbxprojPath).readAsStringSync();
+      final start = content.indexOf('97C147071CF9000F007C117D /* Release */');
+      expect(start, isNot(-1));
+      File(pbxprojPath).writeAsStringSync(
+        content.substring(0, start) +
+            content
+                .substring(start)
+                .replaceFirst('\t\t\tname = Release;\n', ''),
       );
 
-      // Silently, because a project is free to name its configurations
-      // anything and this helper is not the place to have an opinion. The
-      // file is untouched, which is what the caller can observe.
-      expect(blocked, isEmpty);
-      expect(_md5(pbxprojPath), before);
+      expect(
+        () => XcodeProjectEditor.setEntitlementsPaths(
+          pbxprojPath,
+          {'Release': 'Runner/RunnerRelease.entitlements'},
+        ),
+        throwsA(isA<StateError>()),
+      );
     });
 
     test('refuses an empty map rather than writing nothing quietly', () {
