@@ -333,6 +333,149 @@ void main() {
       );
     });
   });
+
+  group('XcodeProjectEditor.setEntitlementsPaths', () {
+    test('writes only the configurations it names', () {
+      final blocked = XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Release': 'Runner/RunnerRelease.entitlements'},
+      );
+
+      expect(blocked, isEmpty);
+
+      final content = File(pbxprojPath).readAsStringSync();
+
+      // Release carries the twin.
+      expect(
+        _objectBody(content, '97C147071CF9000F007C117D'),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/RunnerRelease.entitlements;'),
+      );
+
+      // Debug and Profile are untouched, which is the whole point: a caller
+      // repointing Release must not silently sign the other two against a
+      // file meant for distribution.
+      for (final id in const [
+        '97C147061CF9000F007C117D',
+        '249021D4217E4FDB00AE95B9',
+      ]) {
+        expect(_objectBody(content, id),
+            isNot(contains('CODE_SIGN_ENTITLEMENTS')));
+      }
+
+      // And nothing reached the test bundle or the project defaults.
+      for (final id in [
+        ..._runnerTestsConfigurationIds,
+        ..._projectConfigurationIds
+      ]) {
+        expect(_objectBody(content, id),
+            isNot(contains('CODE_SIGN_ENTITLEMENTS')));
+      }
+      expect(_entitlementsKeyCount(content), 1);
+    });
+
+    test('writes a different path per configuration', () {
+      final blocked = XcodeProjectEditor.setEntitlementsPaths(pbxprojPath, {
+        'Debug': 'Runner/Runner.entitlements',
+        'Profile': 'Runner/Runner.entitlements',
+        'Release': 'Runner/RunnerRelease.entitlements',
+      });
+
+      expect(blocked, isEmpty);
+
+      final content = File(pbxprojPath).readAsStringSync();
+      expect(
+        _objectBody(content, '97C147061CF9000F007C117D'),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;'),
+      );
+      expect(
+        _objectBody(content, '249021D4217E4FDB00AE95B9'),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;'),
+      );
+      expect(
+        _objectBody(content, '97C147071CF9000F007C117D'),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/RunnerRelease.entitlements;'),
+      );
+      expect(_entitlementsKeyCount(content), 3);
+    });
+
+    test('is idempotent and writes nothing on a second run', () {
+      XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Release': 'Runner/RunnerRelease.entitlements'},
+      );
+      final first = _md5(pbxprojPath);
+
+      XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Release': 'Runner/RunnerRelease.entitlements'},
+      );
+
+      expect(_md5(pbxprojPath), first);
+    });
+
+    test('refuses when a named configuration already signs elsewhere', () {
+      XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Release': 'Runner/Existing.entitlements'},
+      );
+      final before = _md5(pbxprojPath);
+
+      final blocked = XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Release': 'Runner/RunnerRelease.entitlements'},
+      );
+
+      // Repointing would unsign whatever that file grants, so it comes back
+      // to the caller instead and the project is left byte-identical.
+      expect(blocked, {'Runner/Existing.entitlements'});
+      expect(_md5(pbxprojPath), before);
+    });
+
+    test('ignores a configuration that already signs but is not named', () {
+      XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Debug': 'Runner/Existing.entitlements'},
+      );
+
+      final blocked = XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Release': 'Runner/RunnerRelease.entitlements'},
+      );
+
+      expect(blocked, isEmpty);
+      final content = File(pbxprojPath).readAsStringSync();
+      expect(
+        _objectBody(content, '97C147061CF9000F007C117D'),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/Existing.entitlements;'),
+      );
+      expect(
+        _objectBody(content, '97C147071CF9000F007C117D'),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/RunnerRelease.entitlements;'),
+      );
+    });
+
+    test('names a configuration the project does not have without writing', () {
+      final before = _md5(pbxprojPath);
+
+      final blocked = XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Staging': 'Runner/Staging.entitlements'},
+      );
+
+      // Silently, because a project is free to name its configurations
+      // anything and this helper is not the place to have an opinion. The
+      // file is untouched, which is what the caller can observe.
+      expect(blocked, isEmpty);
+      expect(_md5(pbxprojPath), before);
+    });
+
+    test('refuses an empty map rather than writing nothing quietly', () {
+      expect(
+        () => XcodeProjectEditor.setEntitlementsPaths(pbxprojPath, const {}),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+  });
 }
 
 /// Verbatim copy of a real Flutter application's `project.pbxproj`: two native
