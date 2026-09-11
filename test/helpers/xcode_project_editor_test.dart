@@ -468,7 +468,16 @@ void main() {
           pbxprojPath,
           {'Staging': 'Runner/Staging.entitlements'},
         ),
-        throwsA(isA<StateError>()),
+        // Pinned to the message, not just the type: this call path raises
+        // StateError from eight places, so `isA<StateError>()` alone passes
+        // against mutations of any of the other seven.
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('None of the named build configurations exist'),
+          ),
+        ),
       );
       expect(_md5(pbxprojPath), before);
     });
@@ -516,7 +525,18 @@ void main() {
           pbxprojPath,
           {'Release': 'Runner/RunnerRelease.entitlements'},
         ),
-        throwsA(isA<StateError>()),
+        // The type alone is not enough. Make `_buildSettingsOf` fall back to
+        // an empty name instead of throwing and every configuration resolves
+        // to null, so the all-miss guard added in the same commit throws and
+        // a type-only assertion stays green against the very mutation this
+        // test exists to catch.
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('has no name'),
+          ),
+        ),
       );
     });
 
