@@ -333,6 +333,220 @@ void main() {
       );
     });
   });
+
+  group('XcodeProjectEditor.setEntitlementsPaths', () {
+    test('writes only the configurations it names', () {
+      final blocked = XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Release': 'Runner/RunnerRelease.entitlements'},
+      );
+
+      expect(blocked, isEmpty);
+
+      final content = File(pbxprojPath).readAsStringSync();
+
+      // Release carries the twin.
+      expect(
+        _objectBody(content, '97C147071CF9000F007C117D'),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/RunnerRelease.entitlements;'),
+      );
+
+      // Debug and Profile are untouched, which is the whole point: a caller
+      // repointing Release must not silently sign the other two against a
+      // file meant for distribution.
+      for (final id in const [
+        '97C147061CF9000F007C117D',
+        '249021D4217E4FDB00AE95B9',
+      ]) {
+        expect(_objectBody(content, id),
+            isNot(contains('CODE_SIGN_ENTITLEMENTS')));
+      }
+
+      // And nothing reached the test bundle or the project defaults.
+      for (final id in [
+        ..._runnerTestsConfigurationIds,
+        ..._projectConfigurationIds
+      ]) {
+        expect(_objectBody(content, id),
+            isNot(contains('CODE_SIGN_ENTITLEMENTS')));
+      }
+      expect(_entitlementsKeyCount(content), 1);
+    });
+
+    test('writes a different path per configuration', () {
+      final blocked = XcodeProjectEditor.setEntitlementsPaths(pbxprojPath, {
+        'Debug': 'Runner/Runner.entitlements',
+        'Profile': 'Runner/Runner.entitlements',
+        'Release': 'Runner/RunnerRelease.entitlements',
+      });
+
+      expect(blocked, isEmpty);
+
+      final content = File(pbxprojPath).readAsStringSync();
+      expect(
+        _objectBody(content, '97C147061CF9000F007C117D'),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;'),
+      );
+      expect(
+        _objectBody(content, '249021D4217E4FDB00AE95B9'),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;'),
+      );
+      expect(
+        _objectBody(content, '97C147071CF9000F007C117D'),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/RunnerRelease.entitlements;'),
+      );
+      expect(_entitlementsKeyCount(content), 3);
+    });
+
+    test('is idempotent and writes nothing on a second run', () {
+      XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Release': 'Runner/RunnerRelease.entitlements'},
+      );
+      final first = _md5(pbxprojPath);
+
+      XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Release': 'Runner/RunnerRelease.entitlements'},
+      );
+
+      expect(_md5(pbxprojPath), first);
+    });
+
+    test('refuses when a named configuration already signs elsewhere', () {
+      XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Release': 'Runner/Existing.entitlements'},
+      );
+      final before = _md5(pbxprojPath);
+
+      final blocked = XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Release': 'Runner/RunnerRelease.entitlements'},
+      );
+
+      // Repointing would unsign whatever that file grants, so it comes back
+      // to the caller instead and the project is left byte-identical.
+      expect(blocked, {'Runner/Existing.entitlements'});
+      expect(_md5(pbxprojPath), before);
+    });
+
+    test('ignores a configuration that already signs but is not named', () {
+      XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Debug': 'Runner/Existing.entitlements'},
+      );
+
+      final blocked = XcodeProjectEditor.setEntitlementsPaths(
+        pbxprojPath,
+        {'Release': 'Runner/RunnerRelease.entitlements'},
+      );
+
+      expect(blocked, isEmpty);
+      final content = File(pbxprojPath).readAsStringSync();
+      expect(
+        _objectBody(content, '97C147061CF9000F007C117D'),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/Existing.entitlements;'),
+      );
+      expect(
+        _objectBody(content, '97C147071CF9000F007C117D'),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/RunnerRelease.entitlements;'),
+      );
+    });
+
+    test('refuses when none of the named configurations exist', () {
+      final before = _md5(pbxprojPath);
+
+      // The Flutter FLAVOUR case, reached by default rather than by accident:
+      // the configurations are `Release-production` and `Release-staging`, so
+      // asking for `Release` matches nothing. Returning the empty set would
+      // spell that exactly like a successful write and leave an app that
+      // still cannot archive, which is the failure this API exists to
+      // prevent.
+      expect(
+        () => XcodeProjectEditor.setEntitlementsPaths(
+          pbxprojPath,
+          {'Staging': 'Runner/Staging.entitlements'},
+        ),
+        // Pinned to the message, not just the type: this call path raises
+        // StateError from eight places, so `isA<StateError>()` alone passes
+        // against mutations of any of the other seven.
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('None of the named build configurations exist'),
+          ),
+        ),
+      );
+      expect(_md5(pbxprojPath), before);
+    });
+
+    test('writes a partial match and stays quiet about the miss', () {
+      // A project is free to have configurations this caller never heard of,
+      // and the return type carries no channel for "some of them". Writing
+      // what it can is better than refusing the ones that do exist.
+      final blocked = XcodeProjectEditor.setEntitlementsPaths(pbxprojPath, {
+        'Release': 'Runner/RunnerRelease.entitlements',
+        'Staging': 'Runner/Staging.entitlements',
+      });
+
+      expect(blocked, isEmpty);
+      expect(
+        _objectBody(
+          File(pbxprojPath).readAsStringSync(),
+          '97C147071CF9000F007C117D',
+        ),
+        contains('CODE_SIGN_ENTITLEMENTS = Runner/RunnerRelease.entitlements;'),
+      );
+    });
+
+    test('refuses a build configuration with no name', () {
+      // Reached through `_buildSettingsOf`. A configuration nothing can
+      // address is a project this should report rather than quietly halve.
+      // `InstallTransaction` catches StateError and degrades to a warning, so
+      // this skips the setting rather than aborting an install.
+      // Scoped to the RUNNER target's Release block. The first
+      // `name = Release;` in the file belongs to RunnerTests, whose
+      // configurations this walk never reaches, so a blind replaceFirst
+      // changed nothing and the test passed against an untouched project.
+      final content = File(pbxprojPath).readAsStringSync();
+      final start = content.indexOf('97C147071CF9000F007C117D /* Release */');
+      expect(start, isNot(-1));
+      File(pbxprojPath).writeAsStringSync(
+        content.substring(0, start) +
+            content
+                .substring(start)
+                .replaceFirst('\t\t\tname = Release;\n', ''),
+      );
+
+      expect(
+        () => XcodeProjectEditor.setEntitlementsPaths(
+          pbxprojPath,
+          {'Release': 'Runner/RunnerRelease.entitlements'},
+        ),
+        // The type alone is not enough. Make `_buildSettingsOf` fall back to
+        // an empty name instead of throwing and every configuration resolves
+        // to null, so the all-miss guard added in the same commit throws and
+        // a type-only assertion stays green against the very mutation this
+        // test exists to catch.
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('has no name'),
+          ),
+        ),
+      );
+    });
+
+    test('refuses an empty map rather than writing nothing quietly', () {
+      expect(
+        () => XcodeProjectEditor.setEntitlementsPaths(pbxprojPath, const {}),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+  });
 }
 
 /// Verbatim copy of a real Flutter application's `project.pbxproj`: two native

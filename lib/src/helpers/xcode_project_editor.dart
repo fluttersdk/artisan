@@ -89,6 +89,68 @@ final class XcodeProjectEditor {
     String pbxprojPath,
     String entitlementsPath,
   ) {
+    return _setEntitlements(pbxprojPath, (_) => entitlementsPath);
+  }
+
+  /// Point each NAMED build configuration of the application target in
+  /// [pbxprojPath] at its own entitlements file.
+  ///
+  /// The per-configuration twin of [setEntitlementsPath], for the one case
+  /// where signing the same product against two files is correct rather than
+  /// a mistake: Apple makes `aps-environment` a property of the build, so a
+  /// development provisioning profile carries `development` and a
+  /// distribution one carries `production`, and a single file cannot satisfy
+  /// both. Everything else about entitlements stays the same in both, which
+  /// is why [setEntitlementsPath] is still the default and this is the
+  /// exception.
+  ///
+  /// A configuration this map does not name is left exactly as it is, so a
+  /// caller can repoint Release without touching Debug. The conflict rule is
+  /// unchanged and still all-or-nothing across the named ones: a project
+  /// already signing with a different file keeps it and blocks the write.
+  ///
+  /// @param pbxprojPath      Path to `<platform>/Runner.xcodeproj/project.pbxproj`.
+  /// @param byConfiguration  Configuration name to project-relative path, e.g.
+  ///                         `{'Release': 'Runner/RunnerRelease.entitlements'}`.
+  /// @return The distinct entitlements paths already configured that blocked
+  ///         the write, or an empty set on success.
+  ///
+  /// @throws [ArgumentError]  if [byConfiguration] is empty, which would be a
+  ///                          silent no-op the caller cannot distinguish from
+  ///                          a successful write.
+  /// @throws [StateError]     if NONE of the named configurations exist in the
+  ///                          project. Same condition one step later, and the
+  ///                          one a Flutter flavour produces: the
+  ///                          configurations are `Release-production`, so
+  ///                          `Release` matches nothing. A partial miss is
+  ///                          silent, because the return type carries no
+  ///                          channel for "some of them".
+  /// @throws Everything [setEntitlementsPath] throws, for the same reasons.
+  static Set<String> setEntitlementsPaths(
+    String pbxprojPath,
+    Map<String, String> byConfiguration,
+  ) {
+    if (byConfiguration.isEmpty) {
+      throw ArgumentError.value(
+        byConfiguration,
+        'byConfiguration',
+        'names no build configuration, so there is nothing to write',
+      );
+    }
+
+    return _setEntitlements(pbxprojPath, (name) => byConfiguration[name]);
+  }
+
+  /// The shared body of both public setters.
+  ///
+  /// [wanted] answers the path a configuration should carry, or null to leave
+  /// it alone. Sharing the body rather than the other way round is deliberate:
+  /// the round-trip guard, the target scoping and the atomic write are the
+  /// parts that must not diverge between the two entry points.
+  static Set<String> _setEntitlements(
+    String pbxprojPath,
+    String? Function(String configuration) wanted,
+  ) {
     final file = File(pbxprojPath);
     if (!file.existsSync()) {
       throw FileSystemException('Xcode project file not found', pbxprojPath);
@@ -115,26 +177,56 @@ final class XcodeProjectEditor {
     final target = _applicationTarget(objects, pbxprojPath);
     final settings = _buildSettingsOf(objects, target, pbxprojPath);
 
-    // 4. All-or-nothing: one configuration pointing somewhere else blocks the
+    // 4. Refuse a call that names no configuration this project has, rather
+    //    than returning the value success returns. It is the same "nothing
+    //    will be written" condition the empty map throws on, found one step
+    //    later, and it is what a Flutter FLAVOUR produces by default: the
+    //    configurations are `Release-production` and `Release-staging`, so
+    //    asking for `Release` matches nothing, reports success, and leaves an
+    //    app that still cannot archive. That is the exact failure this API
+    //    exists to prevent, so it must not be spelled like the success.
+    //
+    //    A PARTIAL miss stays quiet: naming Debug and Release on a project
+    //    that has only Debug writes Debug and says nothing, because a project
+    //    is free to have configurations this caller has never heard of and
+    //    the return type carries no channel for "some of them".
+    if (!settings.any((c) => wanted(c.name) != null)) {
+      throw StateError(
+        'None of the named build configurations exist in $pbxprojPath, which '
+        'declares ${settings.map((c) => c.name).join(', ')}. Nothing would '
+        'have been written and the result would have read as success.',
+      );
+    }
+
+    // 5. All-or-nothing: one configuration pointing somewhere else blocks the
     //    whole write, because signing the same product against two different
     //    entitlements files depending on the configuration is worse than not
-    //    writing at all.
+    //    writing at all. Scoped to the NAMED configurations, so a caller
+    //    repointing Release is not blocked by what Debug already signs with.
     final conflicting = <String>{};
-    for (final dict in settings) {
-      final current = dict.valueFor(_entitlementsSetting);
+    for (final configuration in settings) {
+      final wantedPath = wanted(configuration.name);
+      if (wantedPath == null) continue;
+      final current = configuration.settings.valueFor(_entitlementsSetting);
       if (current == null) continue;
-      if (current is _PbxString && current.value == entitlementsPath) continue;
+      if (current is _PbxString && current.value == wantedPath) continue;
       conflicting.add(
         current is _PbxString ? current.value : _nonStringValue,
       );
     }
     if (conflicting.isNotEmpty) return conflicting;
 
-    // 5. Insert where missing, and skip the write entirely when nothing
+    // 6. Insert where missing, and skip the write entirely when nothing
     //    changed so a re-install leaves the file (and its hash) alone.
     var changed = false;
-    for (final dict in settings) {
-      if (_insertString(dict, _entitlementsSetting, entitlementsPath)) {
+    for (final configuration in settings) {
+      final wantedPath = wanted(configuration.name);
+      if (wantedPath == null) continue;
+      if (_insertString(
+        configuration.settings,
+        _entitlementsSetting,
+        wantedPath,
+      )) {
         changed = true;
       }
     }
@@ -205,9 +297,14 @@ final class XcodeProjectEditor {
     );
   }
 
-  /// Collect the `buildSettings` dictionary of every build configuration
-  /// listed by [target]'s own `XCConfigurationList`.
-  static List<_PbxDict> _buildSettingsOf(
+  /// Collect the name and `buildSettings` of every build configuration listed
+  /// by [target]'s own `XCConfigurationList`.
+  ///
+  /// The name is carried because a caller may want to write one configuration
+  /// and not another; a list keyed by name would drop a duplicate silently,
+  /// and a project with two configurations of one name is a project this
+  /// should report rather than quietly halve.
+  static List<({String name, _PbxDict settings})> _buildSettingsOf(
     _PbxDict objects,
     _PbxDict target,
     String path,
@@ -228,7 +325,7 @@ final class XcodeProjectEditor {
           'configurations.');
     }
 
-    final settings = <_PbxDict>[];
+    final settings = <({String name, _PbxDict settings})>[];
     for (final item in configurations.items) {
       final reference = item.value;
       if (reference is! _PbxString) {
@@ -245,7 +342,12 @@ final class XcodeProjectEditor {
         throw StateError('Build configuration ${reference.value} in $path has '
             'no buildSettings dictionary.');
       }
-      settings.add(buildSettings);
+      final name = configuration.stringFor('name');
+      if (name == null) {
+        throw StateError('Build configuration ${reference.value} in $path has '
+            'no name, so it cannot be addressed by one.');
+      }
+      settings.add((name: name, settings: buildSettings));
     }
     return settings;
   }
