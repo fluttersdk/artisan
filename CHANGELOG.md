@@ -8,6 +8,8 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.15] - 2026-09-13
+
 ### Added
 
 - **`XcodeProjectEditor.setEntitlementsPaths(path, {'Release': '...'})`, the per-configuration twin of `setEntitlementsPath`.** The existing setter writes one `CODE_SIGN_ENTITLEMENTS` value to every build configuration of the application target, which is right for every entitlement but one: Apple makes `aps-environment` a property of the BUILD, so a development provisioning profile carries `development` and a distribution one carries `production`, and one file cannot satisfy both. A plugin that installs push therefore had no way to leave a project able to archive, and `magic_notifications` defers the distribution value in a comment for exactly this reason. Configurations the map does not name are left untouched, so a caller can repoint Release without touching Debug, and everything that makes the original safe is shared rather than duplicated: the byte-for-byte round-trip guard, the application-target scoping that keeps the test bundle and the project defaults clean, the no-repointing rule and the staged write. The old entry point is now that shared body with a resolver answering the same path for every configuration, so the two cannot drift.
@@ -332,6 +334,7 @@ Both write through `.tmp` + atomic rename; never hand-edit.
 
 ---
 
+[0.0.15]: https://github.com/fluttersdk/artisan/compare/0.0.14...0.0.15
 [0.0.14]: https://github.com/fluttersdk/artisan/compare/0.0.13...0.0.14
 [0.0.13]: https://github.com/fluttersdk/artisan/compare/0.0.12...0.0.13
 [0.0.12]: https://github.com/fluttersdk/artisan/compare/0.0.11...0.0.12
