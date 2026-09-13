@@ -1,0 +1,12 @@
+{
+    "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+    "name": "io.github.fluttersdk/artisan",
+    "title": "FlutterSDK Artisan",
+    "description": "CLI framework and stdio MCP server for Flutter: scaffolding, hot reload, REPL, codegen.",
+    "version": "0.0.15",
+    "repository": {
+        "url": "https://github.com/fluttersdk/artisan",
+        "source": "github"
+    },
+    "websiteUrl": "https://fluttersdk.com/artisan"
+}
