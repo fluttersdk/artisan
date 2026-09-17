@@ -126,6 +126,16 @@ allow source values to overwrite conflicting target keys.
 `injectProvider` and `injectConfigFactory` each enqueue two operations (one `InjectImport` + one
 `InjectAfterPattern`) using a lookahead-anchored regex that targets the last entry before `]`.
 
+`injectProvider` accepts both spellings of the providers list entry, because the type annotation is
+optional in Dart and both are in use: `(app) => XServiceProvider(app),` and
+`(MagicApp app) => XServiceProvider(app),`.
+
+**A pattern injection that matches nothing fails the install.** `InjectBeforePattern` and
+`InjectAfterPattern` return `Error` when their pattern finds no match, naming the target file. Before
+this they wrote nothing and the install reported Success, so a plugin whose pattern did not fit the
+host's file registered nothing and said nothing about it. An idempotent skip, where the code is
+already present, still counts as applied, so a re-run does not fail on work it has already done.
+
 ### Android Operations
 
 | Method | Operation | Description |

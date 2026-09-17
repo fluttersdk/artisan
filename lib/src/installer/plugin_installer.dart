@@ -463,9 +463,14 @@ class PluginInstaller {
   ///
   /// Plugin Authoring Guide requirement: the consumer's
   /// `lib/config/app.dart` MUST declare `'providers': [...]` as a Dart map
-  /// literal entry. Plugins targeting non-conforming app.dart files will see
-  /// the after-pattern injection silently no-op (helper behaviour) and the
-  /// install reports Success regardless. Document the requirement upstream.
+  /// literal entry.
+  ///
+  /// A plugin targeting a non-conforming `app.dart` now FAILS the install with
+  /// an `Error` naming the file. This docblock used to describe the opposite,
+  /// calling the silent no-op "helper behaviour" and saying the install
+  /// reports Success regardless, which was a defect written down as a
+  /// contract: a consumer app hit it, registered no provider, booted no
+  /// plugin, and was told the install had succeeded.
   ///
   /// @param providerClassName  Provider class to instantiate.
   /// @param package            Optional import target overriding the default
@@ -483,13 +488,18 @@ class PluginInstaller {
     // Append to the END of the providers list (just after the last entry's
     // trailing comma) using a lookahead-anchored regex that only matches the
     // last `(app) => XxxServiceProvider(app),` line before the closing `]`.
-    // Falls back to inserting after `'providers': [` (i.e. at the top of the
-    // list) when the host's providers list is empty.
+    //
+    // The parameter's type is optional in the pattern, because it is optional
+    // in Dart and both spellings are in use across real apps: `uptizm`'s
+    // `lib/config/app.dart:37` writes `(app) =>` and `watchools`'
+    // `lib/config/app.dart:23` writes `(MagicApp app) =>`. The regex used to
+    // require the bare form, so every plugin install against the second shape
+    // injected nothing and reported Success.
     _ops.add(
       InjectAfterPattern(
         targetFile: 'lib/config/app.dart',
         pattern: RegExp(
-          r'\(app\)\s*=>\s*\w+ServiceProvider\(app\),(?=\s*\n\s*\])',
+          r'\((?:\w+\s+)?app\)\s*=>\s*\w+ServiceProvider\(app\),(?=\s*\n\s*\])',
         ),
         code: '\n      (app) => $providerClassName(app),',
       ),

@@ -8,6 +8,16 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A pattern injection that matches nothing now fails the install instead of reporting Success over a file it never touched.** `ConfigEditor.insertCodeAfterPattern` and `insertCodeBeforePattern` ended in a bare `if (match != null) { write }` with no else, so a miss wrote nothing and returned normally. `InstallTransaction` had no way to tell an applied injection from a skipped one, added the target to `_helperWrittenTargets` either way, and `plugin:install` printed Success. Both helpers return `bool` now and the transaction returns `Error` naming the target file.
+
+  The distinction that had to survive: an idempotent skip, where the code is already present, still answers true. Collapsing the two would make a re-run of `plugin:install` fail on work it had already done.
+
+  Measured in a consumer app. `injectProvider`'s regex required the providers-list entry to read exactly `(app) => XServiceProvider(app),`, and that app's `lib/config/app.dart` writes `(MagicApp app) =>`. The type annotation is optional in Dart and both spellings are in use across real apps, so the install matched nothing, registered no provider, booted no plugin, and reported Success. `plugin_installer.dart`'s own docblock described this as "helper behaviour" and told plugin authors to document the requirement upstream; it is a defect rather than a contract.
+
+- **`injectProvider` matches both spellings of a providers-list entry.** The parameter's type is optional in the pattern now, so `(app) => XServiceProvider(app),` and `(MagicApp app) => XServiceProvider(app),` both match. The lookahead that anchors the append to the LAST entry before `]` is unchanged and is asserted separately, because widening a pattern is the easy way to lose it. (`lib/src/helpers/config_editor.dart`, `lib/src/installer/install_transaction.dart`, `lib/src/installer/plugin_installer.dart`, `test/helpers/config_editor_match_report_test.dart`, `test/installer/inject_provider_shapes_test.dart`, `doc/plugins/installer-dsl.md`, `skills/fluttersdk-artisan/references/cli-commands.md`)
+
 ### Added
 
 - **`server.json`, the manifest that lists this package on the official MCP registry.** The ecosystem was absent from every MCP directory, so an agent looking for a Dart CLI and MCP substrate had no way to find it. The entry carries `repository` and `websiteUrl` and deliberately no `packages` block: `registryType` documents npm, pypi, oci, nuget and mcpb with no pub equivalent, and both `packages` and `remotes` are optional on `ServerDetail`, which requires only name, description and version. This is a sixth hand-maintained copy of the package version and the only one nothing guarded, so `test/server_json_version_test.dart` asserts it against `pubspec.yaml` in the same spirit as `test/mcp/mcp_server_version_test.dart`, and additionally pins the schema's 100 character description cap. Excluded from the pub archive for the same reason `codecov.yml` is. (`server.json`, `.pubignore`, `test/server_json_version_test.dart`)

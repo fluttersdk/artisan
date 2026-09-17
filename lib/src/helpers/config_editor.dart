@@ -290,48 +290,67 @@ class ConfigEditor {
   ///
   /// Idempotent: skips the write when `code.trim()` is already a substring of
   /// the file contents (mirrors [insertCodeAfterPattern]).
-  static void insertCodeBeforePattern({
+  ///
+  /// Returns whether the file now carries [code]: true when it was written and
+  /// true when it was already there, false only when [pattern] matched
+  /// nothing. See [insertCodeAfterPattern] for why that distinction matters.
+  static bool insertCodeBeforePattern({
     required String filePath,
     required Pattern pattern,
     required String code,
   }) {
     final content = FileHelper.readFile(filePath);
-    if (code.trim().isNotEmpty && content.contains(code.trim())) return;
+    if (code.trim().isNotEmpty && content.contains(code.trim())) return true;
     final RegExp regex =
         pattern is RegExp ? pattern : RegExp(RegExp.escape(pattern.toString()));
     final match = regex.firstMatch(content);
 
-    if (match != null) {
-      final updatedContent = content.substring(0, match.start) +
-          code +
-          content.substring(match.start);
-      FileHelper.writeFile(filePath, updatedContent);
-    }
+    if (match == null) return false;
+
+    final updatedContent = content.substring(0, match.start) +
+        code +
+        content.substring(match.start);
+    FileHelper.writeFile(filePath, updatedContent);
+
+    return true;
   }
 
   /// Insert code after the first occurrence of a pattern in a file.
   ///
-  /// Does nothing if the pattern is not found.
-  ///
   /// Idempotent: skips the write when `code.trim()` is already a substring of
   /// the file contents. This protects re-runs of `plugin:install <name>` (and
   /// any other repeat install path) from accumulating duplicate injections.
-  static void insertCodeAfterPattern({
+  ///
+  /// Returns whether the file now carries [code]. True when it was written and
+  /// true when it was already there; false ONLY when [pattern] matched
+  /// nothing.
+  ///
+  /// The return value exists because the absence of one was a silent failure
+  /// with a measured cost. A caller could not tell an applied injection from a
+  /// skipped one, so `plugin:install` reported Success over a
+  /// `lib/config/app.dart` it had never touched: the plugin's provider was
+  /// never registered and nothing said so.
+  ///
+  /// Idempotent-skip and never-matched have to stay distinguishable, or a
+  /// re-run would fail on work it had already done.
+  static bool insertCodeAfterPattern({
     required String filePath,
     required Pattern pattern,
     required String code,
   }) {
     final content = FileHelper.readFile(filePath);
-    if (code.trim().isNotEmpty && content.contains(code.trim())) return;
+    if (code.trim().isNotEmpty && content.contains(code.trim())) return true;
     final RegExp regex =
         pattern is RegExp ? pattern : RegExp(RegExp.escape(pattern.toString()));
     final match = regex.firstMatch(content);
 
-    if (match != null) {
-      final updatedContent =
-          content.substring(0, match.end) + code + content.substring(match.end);
-      FileHelper.writeFile(filePath, updatedContent);
-    }
+    if (match == null) return false;
+
+    final updatedContent =
+        content.substring(0, match.end) + code + content.substring(match.end);
+    FileHelper.writeFile(filePath, updatedContent);
+
+    return true;
   }
 
   /// Create a config file with the given content.

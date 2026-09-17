@@ -281,6 +281,26 @@ class InstallTransaction {
   ///    "Limitations" docblock for the V1 trade-off.
   /// 3. [RunShell] is deferred until phase 5 (`_runShellOps`) so commands
   ///    only fire after every file mutation succeeded.
+  /// The [Error] a pattern injection returns when its pattern matched nothing.
+  ///
+  /// `rolledBack: false` because the helper editors write through `dart:io`
+  /// directly and are outside the `.tmp` rollback, which the class docblock
+  /// above records. A miss writes nothing at all, so there is nothing to roll
+  /// back either way.
+  ///
+  /// The message names the host file, because that is what the operator has to
+  /// look at: the usual cause is a host file whose shape the plugin's pattern
+  /// was not written for, not a broken plugin.
+  TransactionResult _patternMissed(String description, String targetFile) {
+    return Error(
+      error:
+          '$description matched nothing in $targetFile, so the injection was '
+          'skipped. The plugin expected a different shape in that file; fix '
+          'the host file or the plugin pattern rather than re-running.',
+      rolledBack: false,
+    );
+  }
+
   TransactionResult? _stageOp(
     InstallOperation op,
     Map<String, String?> stagedWrites,
@@ -373,22 +393,31 @@ class InstallTransaction {
           );
           _helperWrittenTargets.add(target);
           return null;
+        // Both pattern injections FAIL the install when the pattern matched
+        // nothing, rather than reporting Success over a file they never
+        // touched. The old behaviour was measured in a consumer app: a plugin
+        // whose `injectProvider` regex did not fit the host's `app.dart` never
+        // registered its provider, never booted, and `plugin:install` printed
+        // Success. An injection that silently does nothing is worse than one
+        // that refuses, because the consequence surfaces later and elsewhere.
         case InjectBeforePattern():
           final target = _abs(op.targetFile);
-          ConfigEditor.insertCodeBeforePattern(
+          final applied = ConfigEditor.insertCodeBeforePattern(
             filePath: target,
             pattern: op.pattern,
             code: op.code,
           );
+          if (!applied) return _patternMissed(op.describe(), op.targetFile);
           _helperWrittenTargets.add(target);
           return null;
         case InjectAfterPattern():
           final target = _abs(op.targetFile);
-          ConfigEditor.insertCodeAfterPattern(
+          final applied = ConfigEditor.insertCodeAfterPattern(
             filePath: target,
             pattern: op.pattern,
             code: op.code,
           );
+          if (!applied) return _patternMissed(op.describe(), op.targetFile);
           _helperWrittenTargets.add(target);
           return null;
 
