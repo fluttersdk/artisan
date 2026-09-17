@@ -298,12 +298,12 @@ class ConfigEditor {
     required String filePath,
     required Pattern pattern,
     required String code,
+    Pattern? fallbackPattern,
   }) {
     final content = FileHelper.readFile(filePath);
     if (code.trim().isNotEmpty && content.contains(code.trim())) return true;
-    final RegExp regex =
-        pattern is RegExp ? pattern : RegExp(RegExp.escape(pattern.toString()));
-    final match = regex.firstMatch(content);
+    final match =
+        _firstMatch(pattern, content) ?? _firstMatch(fallbackPattern, content);
 
     if (match == null) return false;
 
@@ -333,16 +333,22 @@ class ConfigEditor {
   ///
   /// Idempotent-skip and never-matched have to stay distinguishable, or a
   /// re-run would fail on work it had already done.
+  /// [fallbackPattern] is tried only when [pattern] matches nothing. It exists
+  /// for the append-to-a-list shape, where the primary anchors on the LAST
+  /// entry before the closing bracket and so cannot match an empty list, and
+  /// the fallback anchors on the opening bracket instead. One regex with an
+  /// alternation cannot express it, because `firstMatch` scans by position and
+  /// the opening bracket always comes first.
   static bool insertCodeAfterPattern({
     required String filePath,
     required Pattern pattern,
     required String code,
+    Pattern? fallbackPattern,
   }) {
     final content = FileHelper.readFile(filePath);
     if (code.trim().isNotEmpty && content.contains(code.trim())) return true;
-    final RegExp regex =
-        pattern is RegExp ? pattern : RegExp(RegExp.escape(pattern.toString()));
-    final match = regex.firstMatch(content);
+    final match =
+        _firstMatch(pattern, content) ?? _firstMatch(fallbackPattern, content);
 
     if (match == null) return false;
 
@@ -351,6 +357,17 @@ class ConfigEditor {
     FileHelper.writeFile(filePath, updatedContent);
 
     return true;
+  }
+
+  /// The first match of [pattern] in [content], or null when [pattern] is null
+  /// or finds nothing. Accepts either `Pattern` shape the ops allow.
+  static Match? _firstMatch(Pattern? pattern, String content) {
+    if (pattern == null) return null;
+
+    final RegExp regex =
+        pattern is RegExp ? pattern : RegExp(RegExp.escape(pattern.toString()));
+
+    return regex.firstMatch(content);
   }
 
   /// Create a config file with the given content.

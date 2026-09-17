@@ -495,12 +495,17 @@ class PluginInstaller {
     // `lib/config/app.dart:23` writes `(MagicApp app) =>`. The regex used to
     // require the bare form, so every plugin install against the second shape
     // injected nothing and reported Success.
+    //
+    // The fallback anchors on the opening `'providers': [` so an empty list
+    // still takes the injection, which is the two-step `make:command` already
+    // does by hand (`make_command_command.dart:215-228`).
     _ops.add(
       InjectAfterPattern(
         targetFile: 'lib/config/app.dart',
         pattern: RegExp(
           r'\((?:\w+\s+)?app\)\s*=>\s*\w+ServiceProvider\(app\),(?=\s*\n\s*\])',
         ),
+        fallbackPattern: RegExp(r"'providers'\s*:\s*\["),
         code: '\n      (app) => $providerClassName(app),',
       ),
     );
@@ -523,10 +528,16 @@ class PluginInstaller {
     // Append to the END of the configFactories list (just after the last
     // entry's trailing comma) using a lookahead-anchored regex that only
     // matches the last `() => xxxConfig,` line before the closing `]`.
+    //
+    // The entry's identifier is not required to end in `Config`, because a
+    // host is free to name its own factory anything: `() => appSettings,` is a
+    // legal entry that the old pattern refused. The fallback anchors on the
+    // opening `configFactories: [` so an empty list still takes the injection.
     _ops.add(
       InjectAfterPattern(
         targetFile: 'lib/main.dart',
-        pattern: RegExp(r'\(\)\s*=>\s*\w+Config,(?=\s*\n\s*\])'),
+        pattern: RegExp(r'\(\)\s*=>\s*\w+,(?=\s*\n\s*\])'),
+        fallbackPattern: RegExp(r'configFactories\s*:\s*\['),
         code: '\n      () => $factoryName,',
       ),
     );

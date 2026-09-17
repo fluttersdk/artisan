@@ -130,11 +130,26 @@ allow source values to overwrite conflicting target keys.
 optional in Dart and both are in use: `(app) => XServiceProvider(app),` and
 `(MagicApp app) => XServiceProvider(app),`.
 
-**A pattern injection that matches nothing fails the install.** `InjectBeforePattern` and
-`InjectAfterPattern` return `Error` when their pattern finds no match, naming the target file. Before
-this they wrote nothing and the install reported Success, so a plugin whose pattern did not fit the
-host's file registered nothing and said nothing about it. An idempotent skip, where the code is
-already present, still counts as applied, so a re-run does not fail on work it has already done.
+**A pattern injection that matches nothing fails the install, before anything is written.** The
+transaction checks every `InjectBeforePattern` and `InjectAfterPattern` against its target file ahead
+of the stage loop and returns `Error` naming every offending op. Before this they wrote nothing and
+the install reported Success, so a plugin whose pattern did not fit the host's file registered nothing
+and said nothing about it.
+
+The check is a preflight rather than an in-loop failure because helper-backed ops write through
+`dart:io` during staging, outside the `.tmp` rollback, and the install record `plugin:uninstall` reads
+is written later still. Failing mid-loop would leave an orphan import with nothing recorded to reverse
+it.
+
+An idempotent skip, where the code is already present, still counts as resolvable, so a re-run does
+not fail on work it has already done.
+
+**`fallbackPattern` keeps an empty list installable.** Both pattern ops take an optional second
+pattern, tried only when the primary matches nothing. The append-to-a-list shape anchors on the last
+entry before the closing bracket and so cannot match an empty list; the fallback anchors on the
+opening bracket instead. A single regex with an alternation cannot do this: `firstMatch` scans by
+position, the opening bracket always comes first, and every injection would land at the top of a
+populated list.
 
 ### Android Operations
 
