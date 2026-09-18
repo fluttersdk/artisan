@@ -500,9 +500,17 @@ class PluginInstaller {
     // require the bare form, so every plugin install against the second shape
     // injected nothing and reported Success.
     //
-    // The lookahead tolerates a trailing line comment on the last entry, since
-    // a host is free to write `(app) => AppServiceProvider(app), // core` and
-    // that spelling used to fall through to the fallback and prepend.
+    // The key's quoting is not load-bearing. Anchoring on the key made it so
+    // for one round: `prefer_single_quotes` makes `"providers":` uncommon
+    // rather than impossible, and a host who writes it installed correctly
+    // before the anchor and would have had both patterns miss after it.
+    //
+    // The lookahead skips whatever separates the last entry from the closing
+    // `]`: a comment trailing the entry on the same line, and comment-only or
+    // blank lines below it, which is the shape a scaffold placeholder takes
+    // (`// add plugin providers here`). It cannot skip a real entry, because
+    // each line it consumes must be whitespace or a `//` comment through to
+    // the newline, so the append still pins to the LAST entry.
     //
     // The fallback anchors on the opening `'providers': [` so an empty list
     // still takes the injection, which is the two-step `make:command` already
@@ -511,11 +519,12 @@ class PluginInstaller {
       InjectAfterPattern(
         targetFile: 'lib/config/app.dart',
         pattern: RegExp(
-          r"'providers'\s*:\s*\[[^\]]*?"
+          '''['"]providers['"]'''
+          r'\s*:\s*\[[^\]]*?'
           r'\((?:\w+\s+)?app\)\s*=>\s*\w+ServiceProvider\(app\),'
-          r'(?=[^\S\n]*(?://[^\n]*)?\n\s*\])',
+          r'(?=(?:[^\S\n]*(?://[^\n]*)?\n)*?[^\S\n]*\])',
         ),
-        fallbackPattern: RegExp(r"'providers'\s*:\s*\["),
+        fallbackPattern: RegExp('''['"]providers['"]''' r'\s*:\s*\['),
         code: '\n      (app) => $providerClassName(app),',
       ),
     );
@@ -550,8 +559,9 @@ class PluginInstaller {
     //
     // The entry's identifier is not required to end in `Config`, because a
     // host is free to name its own factory anything: `() => appSettings,` is a
-    // legal entry that the old pattern refused. The lookahead tolerates a
-    // trailing line comment for the same reason.
+    // legal entry that the old pattern refused. The lookahead skips a comment
+    // trailing the last entry and any comment-only or blank line between it
+    // and the `]`, for the same reason: a scaffold placeholder lives there.
     //
     // The fallback anchors on the opening `configFactories: [` so an empty list
     // still takes the injection.
@@ -560,7 +570,7 @@ class PluginInstaller {
         targetFile: 'lib/main.dart',
         pattern: RegExp(
           r'configFactories\s*:\s*\[[^\]]*?\(\)\s*=>\s*\w+,'
-          r'(?=[^\S\n]*(?://[^\n]*)?\n\s*\])',
+          r'(?=(?:[^\S\n]*(?://[^\n]*)?\n)*?[^\S\n]*\])',
         ),
         fallbackPattern: RegExp(r'configFactories\s*:\s*\['),
         code: '\n      () => $factoryName,',

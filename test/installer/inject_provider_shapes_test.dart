@@ -250,6 +250,64 @@ const Map<String, dynamic> appConfig = <String, dynamic>{
       );
     });
 
+    test('a double-quoted providers key still matches', () {
+      // Anchoring on the key made its quoting load-bearing for one round.
+      // `prefer_single_quotes` makes this uncommon rather than impossible, and
+      // a host who writes it installed correctly before the anchor.
+      final pattern = providerPattern(tempDir);
+
+      expect(
+        pattern.hasMatch(
+            appConfig('app').replaceAll("'providers'", '"providers"')),
+        isTrue,
+      );
+    });
+
+    test('a comment on its own line above the bracket does not defeat it', () {
+      // The shape a scaffold placeholder takes. It fell to the fallback and
+      // prepended, which is correct Dart in the wrong position.
+      final filePath = p.join(tempDir.path, 'app.dart');
+      File(filePath).writeAsStringSync('''
+const Map<String, dynamic> appConfig = <String, dynamic>{
+  'app': <String, dynamic>{
+    'providers': [
+      (app) => AppServiceProvider(app),
+      // add plugin providers here
+    ],
+  },
+};
+''');
+
+      final applied = ConfigEditor.insertCodeAfterPattern(
+        filePath: filePath,
+        pattern: providerPattern(tempDir),
+        code: '\n      (app) => DemoServiceProvider(app),',
+      );
+
+      expect(applied, isTrue);
+
+      final written = File(filePath).readAsStringSync();
+      expect(
+        written.indexOf('DemoServiceProvider'),
+        greaterThan(written.indexOf('AppServiceProvider')),
+        reason: 'the entry belongs after the last one, not at the bracket',
+      );
+    });
+
+    test('but a real entry below is never skipped', () {
+      // The lookahead consumes only whitespace-or-comment lines, so it cannot
+      // walk past an entry to reach the bracket. Losing that would move every
+      // append to the first entry.
+      final pattern = providerPattern(tempDir);
+      final content = appConfig('app');
+      final match = pattern.firstMatch(content)!;
+
+      expect(
+        content.substring(0, match.end),
+        endsWith('(app) => AppServiceProvider(app),'),
+      );
+    });
+
     test('injectProvider is anchored to the providers list as well', () {
       // Same class of defect, same anchor. `\\w+ServiceProvider(app),` was the
       // accidental guard here, not a deliberate one.
