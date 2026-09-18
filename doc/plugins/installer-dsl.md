@@ -134,10 +134,11 @@ list anywhere in `lib/main.dart` won and the factory was appended to that list i
 `configFactories: []` was the same defect wearing a second face: the primary matched a later list's
 last entry, so the fallback that exists for the empty case never ran.
 
-The lookahead skips whatever sits between the last entry and the `]`: a comment trailing the entry
-on the same line (`(app) => AppServiceProvider(app), // core`), and comment-only or blank lines below
-it, which is where a scaffold placeholder lives (`// add plugin providers here`). It cannot skip a
-real entry, since every line it consumes must be whitespace or a `//` comment through to the newline.
+The lookahead skips a `//` comment between the last entry and the `]`: one trailing the entry on the
+same line (`(app) => AppServiceProvider(app), // core`), and comment-only or blank lines below it,
+which is where a scaffold placeholder lives (`// add plugin providers here`). A `/* block */` comment
+there is a miss and falls to the fallback. It cannot skip a real entry, since every line it consumes
+must be whitespace or a `//` comment through to the newline.
 
 The providers key takes either quote (`['"]providers['"]`). Anchoring on the key is what made its
 quoting matter at all, and `prefer_single_quotes` makes the double-quoted spelling uncommon rather
