@@ -340,6 +340,13 @@ host file written in a shape the plugin's pattern was not built for. Fix the
 host file or the plugin's pattern; re-running changes nothing. An idempotent
 skip, where the injected code is already present, still counts as applied.
 
+An append-to-a-list pattern carries an optional `fallbackPattern` anchored on
+the list's opening bracket, so an EMPTY `'providers': []` or
+`configFactories: []` still takes the injection rather than failing the
+install. Both composite injections (`injectProvider`, `injectConfigFactory`)
+match from their list's own key forward, which is what keeps the insertion
+point out of any other list in the same file.
+
 **Output**:
 
 ```

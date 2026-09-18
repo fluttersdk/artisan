@@ -412,6 +412,12 @@ final class InjectAfterPattern extends InstallOperation {
   /// One regex with an alternation cannot express it: `firstMatch` scans by
   /// position, the opening bracket always appears before the last entry, so
   /// the alternation would insert at the top of a populated list every time.
+  ///
+  /// What it does is anchor the insertion, not narrow it to the empty case. A
+  /// POPULATED list whose last entry the primary does not describe also falls
+  /// through to here, and the injection then lands at the top of that list
+  /// rather than the end. That is a shape the primary should be widened to
+  /// cover; the fallback is what keeps it installable in the meantime.
   final Pattern? fallbackPattern;
 
   /// Code snippet to insert after the matched pattern.

@@ -339,6 +339,11 @@ class ConfigEditor {
   /// the fallback anchors on the opening bracket instead. One regex with an
   /// alternation cannot express it, because `firstMatch` scans by position and
   /// the opening bracket always comes first.
+  ///
+  /// A populated list whose last entry the primary does not describe falls
+  /// through to the fallback too, and the code then lands at the top of the
+  /// list rather than the end. Correct Dart, wrong position: prefer widening
+  /// the primary over relying on that.
   static bool insertCodeAfterPattern({
     required String filePath,
     required Pattern pattern,

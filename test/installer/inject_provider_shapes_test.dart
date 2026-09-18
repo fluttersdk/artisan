@@ -80,6 +80,21 @@ const Map<String, dynamic> appConfig = <String, dynamic>{
     return (installer.pendingOps[1] as InjectAfterPattern).pattern as RegExp;
   }
 
+  /// The `injectConfigFactory` op, read off the installer for the same reason.
+  InjectAfterPattern configFactoryOp(Directory root) {
+    final installer = PluginInstaller(
+      InstallContext.test(
+        fs: const RealFs(),
+        prompt: _SilentPromptDriver(),
+        stubs: _SilentStubDriver(),
+        projectRoot: root.path,
+      ),
+      pluginName: 'demo',
+    ).injectConfigFactory('demoConfig');
+
+    return installer.pendingOps[1] as InjectAfterPattern;
+  }
+
   late Directory tempDir;
 
   setUp(() {
@@ -103,14 +118,159 @@ const Map<String, dynamic> appConfig = <String, dynamic>{
       expect(pattern.hasMatch(appConfig('MagicApp app')), isTrue);
     });
 
-    test('still anchors on the LAST entry before the closing bracket', () {
+    test('still ENDS at the last entry before the closing bracket', () {
       // The lookahead is what keeps the append at the end of the list rather
       // than after the first entry. Widening the parameter must not lose it.
+      //
+      // The assertion is on where the match ENDS, not on what it spans: the
+      // pattern now starts at `'providers': [` to keep the scan inside the
+      // list, so its text necessarily carries every earlier entry. `match.end`
+      // is the byte `insertCodeAfterPattern` writes at, which is the thing
+      // that has to stay pinned to the last entry.
       final pattern = providerPattern(tempDir);
-      final match = pattern.firstMatch(appConfig('MagicApp app'))!;
+      final content = appConfig('MagicApp app');
+      final match = pattern.firstMatch(content)!;
+
+      expect(
+        content.substring(0, match.end),
+        endsWith('(MagicApp app) => AppServiceProvider(app),'),
+      );
+      expect(content.substring(match.end).trim(), startsWith(']'));
+    });
+  });
+
+  group('the match is anchored to the list it is meant to append to', () {
+    /// A `lib/main.dart` carrying a zero-argument-closure list ABOVE
+    /// `configFactories`. Nothing stops a host from writing one, and
+    /// `() => \w+,` before a `]` describes its last entry exactly as well.
+    String mainDart({required bool factoriesPopulated}) {
+      final String factories =
+          factoriesPopulated ? '\n      () => appConfig,\n    ' : '';
+      return '''
+final List<Widget Function()> screens = [
+  () => homeScreen,
+];
+
+void main() async {
+  await Magic.init(
+    configFactories: [$factories],
+  );
+}
+''';
+    }
+
+    test('an earlier list does not take the configFactories injection', () {
+      // The defect this anchor exists for: firstMatch scans by position, so
+      // the primary used to land on `() => homeScreen,` and the factory was
+      // appended to `screens`.
+      final filePath = p.join(tempDir.path, 'main.dart');
+      File(filePath).writeAsStringSync(mainDart(factoriesPopulated: true));
+      final op = configFactoryOp(tempDir);
+
+      final applied = ConfigEditor.insertCodeAfterPattern(
+        filePath: filePath,
+        pattern: op.pattern,
+        fallbackPattern: op.fallbackPattern,
+        code: op.code,
+      );
+
+      expect(applied, isTrue);
+
+      final written = File(filePath).readAsStringSync();
+      expect(
+        written.indexOf('demoConfig'),
+        greaterThan(written.indexOf('appConfig')),
+        reason: 'the factory belongs after the last configFactories entry',
+      );
+      expect(
+        written.indexOf('demoConfig'),
+        greaterThan(written.indexOf('homeScreen')),
+        reason: 'and not inside the screens list above it',
+      );
+    });
+
+    test('an empty configFactories is a non-match, so the fallback runs', () {
+      // The same defect with a second face. The primary matched the earlier
+      // list's last entry, so the fallback that exists for the empty case
+      // never got to run and the factory went into `screens`.
+      final filePath = p.join(tempDir.path, 'main.dart');
+      File(filePath).writeAsStringSync(mainDart(factoriesPopulated: false));
+      final op = configFactoryOp(tempDir);
+
+      expect(
+        (op.pattern as RegExp).hasMatch(File(filePath).readAsStringSync()),
+        isFalse,
+        reason: 'the gap excludes `]`, so the scan cannot leave the list',
+      );
+
+      final applied = ConfigEditor.insertCodeAfterPattern(
+        filePath: filePath,
+        pattern: op.pattern,
+        fallbackPattern: op.fallbackPattern,
+        code: op.code,
+      );
+
+      expect(applied, isTrue);
+
+      final written = File(filePath).readAsStringSync();
+      expect(written, contains('configFactories: [\n      () => demoConfig,'));
+      expect(
+        written.indexOf('demoConfig'),
+        greaterThan(written.indexOf('homeScreen')),
+      );
+    });
+
+    test('a trailing line comment on the last entry still appends', () {
+      // This shape used to defeat the lookahead and fall through to the
+      // fallback, which prepends: correct Dart, wrong position.
+      final filePath = p.join(tempDir.path, 'app.dart');
+      File(filePath).writeAsStringSync('''
+const Map<String, dynamic> appConfig = <String, dynamic>{
+  'app': <String, dynamic>{
+    'providers': [
+      (app) => RouteServiceProvider(app),
+      (app) => AppServiceProvider(app), // core
+    ],
+  },
+};
+''');
+
+      final applied = ConfigEditor.insertCodeAfterPattern(
+        filePath: filePath,
+        pattern: providerPattern(tempDir),
+        code: '\n      (app) => DemoServiceProvider(app),',
+      );
+
+      expect(applied, isTrue);
+
+      final written = File(filePath).readAsStringSync();
+      expect(
+        written.indexOf('DemoServiceProvider'),
+        greaterThan(written.indexOf('AppServiceProvider')),
+      );
+    });
+
+    test('injectProvider is anchored to the providers list as well', () {
+      // Same class of defect, same anchor. `\\w+ServiceProvider(app),` was the
+      // accidental guard here, not a deliberate one.
+      final pattern = providerPattern(tempDir);
+      const String twoLists = '''
+const Map<String, dynamic> appConfig = <String, dynamic>{
+  'app': <String, dynamic>{
+    'deferred': [
+      (app) => LateServiceProvider(app),
+    ],
+    'providers': [
+      (app) => AppServiceProvider(app),
+    ],
+  },
+};
+''';
+
+      final match = pattern.firstMatch(twoLists)!;
 
       expect(match.group(0), contains('AppServiceProvider'));
-      expect(match.group(0), isNot(contains('RouteServiceProvider')));
+      expect(match.group(0), isNot(contains('LateServiceProvider')));
     });
   });
 

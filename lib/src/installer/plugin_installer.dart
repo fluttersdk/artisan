@@ -486,8 +486,12 @@ class PluginInstaller {
       ),
     );
     // Append to the END of the providers list (just after the last entry's
-    // trailing comma) using a lookahead-anchored regex that only matches the
-    // last `(app) => XxxServiceProvider(app),` line before the closing `]`.
+    // trailing comma). The match starts at the list's own key and scans forward
+    // to the last `(app) => XxxServiceProvider(app),` line before the closing
+    // `]`, so the insertion point cannot land in some other list that happens
+    // to be written the same way. The gap excludes `]`, which is what keeps the
+    // scan inside the list it opened and what makes an EMPTY list a non-match
+    // rather than a match on a later list's last entry.
     //
     // The parameter's type is optional in the pattern, because it is optional
     // in Dart and both spellings are in use across real apps: `uptizm`'s
@@ -496,6 +500,10 @@ class PluginInstaller {
     // require the bare form, so every plugin install against the second shape
     // injected nothing and reported Success.
     //
+    // The lookahead tolerates a trailing line comment on the last entry, since
+    // a host is free to write `(app) => AppServiceProvider(app), // core` and
+    // that spelling used to fall through to the fallback and prepend.
+    //
     // The fallback anchors on the opening `'providers': [` so an empty list
     // still takes the injection, which is the two-step `make:command` already
     // does by hand (`make_command_command.dart:215-228`).
@@ -503,7 +511,9 @@ class PluginInstaller {
       InjectAfterPattern(
         targetFile: 'lib/config/app.dart',
         pattern: RegExp(
-          r'\((?:\w+\s+)?app\)\s*=>\s*\w+ServiceProvider\(app\),(?=\s*\n\s*\])',
+          r"'providers'\s*:\s*\[[^\]]*?"
+          r'\((?:\w+\s+)?app\)\s*=>\s*\w+ServiceProvider\(app\),'
+          r'(?=[^\S\n]*(?://[^\n]*)?\n\s*\])',
         ),
         fallbackPattern: RegExp(r"'providers'\s*:\s*\["),
         code: '\n      (app) => $providerClassName(app),',
@@ -525,18 +535,33 @@ class PluginInstaller {
     final String importTarget =
         package ?? 'package:$_pluginName/$_pluginName.dart';
     _ops.add(InjectMainDartImport(importStatement: "import '$importTarget';"));
-    // Append to the END of the configFactories list (just after the last
-    // entry's trailing comma) using a lookahead-anchored regex that only
-    // matches the last `() => xxxConfig,` line before the closing `]`.
+    // Append to the END of the configFactories list, matching from the list's
+    // own key forward to the last `() => xxxConfig,` line before the closing
+    // `]`.
+    //
+    // The anchor is load-bearing rather than decorative. `() => \w+,` before a
+    // `]` describes any zero-argument closure that is last in any list, and
+    // `firstMatch` scans by position, so an earlier list anywhere in
+    // `lib/main.dart` won and the factory was appended to THAT list. An empty
+    // `configFactories: []` was the same bug with a second face: the primary
+    // matched a later list's last entry, so the fallback that exists for the
+    // empty case never got to run. Excluding `]` from the gap keeps the scan
+    // inside the list the anchor opened, which fixes both.
     //
     // The entry's identifier is not required to end in `Config`, because a
     // host is free to name its own factory anything: `() => appSettings,` is a
-    // legal entry that the old pattern refused. The fallback anchors on the
-    // opening `configFactories: [` so an empty list still takes the injection.
+    // legal entry that the old pattern refused. The lookahead tolerates a
+    // trailing line comment for the same reason.
+    //
+    // The fallback anchors on the opening `configFactories: [` so an empty list
+    // still takes the injection.
     _ops.add(
       InjectAfterPattern(
         targetFile: 'lib/main.dart',
-        pattern: RegExp(r'\(\)\s*=>\s*\w+,(?=\s*\n\s*\])'),
+        pattern: RegExp(
+          r'configFactories\s*:\s*\[[^\]]*?\(\)\s*=>\s*\w+,'
+          r'(?=[^\S\n]*(?://[^\n]*)?\n\s*\])',
+        ),
         fallbackPattern: RegExp(r'configFactories\s*:\s*\['),
         code: '\n      () => $factoryName,',
       ),
