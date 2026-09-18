@@ -463,9 +463,14 @@ class PluginInstaller {
   ///
   /// Plugin Authoring Guide requirement: the consumer's
   /// `lib/config/app.dart` MUST declare `'providers': [...]` as a Dart map
-  /// literal entry. Plugins targeting non-conforming app.dart files will see
-  /// the after-pattern injection silently no-op (helper behaviour) and the
-  /// install reports Success regardless. Document the requirement upstream.
+  /// literal entry.
+  ///
+  /// A plugin targeting a non-conforming `app.dart` now FAILS the install with
+  /// an `Error` naming the file. This docblock used to describe the opposite,
+  /// calling the silent no-op "helper behaviour" and saying the install
+  /// reports Success regardless, which was a defect written down as a
+  /// contract: a consumer app hit it, registered no provider, booted no
+  /// plugin, and was told the install had succeeded.
   ///
   /// @param providerClassName  Provider class to instantiate.
   /// @param package            Optional import target overriding the default
@@ -481,16 +486,45 @@ class PluginInstaller {
       ),
     );
     // Append to the END of the providers list (just after the last entry's
-    // trailing comma) using a lookahead-anchored regex that only matches the
-    // last `(app) => XxxServiceProvider(app),` line before the closing `]`.
-    // Falls back to inserting after `'providers': [` (i.e. at the top of the
-    // list) when the host's providers list is empty.
+    // trailing comma). The match starts at the list's own key and scans forward
+    // to the last `(app) => XxxServiceProvider(app),` line before the closing
+    // `]`, so the insertion point cannot land in some other list that happens
+    // to be written the same way. The gap excludes `]`, which is what keeps the
+    // scan inside the list it opened and what makes an EMPTY list a non-match
+    // rather than a match on a later list's last entry.
+    //
+    // The parameter's type is optional in the pattern, because it is optional
+    // in Dart and both spellings are in use across real apps: `uptizm`'s
+    // `lib/config/app.dart:37` writes `(app) =>` and `watchools`'
+    // `lib/config/app.dart:23` writes `(MagicApp app) =>`. The regex used to
+    // require the bare form, so every plugin install against the second shape
+    // injected nothing and reported Success.
+    //
+    // The key's quoting is not load-bearing. Anchoring on the key made it so
+    // for one round: `prefer_single_quotes` makes `"providers":` uncommon
+    // rather than impossible, and a host who writes it installed correctly
+    // before the anchor and would have had both patterns miss after it.
+    //
+    // The lookahead skips whatever separates the last entry from the closing
+    // `]`: a comment trailing the entry on the same line, and comment-only or
+    // blank lines below it, which is the shape a scaffold placeholder takes
+    // (`// add plugin providers here`). It cannot skip a real entry, because
+    // each line it consumes must be whitespace or a `//` comment through to
+    // the newline, so the append still pins to the LAST entry.
+    //
+    // The fallback anchors on the opening `'providers': [` so an empty list
+    // still takes the injection, which is the two-step `make:command` already
+    // does by hand (`make_command_command.dart:215-228`).
     _ops.add(
       InjectAfterPattern(
         targetFile: 'lib/config/app.dart',
         pattern: RegExp(
-          r'\(app\)\s*=>\s*\w+ServiceProvider\(app\),(?=\s*\n\s*\])',
+          '''['"]providers['"]'''
+          r'\s*:\s*\[[^\]]*?'
+          r'\((?:\w+\s+)?app\)\s*=>\s*\w+ServiceProvider\(app\),'
+          r'(?=(?:[^\S\n]*(?://[^\n]*)?\n)*?[^\S\n]*\])',
         ),
+        fallbackPattern: RegExp('''['"]providers['"]''' r'\s*:\s*\['),
         code: '\n      (app) => $providerClassName(app),',
       ),
     );
@@ -510,13 +544,35 @@ class PluginInstaller {
     final String importTarget =
         package ?? 'package:$_pluginName/$_pluginName.dart';
     _ops.add(InjectMainDartImport(importStatement: "import '$importTarget';"));
-    // Append to the END of the configFactories list (just after the last
-    // entry's trailing comma) using a lookahead-anchored regex that only
-    // matches the last `() => xxxConfig,` line before the closing `]`.
+    // Append to the END of the configFactories list, matching from the list's
+    // own key forward to the last `() => xxxConfig,` line before the closing
+    // `]`.
+    //
+    // The anchor is load-bearing rather than decorative. `() => \w+,` before a
+    // `]` describes any zero-argument closure that is last in any list, and
+    // `firstMatch` scans by position, so an earlier list anywhere in
+    // `lib/main.dart` won and the factory was appended to THAT list. An empty
+    // `configFactories: []` was the same bug with a second face: the primary
+    // matched a later list's last entry, so the fallback that exists for the
+    // empty case never got to run. Excluding `]` from the gap keeps the scan
+    // inside the list the anchor opened, which fixes both.
+    //
+    // The entry's identifier is not required to end in `Config`, because a
+    // host is free to name its own factory anything: `() => appSettings,` is a
+    // legal entry that the old pattern refused. The lookahead skips a comment
+    // trailing the last entry and any comment-only or blank line between it
+    // and the `]`, for the same reason: a scaffold placeholder lives there.
+    //
+    // The fallback anchors on the opening `configFactories: [` so an empty list
+    // still takes the injection.
     _ops.add(
       InjectAfterPattern(
         targetFile: 'lib/main.dart',
-        pattern: RegExp(r'\(\)\s*=>\s*\w+Config,(?=\s*\n\s*\])'),
+        pattern: RegExp(
+          r'configFactories\s*:\s*\[[^\]]*?\(\)\s*=>\s*\w+,'
+          r'(?=(?:[^\S\n]*(?://[^\n]*)?\n)*?[^\S\n]*\])',
+        ),
+        fallbackPattern: RegExp(r'configFactories\s*:\s*\['),
         code: '\n      () => $factoryName,',
       ),
     );

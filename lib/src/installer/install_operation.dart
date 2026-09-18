@@ -364,6 +364,9 @@ final class InjectBeforePattern extends InstallOperation {
   /// Pattern whose first match determines the insertion point.
   final Pattern pattern;
 
+  /// Tried when [pattern] matches nothing. See [InjectAfterPattern.fallbackPattern].
+  final Pattern? fallbackPattern;
+
   /// Code snippet to insert before the matched pattern.
   final String code;
 
@@ -372,6 +375,7 @@ final class InjectBeforePattern extends InstallOperation {
     required this.targetFile,
     required this.pattern,
     required this.code,
+    this.fallbackPattern,
   });
 
   @override
@@ -397,6 +401,25 @@ final class InjectAfterPattern extends InstallOperation {
   /// Pattern whose first match determines the insertion point.
   final Pattern pattern;
 
+  /// Tried only when [pattern] matches nothing.
+  ///
+  /// This exists for the append-to-a-list shape, where the primary pattern
+  /// anchors on the LAST entry before the closing bracket and therefore cannot
+  /// match an empty list. The fallback anchors on the opening bracket instead,
+  /// which is the same two-step `make:command` already does by hand
+  /// (`make_command_command.dart:215-228`).
+  ///
+  /// One regex with an alternation cannot express it: `firstMatch` scans by
+  /// position, the opening bracket always appears before the last entry, so
+  /// the alternation would insert at the top of a populated list every time.
+  ///
+  /// What it does is anchor the insertion, not narrow it to the empty case. A
+  /// POPULATED list whose last entry the primary does not describe also falls
+  /// through to here, and the injection then lands at the top of that list
+  /// rather than the end. That is a shape the primary should be widened to
+  /// cover; the fallback is what keeps it installable in the meantime.
+  final Pattern? fallbackPattern;
+
   /// Code snippet to insert after the matched pattern.
   final String code;
 
@@ -405,6 +428,7 @@ final class InjectAfterPattern extends InstallOperation {
     required this.targetFile,
     required this.pattern,
     required this.code,
+    this.fallbackPattern,
   });
 
   @override

@@ -113,8 +113,8 @@ allow source values to overwrite conflicting target keys.
 | Method | Operation | Description |
 |---|---|---|
 | `injectImport(targetFile:, importStatement:)` | `InjectImport` | Appends an import line to any Dart file (idempotent) |
-| `injectBefore(targetFile:, pattern:, code:)` | `InjectBeforePattern` | Inserts code before the first match of `pattern` in `targetFile` |
-| `injectAfter(targetFile:, pattern:, code:)` | `InjectAfterPattern` | Inserts code after the first match of `pattern` in `targetFile` |
+| `injectBefore(targetFile:, pattern:, code:, [fallbackPattern:])` | `InjectBeforePattern` | Inserts code before the first match of `pattern` in `targetFile` |
+| `injectAfter(targetFile:, pattern:, code:, [fallbackPattern:])` | `InjectAfterPattern` | Inserts code after the first match of `pattern` in `targetFile` |
 | `injectMainDartImport(importStatement)` | `InjectMainDartImport` | Appends an import to `lib/main.dart` specifically (grouped in dry-run output) |
 | `injectBeforeMagicInit(code)` | `InjectIntoMainDart(beforeInit)` | Inserts code before `Magic.init(...)` in `lib/main.dart` |
 | `injectAfterMagicInit(code)` | `InjectIntoMainDart(afterInit)` | Inserts code after `Magic.init(...)` in `lib/main.dart` |
@@ -124,7 +124,60 @@ allow source values to overwrite conflicting target keys.
 | `injectRoute(registerFunctionName)` | `InjectRouteRegistration` | Calls `registerFunctionName()` in `RouteServiceProvider.boot()` |
 
 `injectProvider` and `injectConfigFactory` each enqueue two operations (one `InjectImport` + one
-`InjectAfterPattern`) using a lookahead-anchored regex that targets the last entry before `]`.
+`InjectAfterPattern`). The regex starts at the list's own key (`'providers': [`,
+`configFactories: [`) and scans forward to the last entry before `]`, with `]` excluded from the
+gap so the scan cannot leave the list it opened.
+
+That anchor is load-bearing. `() => \w+,` before a `]` describes any zero-argument closure that is
+last in any list, and `firstMatch` scans by position, so without the key in front of it an earlier
+list anywhere in `lib/main.dart` won and the factory was appended to that list instead. An empty
+`configFactories: []` was the same defect wearing a second face: the primary matched a later list's
+last entry, so the fallback that exists for the empty case never ran.
+
+The lookahead skips a `//` comment between the last entry and the `]`: one trailing the entry on the
+same line (`(app) => AppServiceProvider(app), // core`), and comment-only or blank lines below it,
+which is where a scaffold placeholder lives (`// add plugin providers here`). A `/* block */` comment
+there is a miss and falls to the fallback. It cannot skip a real entry, since every line it consumes
+must be whitespace or a `//` comment through to the newline.
+
+The providers key takes either quote (`['"]providers['"]`). Anchoring on the key is what made its
+quoting matter at all, and `prefer_single_quotes` makes the double-quoted spelling uncommon rather
+than impossible.
+
+`injectProvider` accepts both spellings of the providers list entry, because the type annotation is
+optional in Dart and both are in use: `(app) => XServiceProvider(app),` and
+`(MagicApp app) => XServiceProvider(app),`.
+
+**A pattern injection that matches nothing fails the install, before anything is written.** The
+transaction checks every `InjectBeforePattern` and `InjectAfterPattern` against its target file ahead
+of the stage loop and returns `Error` naming every offending op. Before this they wrote nothing and
+the install reported Success, so a plugin whose pattern did not fit the host's file registered nothing
+and said nothing about it.
+
+The check is a preflight rather than an in-loop failure because helper-backed ops write through
+`dart:io` during staging, outside the `.tmp` rollback, and the install record `plugin:uninstall` reads
+is written later still. Failing mid-loop would leave an orphan import with nothing recorded to reverse
+it.
+
+An idempotent skip, where the code is already present, still counts as resolvable, so a re-run does
+not fail on work it has already done.
+
+**`fallbackPattern` keeps an empty list installable.** Both pattern ops take an optional second
+pattern, tried only when the primary matches nothing. The append-to-a-list shape anchors on the last
+entry before the closing bracket and so cannot match an empty list; the fallback anchors on the
+opening bracket instead. A single regex with an alternation cannot do this: `firstMatch` scans by
+position, the opening bracket always comes first, and every injection would land at the top of a
+populated list.
+
+It anchors the insertion rather than narrowing it to the empty case. A populated list whose last
+entry the primary does not describe falls through to the fallback too, and the code then lands at
+the top of that list instead of the end: correct Dart, wrong position. When you meet that, widen the
+primary rather than accept the fallback, which is what the trailing-comment tolerance above is.
+
+`install.yaml` has no pattern-injection op at all (see the manifest schema), so `fallbackPattern` is
+a property of the Dart DSL only. The install record persists `pattern` through `toString()` and
+neither pattern op has a reverse in V1, so `plugin:uninstall` logs `[skipped]` for both and reads
+neither field.
 
 ### Android Operations
 

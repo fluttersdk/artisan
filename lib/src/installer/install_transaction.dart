@@ -170,6 +170,18 @@ class InstallTransaction {
     //    delete; a non-null value carries the final UTF-8 content to write.
     //    Unknown / not-yet-implemented op types short-circuit the whole commit
     //    with an [Error] (no disk side effects yet, so rolledBack is false).
+    // 3a. Refuse a pattern injection that cannot land, BEFORE anything is
+    //     staged. The ordering is the whole point: helper-backed ops write
+    //     through `dart:io` during the stage loop below and sit outside the
+    //     `.tmp` rollback, so failing mid-loop leaves an orphan import and a
+    //     pubspec entry on disk while phase 6 never writes the install record,
+    //     which is what `plugin:uninstall` reads to reverse them. Checking
+    //     first means a miss costs nothing.
+    final patternError = _assertPatternsResolvable();
+    if (patternError != null) {
+      return patternError;
+    }
+
     final stagedWrites = <String, String?>{};
     for (final op in _ops) {
       final stageError = _stageOp(op, stagedWrites);
@@ -373,22 +385,38 @@ class InstallTransaction {
           );
           _helperWrittenTargets.add(target);
           return null;
+        // Both pattern injections FAIL the install when neither their pattern
+        // nor their fallback matched, rather than reporting Success over a
+        // file they never touched. Measured in a consumer app: a plugin whose
+        // `injectProvider` regex did not fit the host's `app.dart` never
+        // registered its provider, never booted, and `plugin:install` printed
+        // Success.
+        //
+        // Reaching this arm at all means `_assertPatternsResolvable` let it
+        // through, since that runs over the same files before anything is
+        // staged. It is not dead: an earlier op in the same queue can rewrite
+        // the target between the two checks, and a disagreement there is worth
+        // failing on rather than assuming away.
         case InjectBeforePattern():
           final target = _abs(op.targetFile);
-          ConfigEditor.insertCodeBeforePattern(
+          final applied = ConfigEditor.insertCodeBeforePattern(
             filePath: target,
             pattern: op.pattern,
             code: op.code,
+            fallbackPattern: op.fallbackPattern,
           );
+          if (!applied) return _patternMissed(op.describe(), op.targetFile);
           _helperWrittenTargets.add(target);
           return null;
         case InjectAfterPattern():
           final target = _abs(op.targetFile);
-          ConfigEditor.insertCodeAfterPattern(
+          final applied = ConfigEditor.insertCodeAfterPattern(
             filePath: target,
             pattern: op.pattern,
             code: op.code,
+            fallbackPattern: op.fallbackPattern,
           );
+          if (!applied) return _patternMissed(op.describe(), op.targetFile);
           _helperWrittenTargets.add(target);
           return null;
 
@@ -713,6 +741,94 @@ class InstallTransaction {
   void _logSkip(String opName, String platform) {
     _ctx.artisanContext.output.info(
       'Skipping $opName: no $platform/ directory at ${_ctx.projectRoot}.',
+    );
+  }
+
+  /// Refuses the whole commit when a pattern injection could not land, before
+  /// the stage loop has written anything.
+  ///
+  /// The helper editors write through `dart:io` during staging and sit outside
+  /// the `.tmp` rollback, and the install record `plugin:uninstall` reads is
+  /// only written in phase 6. So a miss discovered mid-loop leaves an orphan
+  /// import, and possibly a pubspec entry, with nothing recorded to reverse
+  /// them. Discovering it here costs nothing instead.
+  ///
+  /// Reports every offending op rather than the first, so one run names the
+  /// whole problem.
+  TransactionResult? _assertPatternsResolvable() {
+    final problems = <String>[];
+
+    for (final op in _ops) {
+      final (String target, Pattern pattern, Pattern? fallback, String code) =
+          switch (op) {
+        InjectBeforePattern() => (
+            op.targetFile,
+            op.pattern,
+            op.fallbackPattern,
+            op.code,
+          ),
+        InjectAfterPattern() => (
+            op.targetFile,
+            op.pattern,
+            op.fallbackPattern,
+            op.code,
+          ),
+        _ => ('', '', null, ''),
+      };
+      if (target.isEmpty) continue;
+
+      final absolute = _abs(target);
+      if (!_ctx.fs.exists(absolute)) {
+        problems.add('${op.describe()}: $target does not exist');
+        continue;
+      }
+
+      final content = _ctx.fs.readAsString(absolute);
+
+      // An idempotent re-run counts as resolvable: the code is already there,
+      // so the helper will skip and answer true. Failing here would break
+      // `plugin:install` on a project it has already installed into.
+      if (code.trim().isNotEmpty && content.contains(code.trim())) continue;
+
+      if (_matches(pattern, content)) continue;
+      if (fallback != null && _matches(fallback, content)) continue;
+
+      problems.add('${op.describe()}: no match in $target');
+    }
+
+    if (problems.isEmpty) return null;
+
+    return Error(
+      error: 'Pattern injection cannot land, so nothing was installed:\n  '
+          '${problems.join('\n  ')}\n'
+          'The plugin expected a different shape in those files. Fix the host '
+          'file or the plugin pattern; re-running changes nothing.',
+      rolledBack: false,
+    );
+  }
+
+  /// Whether [pattern] finds anything in [content], for either `Pattern` shape
+  /// the ops accept.
+  bool _matches(Pattern pattern, String content) {
+    final regex =
+        pattern is RegExp ? pattern : RegExp(RegExp.escape(pattern.toString()));
+
+    return regex.hasMatch(content);
+  }
+
+  /// The [Error] a pattern injection returns when it still matched nothing at
+  /// stage time, past [_assertPatternsResolvable].
+  ///
+  /// `rolledBack: false` because the helper editors sit outside the `.tmp`
+  /// rollback. Unlike the preflight above, this one CAN leave earlier helper
+  /// writes on disk, which is exactly why the preflight exists and why this
+  /// arm should be unreachable in practice.
+  TransactionResult _patternMissed(String description, String targetFile) {
+    return Error(
+      error: '$description matched nothing in $targetFile at stage time, after '
+          'the preflight accepted it. An earlier operation in the same install '
+          'rewrote that file. Earlier helper writes may remain on disk.',
+      rolledBack: false,
     );
   }
 
