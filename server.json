@@ -3,7 +3,7 @@
     "name": "io.github.fluttersdk/artisan",
     "title": "FlutterSDK Artisan",
     "description": "CLI framework and stdio MCP server for Flutter: scaffolding, hot reload, REPL, codegen.",
-    "version": "0.0.15",
+    "version": "0.0.16",
     "repository": {
         "url": "https://github.com/fluttersdk/artisan",
         "source": "github"

@@ -8,6 +8,8 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.16] - 2026-09-19
+
 ### Fixed
 
 - **A pattern injection that matches nothing now fails the install instead of reporting Success over a file it never touched.** `ConfigEditor.insertCodeAfterPattern` and `insertCodeBeforePattern` ended in a bare `if (match != null) { write }` with no else, so a miss wrote nothing and returned normally. `InstallTransaction` had no way to tell an applied injection from a skipped one, added the target to `_helperWrittenTargets` either way, and `plugin:install` printed Success. Both helpers return `bool` now and the transaction returns `Error` naming the target file.
@@ -360,6 +362,7 @@ Both write through `.tmp` + atomic rename; never hand-edit.
 
 ---
 
+[0.0.16]: https://github.com/fluttersdk/artisan/compare/0.0.15...0.0.16
 [0.0.15]: https://github.com/fluttersdk/artisan/compare/0.0.14...0.0.15
 [0.0.14]: https://github.com/fluttersdk/artisan/compare/0.0.13...0.0.14
 [0.0.13]: https://github.com/fluttersdk/artisan/compare/0.0.12...0.0.13
