@@ -183,4 +183,79 @@ rm -rf "\$LOCK_DIR"
       expect(stdoutBuf.join(), contains('ACQUIRED'));
     });
   });
+
+  group('bin_fsa.sh.stub lock lifetime', () {
+    test(
+        'the lock is released before exec, so a long-lived binary never holds it',
+        () async {
+      // `exec` replaces the shell, so an EXIT trap set before it never runs. A
+      // build followed by `exec` into a long-running process (`mcp:serve`) used
+      // to keep `.fsa.lock` for that process's whole life, and every other
+      // invocation looped on "waiting for another fsa invocation" forever.
+      final root = Directory.systemTemp.createTempSync('fsa_exec_');
+      addTearDown(() {
+        if (root.existsSync()) root.deleteSync(recursive: true);
+      });
+
+      // 1. A minimal consumer project around the rendered stub.
+      Directory(p.join(root.path, 'bin')).createSync();
+      Directory(p.join(root.path, 'lib', 'app')).createSync(recursive: true);
+      File(p.join(root.path, 'pubspec.yaml'))
+          .writeAsStringSync('name: probe\n');
+      File(p.join(root.path, 'pubspec.lock'))
+          .writeAsStringSync('packages: {}\n');
+      File(p.join(root.path, 'lib', 'app', '_plugins.g.dart'))
+          .writeAsStringSync('');
+      final fsa = File(p.join(root.path, 'bin', 'fsa'))
+        ..writeAsStringSync(StubLoader.load('bin_fsa.sh'));
+      await Process.run('chmod', ['+x', fsa.path]);
+
+      // 2. A fake `dart` whose `build cli` emits a dispatcher that stays alive
+      //    for three seconds under `mcp:serve` and exits at once otherwise.
+      final fakeBin = Directory(p.join(root.path, 'fake-bin'))..createSync();
+      final fakeDart = File(p.join(fakeBin.path, 'dart'))
+        ..writeAsStringSync(r"""#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Dart SDK version: 9.9.9 (stable)"; exit 0; fi
+while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done
+mkdir -p "$out/bundle/bin"
+printf '#!/bin/sh\n[ "$1" = mcp:serve ] && sleep 3\nexit 0\n' > "$out/bundle/bin/dispatcher"
+chmod +x "$out/bundle/bin/dispatcher"
+""");
+      await Process.run('chmod', ['+x', fakeDart.path]);
+      final env = {
+        'PATH': '${fakeBin.path}:${Platform.environment['PATH']}',
+      };
+
+      // 3. The first call builds, then execs into the long-lived binary.
+      final first =
+          await Process.start(fsa.path, ['mcp:serve'], environment: env);
+      final lockDir = Directory(p.join(root.path, '.artisan', '.fsa.lock'));
+      final binary = File(p.join(
+          root.path, '.artisan', 'cli-bundle', 'bundle', 'bin', 'dispatcher'));
+      final deadline = DateTime.now().add(const Duration(seconds: 5));
+      while (!binary.existsSync() && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+
+      // 4. While it runs, the lock is gone and a second call finishes at once.
+      expect(lockDir.existsSync(), isFalse,
+          reason: 'the lock must not outlive the build');
+      final touch = File(p.join(root.path, 'pubspec.yaml'));
+      touch.setLastModifiedSync(DateTime.now().add(const Duration(seconds: 2)));
+      final second = await Process.start(fsa.path, ['list'], environment: env);
+      final secondCode = await second.exitCode.timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {
+          second.kill(ProcessSignal.sigkill);
+          return -1;
+        },
+      );
+      expect(secondCode, isNot(-1),
+          reason: 'a second fsa call must not wait on the running binary');
+
+      first.kill(ProcessSignal.sigkill);
+      await first.exitCode;
+    });
+  });
 }
