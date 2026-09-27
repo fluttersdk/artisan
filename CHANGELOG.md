@@ -8,6 +8,10 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`bin/fsa` releases its build lock before `exec`.** The lock was released by an `EXIT` trap, and `exec` replaces the shell, so the trap never ran: after a rebuild, the long-lived process the wrapper exec'd into (typically `mcp:serve`) held `.artisan/.fsa.lock` for its whole life, and every other invocation that needed a build looped on "waiting for another fsa invocation to finish..." forever. The lock is now removed and the trap cleared before `exec`. A wait on a live owner is bounded by `FSA_LOCK_TIMEOUT` (default 600 seconds) and then fails naming the owner's pid, and a rebuild compiles into a fresh directory and swaps it in by rename, so a binary another process is running is never overwritten; a killed build's scratch directory is removed by the next build. Existing consumers pick this up with `make:fast-cli --force`.
+
 ## [0.0.16] - 2026-09-19
 
 ### Fixed

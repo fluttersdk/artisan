@@ -114,9 +114,11 @@ by `dart run fluttersdk_artisan install` once from the app root, then
    missing, `.artisan/build.stamp` is empty or missing, the stamp's
    `pubspec.lock hash : dart --version` key mismatches, or
    `pubspec.yaml` is newer than `pubspec.lock` (un-run `pub get`).
-   When `./bin/fsa` says `waiting for another fsa invocation`, the
-   PID-aware lock probe should reclaim a stale lock dir automatically;
-   if it does not, `rm -rf .artisan/.fsa.lock` + retry.
+   The build lock is released before the wrapper execs the binary, a dead
+   owner's lock is reclaimed through a PID probe, and a live owner is waited
+   on for at most `FSA_LOCK_TIMEOUT` seconds (default 600). A wrapper that
+   hangs on `waiting for another fsa invocation` while `mcp:serve` runs predates
+   that fix: regenerate it with `make:fast-cli --force`.
 
 ## 2. Tool surface (10 substrate tools, +N plugin tools when dispatcher-wired)
 
@@ -245,7 +247,7 @@ substring, not the full message:
 | `Isolate sentinel (kind: ...)` | VM Service evaluate saw a stale isolate id | Auto-recovered on the next call; if it persists, `artisan_hot_restart` then retry. |
 | `mkfifo failed (Windows not yet supported; V1 is POSIX-only)` | `artisan_start` on Windows | V1 limitation; stop and surface to the user. |
 | `Chrome failed to open debug port <port>` | `--cdp-port` with a port already in use, or Chrome missing | Pick a free port via `--cdp-port=<N>`, confirm Chrome is installed. |
-| `fsa: waiting for another fsa invocation...` does not clear | Stale `.artisan/.fsa.lock` directory after a hard kill | `rm -rf .artisan/.fsa.lock` + retry. |
+| `fsa: waiting for another fsa invocation...` does not clear | A pre-0.0.17 wrapper exec'd into `mcp:serve` holding the lock, or a stale lock after a hard kill | `make:fast-cli --force` to regenerate the wrapper; `rm -rf .artisan/.fsa.lock` as the fallback. |
 | `another app is recorded` from `artisan_start` | state.json already has a running pid | Call `artisan_stop` first, then `artisan_start`. |
 
 When `artisan_list` is missing an expected plugin namespace (`dusk:` /

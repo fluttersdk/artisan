@@ -135,13 +135,16 @@ needs_build() {
 .artisan/cli-bundle`, writes the stamp atomically, exec's the binary).
 Typical rebuild: ~5s on a warm machine.
 
-**Lock staleness recovery**: if a previous `./bin/fsa` crashed
-(SIGKILL bypasses trap), `.artisan/.fsa.lock/` survives. The next
-invocation reads the lock's stored PID and probes via `kill -0`. If the
-owner is dead, `rm -rf .artisan/.fsa.lock` and retry the `mkdir`.
-Symptom of the race never clearing: `fsa: waiting for another fsa
-invocation to finish...` Recovery: `rm -rf .artisan/.fsa.lock` +
-retry.
+**Lock lifetime**: the lock is held only while building, and released
+before the wrapper `exec`s the binary, so a long-lived process such as
+`mcp:serve` never holds it. If a previous `./bin/fsa` was killed mid-build
+(SIGKILL bypasses the trap), `.artisan/.fsa.lock/` survives; the next
+invocation reads the stored PID, probes it with `kill -0`, and reclaims the
+lock when the owner is dead. A live owner is waited on for at most
+`FSA_LOCK_TIMEOUT` seconds (default 600), after which the call fails and
+names the owner's pid. A build compiles into `.artisan/cli-bundle.build.<pid>`
+and is swapped in by rename; leftovers from a killed build are removed by the
+next build.
 
 **When to manually invalidate the AOT**: after editing
 `.artisan/plugins.json` by hand, or after a `plugins:refresh` /
@@ -403,16 +406,18 @@ kill <squatter pid>                 # or pass --port=<N> to artisan_start
 
 ### `fsa: waiting for another fsa invocation to finish...` (does not clear)
 
-Cause: stale `.artisan/.fsa.lock/` directory after a hard kill of a
-prior fsa run.
+Cause: another invocation is building right now, or a wrapper generated
+before 0.0.17 exec'd into a long-lived process (`mcp:serve`) while still
+holding the lock. The first clears within a build (~5s); the wait gives up
+after `FSA_LOCK_TIMEOUT` seconds (default 600) and names the owner's pid. The
+second is fixed by regenerating the wrapper:
 
 ```bash
-rm -rf .artisan/.fsa.lock
-./bin/fsa <cmd>
+dart run fluttersdk_artisan make:fast-cli --force
 ```
 
-The PID-aware lock probe should reclaim automatically; manual cleanup
-is the fallback when it does not.
+A dead owner's lock is reclaimed automatically through the PID probe;
+`rm -rf .artisan/.fsa.lock` is the fallback when it is not.
 
 ### Plugin tool returns "No tool registered with the name <X>"
 
