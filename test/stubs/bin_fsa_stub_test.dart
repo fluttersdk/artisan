@@ -226,6 +226,11 @@ chmod +x "$out/bundle/bin/dispatcher"
         'PATH': '${fakeBin.path}:${Platform.environment['PATH']}',
       };
 
+      // A scratch directory a killed build left behind.
+      final orphan =
+          Directory(p.join(root.path, '.artisan', 'cli-bundle.build.99999999'))
+            ..createSync(recursive: true);
+
       // 3. The first call builds, then execs into the long-lived binary.
       final first =
           await Process.start(fsa.path, ['mcp:serve'], environment: env);
@@ -241,6 +246,8 @@ chmod +x "$out/bundle/bin/dispatcher"
       // 4. While it runs, the lock is gone and a second call finishes at once.
       expect(lockDir.existsSync(), isFalse,
           reason: 'the lock must not outlive the build');
+      expect(orphan.existsSync(), isFalse,
+          reason: "a killed build's scratch directory is removed");
       final touch = File(p.join(root.path, 'pubspec.yaml'));
       touch.setLastModifiedSync(DateTime.now().add(const Duration(seconds: 2)));
       final second = await Process.start(fsa.path, ['list'], environment: env);

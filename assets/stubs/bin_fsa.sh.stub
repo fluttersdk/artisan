@@ -99,8 +99,10 @@ if needs_build; then
 
     # 7. Compile into a fresh directory and swap it in, so a binary another
     #    process is still running is replaced by rename, never overwritten.
+    #    Holding the lock means no other build runs, so any scratch directory
+    #    left here is from a killed build and can go.
     BUILD_DIR="$CACHE_DIR.build.$$"
-    rm -rf "$BUILD_DIR"
+    rm -rf "$CACHE_DIR".build.* "$CACHE_DIR".old.*
     if ! dart build cli -t "$ENTRY" -o "$BUILD_DIR" >&2; then
       rm -rf "$BUILD_DIR"
       echo "fsa: dart build cli failed. Run 'dart analyze bin/dispatcher.dart' for details." >&2

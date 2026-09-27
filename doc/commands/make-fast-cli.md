@@ -88,6 +88,10 @@ The wrapper's `needs_build()` function triggers a rebuild when any of these cond
 
 Any match triggers a recompile inside the lock-acquire section. The re-check inside the lock prevents redundant builds when multiple invocations race.
 
+### The build lock
+
+`.artisan/.fsa.lock/` is a directory created with an atomic `mkdir` and holds the owner's pid. It is held only while building: the wrapper removes it and clears its trap before `exec`ing the binary, because `exec` replaces the shell and a trap would never run, which used to leave a long-lived `mcp:serve` holding the lock for its whole life. A dead owner's lock is reclaimed through a `kill -0` probe; a live owner is waited on for at most `FSA_LOCK_TIMEOUT` seconds (default 600), after which the call fails and names the pid. A build compiles into `.artisan/cli-bundle.build.<pid>` and is swapped in by rename, so a binary another process is running is never overwritten; leftovers from a killed build are removed by the next build.
+
 ---
 
 ## Performance
