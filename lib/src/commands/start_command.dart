@@ -239,7 +239,7 @@ class StartCommand extends ArtisanCommand {
         defaultsTo: '90',
         help: 'Seconds to wait for the VM Service URI to appear in the flutter '
             'run log. Increase on cold starts where build + DartDev init takes '
-            'longer than the default. Applies to the --cdp-port branch only.',
+            'longer than the default.',
       )
       ..addMultiOption(
         'flutter-arg',
@@ -272,12 +272,18 @@ class StartCommand extends ArtisanCommand {
   /// the last occurrence of a repeated flag, so a caller passing
   /// `--dart-define=AI_TEST=0` can override the one this command sets rather
   /// than being quietly outranked by it.
+  ///
+  /// [profileStatic] becomes `--profile` on a device only. A web profile build
+  /// serves no VM Service, so on a browser target the flag stays the label it
+  /// has always been. A caller who already passed `--profile` through [extra]
+  /// keeps their one flag rather than getting a second.
   static List<String> flutterArgsFor({
     required String device,
     required int webPort,
     required int vmServicePort,
     required bool ddsOn,
     required bool isChromeTarget,
+    bool profileStatic = false,
     bool webExperimentalHotReload = false,
     List<String> extra = const <String>[],
   }) {
@@ -289,6 +295,8 @@ class StartCommand extends ArtisanCommand {
       if (webExperimentalHotReload) '--web-experimental-hot-reload',
       '--host-vmservice-port=$vmServicePort',
       if (!ddsOn) '--no-dds',
+      if (profileStatic && !isChromeTarget && !extra.contains('--profile'))
+        '--profile',
       '--dart-define=AI_TEST=1',
       ...extra,
     ];
@@ -409,7 +417,7 @@ class StartCommand extends ArtisanCommand {
       resolvedCdpPort = parsed;
     }
 
-    // 2. Resolve --timeout (applies to the CDP branch VM Service scrape).
+    // 2. Resolve --timeout (the VM Service scrape deadline on both branches).
     final timeoutRaw = (ctx.input.option('timeout') as String?) ?? '90';
     final resolvedTimeout = int.tryParse(timeoutRaw);
     if (resolvedTimeout == null) {
@@ -455,6 +463,7 @@ class StartCommand extends ArtisanCommand {
       vmServicePort: resolvedVmServicePort,
       ddsOn: ddsOn,
       isChromeTarget: isChromeTarget,
+      profileStatic: profileStatic,
       extra: resolvedFlutterArgs,
     );
 
@@ -491,7 +500,7 @@ class StartCommand extends ArtisanCommand {
     );
     await StateFile.write(booting);
 
-    final vmServiceUri = await _runVmServiceScrape(logFile, 90);
+    final vmServiceUri = await _runVmServiceScrape(logFile, resolvedTimeout);
 
     await StateFile.write(readyState(booting, vmServiceUri: vmServiceUri));
 

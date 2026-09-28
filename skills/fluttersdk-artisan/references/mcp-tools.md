@@ -132,7 +132,7 @@ responses with `isError: true` text.
     "port":              { "type": "string",  "description": "Web port for the chrome device. Default 3100. Ignored for non-web." },
     "vm-service-port":   { "type": "string",  "description": "Host VM Service port. Default 8181." },
     "dds":               { "type": "boolean", "description": "Enable Dart Development Service proxy. Default false." },
-    "profile-static":    { "type": "boolean", "description": "Run flutter in --profile mode (no hot reload). Default false." }
+    "profile-static":    { "type": "boolean", "description": "Device only: flutter run --profile (no hot reload); a label on chrome. Default false." }
   }
 }
 ```
@@ -213,6 +213,9 @@ No state file; nothing to stop.
 - Idempotent: always exit 0 except for catastrophic file-system errors.
 - Also SIGTERMs the FIFO holder pid, deletes the FIFO file, and (on the
   CDP path) reaps the Chrome process with a 2s grace period before SIGKILL.
+- On an Android device serial it also runs `adb -s <serial> shell am
+  force-stop <applicationId>` (id from `android/app/build.gradle*`); a
+  failure is a warning.
 - Errors mid-cleanup are logged as warnings and swallowed; the command
   still returns exit 0.
 

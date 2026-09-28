@@ -31,6 +31,12 @@ class StopCommand extends ArtisanCommand {
   @visibleForTesting
   static Duration stopGracePeriod = const Duration(seconds: 2);
 
+  /// Runs a host command (`adb`). Argv list, no shell, so a serial or an
+  /// application id read from disk is never interpreted.
+  @visibleForTesting
+  static Future<ProcessResult> Function(String, List<String>)
+      stopProcessRunner = Process.run;
+
   /// Default liveness probe: exits 0 when the process exists on POSIX.
   @visibleForTesting
   static bool defaultIsAlive(int pid) {
@@ -117,9 +123,105 @@ class StopCommand extends ArtisanCommand {
       await _reapChrome(ctx, chromePid, state['tmpProfileDir'] as String?);
     }
 
+    // 5. Android app. Signalling the flutter tool detaches it from the device
+    //    without stopping the app, so a profile run's next cold start would
+    //    find the previous process still resident.
+    final device = state['device'] as String?;
+    if (device != null && isAndroidSerial(device)) {
+      await _forceStopAndroidApp(ctx, device, state['projectRoot'] as String?);
+    }
+
     await StateFile.delete();
     ctx.output.success('state.json removed.');
     return 0;
+  }
+
+  /// True when [device] can be an Android serial: not a web or desktop target
+  /// and not an iOS device or simulator id (`<8 hex>-<16 hex>` UDID, or UUID).
+  ///
+  /// Serials of physical devices have no fixed shape, so the test is by
+  /// exclusion; the `applicationId` lookup that follows is what confirms the
+  /// project builds for Android at all.
+  @visibleForTesting
+  static bool isAndroidSerial(String device) {
+    const nonAndroid = <String>{
+      'chrome',
+      'edge',
+      'web-server',
+      'macos',
+      'linux',
+      'windows',
+    };
+    if (nonAndroid.contains(device)) return false;
+    return !_iosDeviceId.hasMatch(device);
+  }
+
+  static final RegExp _iosDeviceId = RegExp(
+    r'^([0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}|'
+    r'[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})$',
+  );
+
+  /// First `applicationId` in the Android app module's Gradle file (Groovy or
+  /// Kotlin DSL) under [projectRoot], or null when there is none.
+  ///
+  /// The first match is the `defaultConfig` one; `applicationIdSuffix` is not
+  /// matched because the quote must follow the key.
+  @visibleForTesting
+  static String? androidApplicationId(String projectRoot) {
+    final pattern = RegExp('applicationId\\s*=?\\s*["\']([^"\']+)["\']');
+    for (final file in <String>['build.gradle', 'build.gradle.kts']) {
+      final gradle = File('$projectRoot/android/app/$file');
+      if (!gradle.existsSync()) continue;
+      final match = pattern.firstMatch(gradle.readAsStringSync());
+      if (match != null) return match.group(1);
+    }
+    return null;
+  }
+
+  /// Runs `adb -s <serial> shell am force-stop <applicationId>`.
+  ///
+  /// A failure is a warning, never an error: the flutter tool is already
+  /// signalled and the session is about to be deleted, so stop has nothing
+  /// left to abort. The operator does need to hear that the app may still be
+  /// running.
+  Future<void> _forceStopAndroidApp(
+    ArtisanContext ctx,
+    String serial,
+    String? projectRoot,
+  ) async {
+    final applicationId =
+        androidApplicationId(projectRoot ?? Directory.current.path);
+    if (applicationId == null) {
+      ctx.output.warning(
+        'No applicationId in android/app/build.gradle*; the app on $serial '
+        'was not force-stopped.',
+      );
+      return;
+    }
+
+    try {
+      final result = await stopProcessRunner('adb', <String>[
+        '-s',
+        serial,
+        'shell',
+        'am',
+        'force-stop',
+        applicationId,
+      ]);
+      if (result.exitCode == 0) {
+        ctx.output.success('Force-stopped $applicationId on $serial.');
+      } else {
+        ctx.output.warning(
+          'adb force-stop of $applicationId on $serial exited '
+                  '${result.exitCode}: ${result.stderr}'
+              .trimRight(),
+        );
+      }
+    } on ProcessException catch (e) {
+      ctx.output.warning(
+        'adb force-stop of $applicationId on $serial failed: ${e.message}',
+      );
+    }
   }
 
   /// Delivers SIGTERM to [chromePid], waits [stopGracePeriod], escalates to

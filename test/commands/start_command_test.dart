@@ -1094,6 +1094,45 @@ void main() {
     });
 
     test(
+        '--timeout drives the scrape on the non-CDP path too, not a literal 90s',
+        () async {
+      // No scraper seam: the live loop runs against a log nothing writes to,
+      // so it can only end at the deadline the caller asked for.
+      StartCommand.cdpProcessStarter = (
+        String exec,
+        List<String> args, {
+        String? workingDirectory,
+        ProcessStartMode? mode,
+      }) async =>
+          _FakeFlutterProcess(holderPid: 50, flutterPid: 51);
+      StartCommand.cdpFifoMaker = (path) async {
+        File(path).writeAsStringSync('');
+      };
+
+      final ctx = ArtisanContext.bare(
+        MapInput(<String, dynamic>{
+          'device': 'emulator-5554',
+          'port': '3100',
+          'dds': false,
+          'profile-static': false,
+          'timeout': '1',
+        }),
+        BufferedOutput(),
+      );
+
+      await expectLater(
+        StartCommand().handle(ctx).timeout(const Duration(seconds: 10)),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.toString(),
+            'message',
+            contains('Timed out after 1s'),
+          ),
+        ),
+      );
+    });
+
+    test(
         'busy cdpPort before Chrome launch: exit 1 + distinct error, '
         'Chrome never spawned', () async {
       StartCommand.cdpProcessRunner = _fakeProcessRunner(

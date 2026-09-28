@@ -255,6 +255,121 @@ void main() {
       );
     });
   });
+
+  group('StopCommand on an Android device', () {
+    late Directory tempHome;
+    late Directory project;
+    late List<List<String>> adbCalls;
+
+    setUp(() {
+      tempHome = Directory.systemTemp.createTempSync('artisan_stop_adb_');
+      project = Directory('${tempHome.path}/app')..createSync();
+      // An explicit session path is what lets the recorded projectRoot differ
+      // from the working directory without tripping the ownership guard.
+      StateFile.pathOverride = '${tempHome.path}/state.json';
+      StopCommand.stopKillFunction = _noOpKill;
+      adbCalls = <List<String>>[];
+      StopCommand.stopProcessRunner = (String executable, List<String> args) {
+        adbCalls.add(<String>[executable, ...args]);
+        return Future<ProcessResult>.value(ProcessResult(0, 0, '', ''));
+      };
+    });
+
+    tearDown(() {
+      StateFile.pathOverride = null;
+      StopCommand.stopKillFunction = Process.killPid;
+      StopCommand.stopProcessRunner = Process.run;
+      if (tempHome.existsSync()) tempHome.deleteSync(recursive: true);
+    });
+
+    void seedGradle(String fileName, String body) {
+      File('${project.path}/android/app/$fileName')
+        ..createSync(recursive: true)
+        ..writeAsStringSync(body);
+    }
+
+    Future<BufferedOutput> stopDevice(String device) async {
+      await StateFile.write(<String, dynamic>{
+        'pid': 4242,
+        'device': device,
+        'projectRoot': project.path,
+      });
+      final BufferedOutput output = BufferedOutput();
+      await StopCommand().handle(
+        ArtisanContext.bare(MapInput(const {}), output),
+      );
+      return output;
+    }
+
+    test('force-stops the app the flutter tool leaves running', () async {
+      seedGradle('build.gradle', '''
+android {
+    defaultConfig {
+        applicationId "com.example.uptizm"
+        applicationIdSuffix ".ignored"
+    }
+}
+''');
+
+      await stopDevice('emulator-5554');
+
+      expect(adbCalls, <List<String>>[
+        <String>[
+          'adb',
+          '-s',
+          'emulator-5554',
+          'shell',
+          'am',
+          'force-stop',
+          'com.example.uptizm',
+        ],
+      ]);
+    });
+
+    test('reads the id from a Kotlin DSL build file', () async {
+      seedGradle('build.gradle.kts', 'applicationId = "dev.fluttersdk.kts"');
+
+      await stopDevice('emulator-5554');
+
+      expect(adbCalls.single.last, 'dev.fluttersdk.kts');
+    });
+
+    test('warns and keeps going when adb answers non-zero', () async {
+      seedGradle('build.gradle', 'applicationId "com.example.uptizm"');
+      StopCommand.stopProcessRunner = (String executable, List<String> args) =>
+          Future<ProcessResult>.value(ProcessResult(0, 1, '', 'no devices'));
+
+      final BufferedOutput output = await stopDevice('emulator-5554');
+
+      expect(output.content, contains('force-stop'));
+      expect(output.content, contains('no devices'));
+      expect(File(StateFile.path).existsSync(), isFalse);
+    });
+
+    test('warns instead of guessing when no application id is found', () async {
+      final BufferedOutput output = await stopDevice('emulator-5554');
+
+      expect(adbCalls, isEmpty);
+      expect(output.content, contains('applicationId'));
+      expect(File(StateFile.path).existsSync(), isFalse);
+    });
+
+    test('never reaches for adb on a web, desktop or iOS target', () async {
+      seedGradle('build.gradle', 'applicationId "com.example.uptizm"');
+
+      for (final String device in <String>[
+        'chrome',
+        'web-server',
+        'macos',
+        '00008110-001A2B3C4D5E601E',
+        '4B2C9F0E-7D31-4A5B-9C8E-1F2A3B4C5D6E',
+      ]) {
+        await stopDevice(device);
+      }
+
+      expect(adbCalls, isEmpty);
+    });
+  });
 }
 
 // Test seam helpers.

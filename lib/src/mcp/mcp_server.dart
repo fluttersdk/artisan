@@ -716,8 +716,11 @@ final class McpServer extends MCPServer with ToolsSupport {
             },
             'profile-static': <String, dynamic>{
               'type': 'boolean',
-              'description': 'Run Flutter in `--profile` mode (release-like '
-                  'performance numbers, no hot reload). Default `false`.',
+              'description': 'Build a device (Android, iOS, desktop) with '
+                  '`flutter run --profile`: release-like performance, no hot '
+                  'reload. On `chrome` it only tags the session '
+                  '(`profile: static`), because a web profile build has no VM '
+                  'Service. Default `false`.',
             },
           },
         };
