@@ -130,6 +130,10 @@ final class ProcessGroupReaper {
   /// it cannot read, the reap falls back to a SIGTERM to [pid] alone, the
   /// pre-group behaviour, and reports [ReapOutcome.unverified] so the caller
   /// can say so: a `stop` that throws leaves a session it can never delete.
+  /// An unreadable elapsed time means the [startedBy] reuse check could not
+  /// run, so that fallback SIGTERMs a pid it could not identify. That is a
+  /// deliberate trade: one SIGTERM to one pid, never a group and never
+  /// SIGKILL, is what `stop` sent before the check existed.
   Future<ReapResult> reap(
     int pid, {
     List<int> ports = const <int>[],
