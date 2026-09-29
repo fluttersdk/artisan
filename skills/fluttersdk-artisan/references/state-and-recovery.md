@@ -96,8 +96,9 @@ The agent reads state.json via `artisan_status`. Direct file reads via
   `artisan_hot_restart` writes `R\n`. Both use shell redirection:
   `printf %s 'r\n' > <fifo>`. Dart's `File.open` rejects FIFOs because
   the implementation calls `lseek` (illegal on FIFO).
-- **Cleanup**: `artisan_stop` deletes the FIFO file and SIGTERMs the
-  HOLDER pid. POSIX semantics: unlinking a FIFO invalidates the inode
+- **Cleanup**: `artisan_stop` stops the flutter tool's process group
+  (the HOLDER shares it), deletes the FIFO file and SIGTERMs the HOLDER
+  pid. POSIX semantics: unlinking a FIFO invalidates the inode
   but open file descriptors remain valid until closed.
 
 **Race: FIFO missing while state.json exists.** If the user hard-kills

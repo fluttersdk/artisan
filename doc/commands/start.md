@@ -46,7 +46,7 @@ dart run artisan start [--device=<target>] [--port=<n>] [--vm-service-port=<n>]
 | `--dds` | flag | `false` | Enable Dart Development Service. When absent (default), `--no-dds` is forwarded to `flutter run` so dusk and tinker connect directly to the VM Service. |
 | `--profile-static` | flag | `false` | Start a static-profile run. Sets `profile: "static"` in `state.json`; otherwise `"debug"`. On a device (Android, iOS, desktop) it also forwards `--profile` to `flutter run`, once even when `--flutter-arg=--profile` is passed too; there is no hot reload in that mode. On Chrome it stays a label, because a web profile build has no VM Service. `restart` replays it from `state.json`; `restart --no-profile-static` drops it. |
 | `--cdp-port` | int | (none) | Chrome DevTools Protocol port. When set, `start` pre-launches Chrome with `--remote-debugging-port=<n>` and runs Flutter on `-d web-server`, recording `chromePid` / `tmpProfileDir` / `cdpPort` in `state.json`. Required for `dusk:resize` / `dusk:device`. Only valid with `--device=chrome` or `--device=web-server`, and requires Flutter SDK 3.30.0 or newer. A subsequent `restart` preserves this port. The port is probed before Chrome launches; if it is already in use you receive a clear error with the `--cdp-port` hint instead of a misleading "Is Chrome installed?" message. |
-| `--timeout` | int | `90` | Seconds to wait for the VM Service URI to appear in the `flutter run` log. Increase on cold starts where build and DartDev initialisation takes longer than the default (common on first run after a clean Flutter SDK install or on low-powered CI). Applies to the `--cdp-port` branch and to the plain one alike. |
+| `--timeout` | int | `90` | Seconds to wait for the VM Service URI to appear in the `flutter run` log. Increase on cold starts where build and DartDev initialisation takes longer than the default (common on first run after a clean Flutter SDK install or on low-powered CI). Applies to the `--cdp-port` branch and to the plain one alike; on the `--cdp-port` branch it also bounds the wait for the web server's `is being served at` line, which used to be a fixed 60 seconds and failed a web compile that ran long under load. |
 | `--flutter-arg` | string | (none) | Extra argument forwarded verbatim to `flutter run`, repeatable. Use it for anything `start` has no flag of its own for: `--flutter-arg=--dart-define=KEY=VALUE`, `--flutter-arg=--flavor=dev`, `--flutter-arg=--web-renderer=html`. Forwarded AFTER the arguments `start` builds, so a repeated flag overrides the default it chose. A value containing commas is kept whole (`splitCommas` is off), so `--flutter-arg=--dart-define=TAGS=a,b` reaches Flutter as one argument. Recorded in `state.json` as `flutterArgs` and replayed by `restart`; `restart --flutter-arg=<arg>` replaces the whole carried set, which is also how to clear one. |
 
 <a name="behavior"></a>
@@ -56,7 +56,17 @@ dart run artisan start [--device=<target>] [--port=<n>] [--vm-service-port=<n>]
 
 **Detached spawn and URI scrape.** The shell one-liner run by `start` launches both background processes (`tail` holder and `flutter run`) and echoes their PIDs in `HOLDER=<n>` / `FLUTTER=<n>` format. `start` captures those PIDs from the wrapper's stdout, then polls the log file at `~/.artisan/flutter-dev.log` every 250 ms until it finds a line matching either the web format (`Debug service listening on ws://...`) or the desktop/mobile format (`Dart VM Service on <Platform> is available at: http://...`). `http://` and `https://` URIs are normalized to their `ws://` and `wss://` equivalents and a `/ws` suffix is appended when missing.
 
-**State file write.** After the URI is confirmed, `start` writes this project's session state atomically (`.tmp` + rename) with the full process inventory: PIDs, FIFO path, VM Service URI, web port, device target, profile mode, project root, and a UTC `startedAt` timestamp. The MCP server (`mcp:serve`) reads this file at startup to discover the running app; `stop` reads it to send SIGTERM; `status` reads it to report the live process.
+**State file write.** After the URI is confirmed, `start` writes this project's session state atomically (`.tmp` + rename) with the full process inventory: PIDs, FIFO path, VM Service URI, web port, device target, profile mode, project root, and a UTC `startedAt` timestamp. The MCP server (`mcp:serve`) reads this file at startup to discover the running app; `stop` reads it to find the app to stop; `status` reads it to report the live process.
+
+**One process group per app.** The wrapper shell is spawned in Dart's detached mode, which calls `setsid()`, so the `tail` holder, the flutter tool and every child the tool starts (`frontend_server`, the web server, `adb` or `iproxy` helpers) share a process group of their own, separate from the caller's. Chrome, launched detached by `--cdp-port`, gets its own group the same way. `stop`, `restart` and a failed `--cdp-port` start stop an app through that group:
+
+1. Check that the recorded pid is still the process `start` spawned: `stop` compares its age (`ps -o etime=`) against the session's `startedAt`, and a pid whose process started later is a reused number, left alone.
+2. Read the group id from the live pid (`ps -o pgid= -p <pid>`), or from the FIFO holder when the tool is gone and a child of it may not be. It is not stored, because once every member exits the number is free for reuse. A pid that shares the caller's own group is signalled alone, never its group.
+3. Send `SIGTERM` to the group and wait up to 5 seconds for every member to exit. A zombie does not count as a member; a process listing that fails counts as a live one.
+4. Send `SIGKILL` to the group if any member is left, and wait up to 5 seconds again.
+5. Wait up to 5 seconds more for the ports the app held to come free: the web port of a browser session, the CDP port for Chrome. A port that stays bound is reported, never answered with `SIGKILL`: once the group is gone, whatever holds it is not the app.
+
+The command returns as soon as all of it is gone (about 15 seconds at worst per group, 30 with Chrome), or reports what is left when the budget runs out. On a host where `ps` cannot run (a slim container image) or prints an elapsed time in an unknown shape, the group cannot be found: the pid alone gets `SIGTERM`, as before process groups, nothing is waited on, and a warning says its children may outlive it. A `SIGTERM` to the tool pid alone, which is what these paths used to send, ended the tool and left `frontend_server` running under pid 1, still compiling; returning straight after the signal let the next `start` race a port the old app still held.
 
 <a name="state-file"></a>
 ## State File
@@ -85,9 +95,9 @@ Field reference:
 
 | Field | Type | Notes |
 |:------|:-----|:------|
-| `pid` | int | PID of the `flutter run` process. Used by `stop` to send SIGTERM. |
+| `pid` | int | PID of the `flutter run` process. `stop` reads its process group from it and stops the whole group. |
 | `stdinPipe` | string | Absolute path to the FIFO. `reload` and `hot-restart` write `r\n` / `R\n` here. |
-| `stdinHolderPid` | int | PID of the `tail -f /dev/null` holder that keeps the FIFO write-end open. Killed alongside `pid` by `stop`. |
+| `stdinHolderPid` | int | PID of the `tail -f /dev/null` holder that keeps the FIFO write-end open. It shares the tool's process group, so it stops with it; `stop` also signals it directly. |
 | `vmServiceUri` | string | Canonical `ws://host:port/<token>/ws` URI. All connected-mode tools open this WebSocket. |
 | `webPort` | int | `--web-port` value forwarded to Flutter. Chrome only; ignored for other targets. |
 | `flutterArgs` | list | The `--flutter-arg` values this session was started with. Absent when there were none. `restart` reads it so the relaunched app keeps the build configuration the running one had; a dropped define compiles clean and behaves differently, where a dropped port at least refuses to bind. |
@@ -152,13 +162,15 @@ Allows up to 180 seconds for the VM Service URI to appear in the log. Use this w
 
 **VM Service URI never appears (timeout).** If `flutter run` stalls before printing the URI (for example, the Chrome binary is missing, the Flutter SDK is not on `PATH`, or a Dart compilation error occurs), `start` throws `StateError: Timed out after <n>s...`. Inspect the log at `~/.artisan/flutter-dev.log` for the underlying Flutter output. Common causes: wrong `--device` value, missing `CHROME_EXECUTABLE` env var for headless environments, or a syntax error in the app's entry point. On cold starts (first run after a fresh SDK install, slow CI), increase the deadline with `--timeout=120` or higher.
 
+**Web server not ready in time (`--cdp-port`).** On the `--cdp-port` branch `start` waits for the `is being served at` line before it navigates Chrome, and fails with `Timed out after <n>s waiting for "is being served at"`. The deadline is `--timeout`; raise it when the web compile is slow. The failed start stops the flutter tool's and Chrome's process groups and waits for their ports, so a retry straight after it does not collide with the leftovers.
+
 **CDP port already in use (`--cdp-port` collision).** When the configured CDP port is held by another process, `start` exits immediately before launching Chrome and emits: `CDP port <n> is already in use; pass --cdp-port <free-port> or free it before running start.` Choose a free port (for example `--cdp-port=9224`) or kill the occupying process with `lsof -ti:<port> | xargs kill`.
 
 <a name="related"></a>
 ## Related
 
-- [stop](index.md): send SIGTERM to the running Flutter process, force-stop the app on an Android device (`adb -s <serial> shell am force-stop <applicationId>`, the id read from `android/app/build.gradle*`), and delete `state.json`.
-- [restart](index.md): full stop + start cycle; preserves the prior session's `--cdp-port` (read from `state.json` before `stop` deletes it, then forwarded into `start`). An explicit `--cdp-port` on the `restart` invocation wins.
+- [stop](index.md): stop the running Flutter process group and wait until it and its ports are gone (see [One process group per app](#behavior)), force-stop the app on an Android device (`adb -s <serial> shell am force-stop <applicationId>`, the id read from `android/app/build.gradle*`), and delete `state.json`. An app that outlives `SIGKILL` keeps its session and `stop` exits 1.
+- [restart](index.md): full stop + start cycle; preserves the prior session's `--cdp-port` (read from `state.json` before `stop` deletes it, then forwarded into `start`). An explicit `--cdp-port` on the `restart` invocation wins. The start begins only after `stop` has seen the old app and its ports go, and a `stop` that fails aborts the restart.
 - [reload](index.md): send `r\n` to the FIFO for a hot reload without a full restart.
 - [hot-restart](index.md): send `R\n` to the FIFO for a hot restart that resets app state.
 - [mcp:serve](mcp-serve.md): start the stdio JSON-RPC MCP server; reads this project's session to discover the running app.

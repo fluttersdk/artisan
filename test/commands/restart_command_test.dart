@@ -112,13 +112,17 @@ void main() {
       StopCommand.stopKillFunction = _noOpKill;
       StopCommand.stopIsAlive = _alwaysDead;
       StopCommand.stopGracePeriod = Duration.zero;
+      StopCommand.stopProcessRunner = _noProcessRunner;
+      StopCommand.stopPortProbe = (int _) async => true;
     });
 
     tearDown(() async {
       StateFile.debugHomeOverride = null;
       StopCommand.stopKillFunction = Process.killPid;
       StopCommand.stopIsAlive = StopCommand.defaultIsAlive;
-      StopCommand.stopGracePeriod = const Duration(seconds: 2);
+      StopCommand.stopGracePeriod = const Duration(seconds: 5);
+      StopCommand.stopProcessRunner = Process.run;
+      StopCommand.stopPortProbe = StartCommand.defaultPortProbe;
       StartCommand.cdpProcessRunner = Process.run;
       StartCommand.cdpProcessStarter = (
         exec,
@@ -186,7 +190,7 @@ void main() {
       StartCommand.cdpChromeNavigator = (port, url) async {};
       StartCommand.cdpVmServiceScraper =
           (_) async => 'ws://127.0.0.1:8181/abc/ws';
-      StartCommand.cdpWebServerReadyWaiter = (_) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_, __) async {};
       StartCommand.cdpFifoMaker = (path) async {
         File(path).writeAsStringSync('');
       };
@@ -251,7 +255,7 @@ void main() {
       StartCommand.cdpChromeNavigator = (port, url) async {};
       StartCommand.cdpVmServiceScraper =
           (_) async => 'ws://127.0.0.1:8181/abc/ws';
-      StartCommand.cdpWebServerReadyWaiter = (_) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_, __) async {};
       StartCommand.cdpFifoMaker = (path) async {
         File(path).writeAsStringSync('');
       };
@@ -374,6 +378,66 @@ void main() {
 
         expect(state!['profile'], 'debug');
       });
+    });
+
+    test('does not relaunch until the old app and its web port are gone',
+        () async {
+      // `stop` returned straight after the SIGTERM, so the relaunch raced the
+      // old tool for its port: a start with --cdp-port failed at once on
+      // "Port 3100 is already in use", and dusk's perf campaign grew its own
+      // wait to get around it.
+      await _writeFakeState(tempHome, cdpPort: null);
+      const int pgid = 12340;
+      final Set<int> oldApp = <int>{12345, 12346, 12350};
+      int pollsLeft = 3;
+      bool signalled = false;
+      StopCommand.stopGracePeriod = const Duration(seconds: 1);
+      StopCommand.stopKillFunction = (int target, ProcessSignal _) {
+        if (target == -pgid) signalled = true;
+        return true;
+      };
+      StopCommand.stopIsAlive = oldApp.contains;
+      StopCommand.stopProcessRunner = (String exe, List<String> args) async {
+        if (signalled && --pollsLeft <= 0) oldApp.clear();
+        final String argv = args.join(' ');
+        if (argv == '-o pgid= -p 12345' && oldApp.isNotEmpty) {
+          return ProcessResult(0, 0, '$pgid', '');
+        }
+        // Started long before the fixture's recorded `startedAt`.
+        if (argv == '-o etime= -p 12345' && oldApp.isNotEmpty) {
+          return ProcessResult(0, 0, '200-00:00:00', '');
+        }
+        if (argv == '-A -o pgid=,stat=') {
+          return ProcessResult(
+              0, 0, oldApp.map((int _) => '$pgid S').join('\n'), '');
+        }
+        return ProcessResult(0, 1, '', '');
+      };
+      StopCommand.stopPortProbe = (int port) async => oldApp.isEmpty;
+
+      bool? oldAppGoneAtRelaunch;
+      StartCommand.cdpProcessStarter = (
+        String exec,
+        List<String> args, {
+        String? workingDirectory,
+        ProcessStartMode? mode,
+      }) async {
+        oldAppGoneAtRelaunch = oldApp.isEmpty;
+        return _FakeFlutterProcess(holderPid: 30, flutterPid: 31);
+      };
+      StartCommand.cdpVmServiceScraper =
+          (_) async => 'ws://127.0.0.1:8181/abc/ws';
+      StartCommand.cdpFifoMaker = (path) async {
+        File(path).writeAsStringSync('');
+      };
+
+      final output = BufferedOutput();
+      final int code = await RestartCommand().handle(
+        ArtisanContext.bare(MapInput(<String, dynamic>{'dds': false}), output),
+      );
+
+      expect(code, 0, reason: output.content);
+      expect(oldAppGoneAtRelaunch, isTrue);
     });
 
     test('a refused stop aborts the restart', () async {
@@ -536,7 +600,7 @@ void main() {
       StartCommand.cdpChromeNavigator = (port, url) async {};
       StartCommand.cdpVmServiceScraper =
           (_) async => 'ws://127.0.0.1:8181/abc/ws';
-      StartCommand.cdpWebServerReadyWaiter = (_) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_, __) async {};
       StartCommand.cdpFifoMaker = (path) async {
         File(path).writeAsStringSync('');
       };
@@ -601,7 +665,7 @@ void main() {
       StartCommand.cdpChromeNavigator = (port, url) async {};
       StartCommand.cdpVmServiceScraper =
           (_) async => 'ws://127.0.0.1:8181/abc/ws';
-      StartCommand.cdpWebServerReadyWaiter = (_) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_, __) async {};
       StartCommand.cdpFifoMaker = (path) async {
         File(path).writeAsStringSync('');
       };
@@ -640,6 +704,10 @@ void main() {
 bool _noOpKill(int pid, ProcessSignal signal) => true;
 
 bool _alwaysDead(int pid) => false;
+
+/// Answers every `ps` probe as "no such process".
+Future<ProcessResult> _noProcessRunner(String executable, List<String> args) =>
+    Future<ProcessResult>.value(ProcessResult(0, 1, '', ''));
 
 /// Writes a minimal state.json to [tempHome]/.artisan/state.json.
 Future<void> _writeFakeState(Directory tempHome,

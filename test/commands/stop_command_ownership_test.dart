@@ -29,10 +29,16 @@ void main() {
         killed.add(pid);
         return true;
       };
+      // No real process table: 4242 may well be alive on this machine.
+      StopCommand.stopIsAlive = (int _) => false;
+      StopCommand.stopProcessRunner = (String _, List<String> __) =>
+          Future<ProcessResult>.value(ProcessResult(0, 1, '', ''));
     });
 
     tearDown(() async {
       StopCommand.stopKillFunction = priorKill;
+      StopCommand.stopIsAlive = StopCommand.defaultIsAlive;
+      StopCommand.stopProcessRunner = Process.run;
       StateFile.debugHomeOverride = null;
       StateFile.debugProjectRootOverride = null;
       StateFile.pathOverride = null;
