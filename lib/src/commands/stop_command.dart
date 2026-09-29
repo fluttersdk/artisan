@@ -143,7 +143,9 @@ class StopCommand extends ArtisanCommand {
   ///
   /// Serials of physical devices have no fixed shape, so the test is by
   /// exclusion; the `applicationId` lookup that follows is what confirms the
-  /// project builds for Android at all.
+  /// project builds for Android at all. A device given by name or partial id
+  /// (an iOS simulator named `iPhone 15`) passes too; the cost is one
+  /// `adb force-stop ... exited 1` warning, and `stop` still succeeds.
   @visibleForTesting
   static bool isAndroidSerial(String device) {
     const desktop = <String>{'macos', 'linux', 'windows'};

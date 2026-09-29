@@ -383,6 +383,7 @@ class StartCommand extends ArtisanCommand {
     int? webPort,
     int? vmServicePort,
     String? device,
+    bool? profileStatic,
     List<String>? flutterArgs,
   }) async {
     // Flag wins, then the value carried from a prior session (RestartCommand
@@ -399,8 +400,8 @@ class StartCommand extends ArtisanCommand {
           '${vmServicePort ?? 8181}',
     );
     final ddsOn = (ctx.input.option('dds') as bool?) ?? false;
-    final profileStatic =
-        (ctx.input.option('profile-static') as bool?) ?? false;
+    final resolvedProfileStatic =
+        (ctx.input.option('profile-static') as bool?) ?? profileStatic ?? false;
     // Flag wins over the value a restart carried, same as every setting above.
     // An empty flag list means "not given" rather than "given as empty": the
     // multi-option always parses to a list, so there is no null to test.
@@ -453,7 +454,7 @@ class StartCommand extends ArtisanCommand {
         webPort: resolvedWebPort,
         vmServicePort: resolvedVmServicePort,
         ddsOn: ddsOn,
-        profileStatic: profileStatic,
+        profileStatic: resolvedProfileStatic,
         cdpPort: resolvedCdpPort,
         scrapeTimeout: resolvedTimeout,
         extraFlutterArgs: resolvedFlutterArgs,
@@ -474,7 +475,7 @@ class StartCommand extends ArtisanCommand {
       vmServicePort: resolvedVmServicePort,
       ddsOn: ddsOn,
       isChromeTarget: isChromeTarget,
-      profileStatic: profileStatic,
+      profileStatic: resolvedProfileStatic,
       extra: resolvedFlutterArgs,
     );
 
@@ -502,7 +503,7 @@ class StartCommand extends ArtisanCommand {
       stdinHolderPid: holderPid,
       webPort: resolvedWebPort,
       vmServicePort: resolvedVmServicePort,
-      profileStatic: profileStatic,
+      profileStatic: resolvedProfileStatic,
       device: resolvedDevice,
       chromePid: null,
       tmpProfileDir: null,
