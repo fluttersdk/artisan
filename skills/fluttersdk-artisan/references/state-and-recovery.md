@@ -74,7 +74,7 @@ and the recovery loop for every common failure substring.
 | `flutterArgs` | list / absent | `start --flutter-arg` | the extra `flutter run` arguments this session was started with; absent when there were none |
 | `booting` | bool / absent | `start` | present and true only between the spawn and the URI landing; says the record is incomplete rather than wrong |
 
-`restart` preserves `cdpPort` across the stop+start cycle: it reads the value from `state.json` before `stop` deletes the file, then forwards it into `start`, so a CDP-enabled session survives a restart. An explicit `--cdp-port` on the `restart` invocation wins over the preserved value. `flutterArgs` is carried the same way and matters more: a dropped port refuses to bind and says so, while a dropped `--dart-define` compiles clean and the app just behaves differently.
+`restart` preserves `cdpPort` across the stop+start cycle: it reads the value from `state.json` before `stop` deletes the file, then forwards it into `start`, so a CDP-enabled session survives a restart. An explicit `--cdp-port` on the `restart` invocation wins over the preserved value. `flutterArgs` is carried the same way and matters more: a dropped port refuses to bind and says so, while a dropped `--dart-define` compiles clean and the app just behaves differently. The build mode is carried too: a `profile: static` session restarts as a profile build unless `restart --no-profile-static` says otherwise, so two measurements either side of a restart measure the same build.
 
 The agent reads state.json via `artisan_status`. Direct file reads via
 `Read` tool are also valid for debugging but `artisan_status` adds the

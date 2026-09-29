@@ -69,6 +69,21 @@ void main() {
       expect(forwarded['device'], 'chrome');
     });
 
+    test('sessionOverridesFrom carries a profile session as profileStatic', () {
+      expect(
+        RestartCommand.sessionOverridesFrom(
+          <String, dynamic>{'profile': 'static'},
+        ),
+        equals(<String, Object?>{'profileStatic': true}),
+      );
+      expect(
+        RestartCommand.sessionOverridesFrom(
+          <String, dynamic>{'profile': 'debug'},
+        ),
+        isEmpty,
+      );
+    });
+
     test('sessionOverridesFrom tolerates a missing or partial state', () {
       expect(RestartCommand.sessionOverridesFrom(null), isEmpty);
       expect(
@@ -314,6 +329,51 @@ void main() {
       final state = await StateFile.read();
       expect(state, isNotNull);
       expect(state!['cdpPort'], isNull);
+    });
+
+    group('profile build mode', () {
+      Future<Map<String, dynamic>?> restartWith(
+        Map<String, dynamic> input,
+      ) async {
+        await _writeFakeState(tempHome, cdpPort: null, profile: 'static');
+        StartCommand.cdpProcessStarter = (
+          String exec,
+          List<String> args, {
+          String? workingDirectory,
+          ProcessStartMode? mode,
+        }) async =>
+            _FakeFlutterProcess(holderPid: 30, flutterPid: 31);
+        StartCommand.cdpVmServiceScraper =
+            (_) async => 'ws://127.0.0.1:8181/abc/ws';
+        StartCommand.cdpFifoMaker = (path) async {
+          File(path).writeAsStringSync('');
+        };
+
+        final output = BufferedOutput();
+        final code = await RestartCommand().handle(
+          ArtisanContext.bare(MapInput(input), output),
+        );
+        expect(code, 0, reason: output.content);
+        return StateFile.read();
+      }
+
+      // A restart between two measurements came back as a debug build and
+      // recorded `profile: debug`, so the second run measured a different
+      // build mode from the first without saying so.
+      test('a restart with no flag keeps a profile session in profile',
+          () async {
+        final state = await restartWith(<String, dynamic>{'dds': false});
+
+        expect(state!['profile'], 'static');
+      });
+
+      test('an explicit --no-profile-static on restart wins', () async {
+        final state = await restartWith(
+          <String, dynamic>{'dds': false, 'profile-static': false},
+        );
+
+        expect(state!['profile'], 'debug');
+      });
     });
 
     test('a refused stop aborts the restart', () async {
@@ -583,7 +643,7 @@ bool _alwaysDead(int pid) => false;
 
 /// Writes a minimal state.json to [tempHome]/.artisan/state.json.
 Future<void> _writeFakeState(Directory tempHome,
-    {required int? cdpPort}) async {
+    {required int? cdpPort, String profile = 'debug'}) async {
   final artisanDir = Directory('${tempHome.path}/.artisan');
   await artisanDir.create(recursive: true);
   final file = File('${artisanDir.path}/state.json');
@@ -595,7 +655,7 @@ Future<void> _writeFakeState(Directory tempHome,
     'webPort': 3100,
     'vmServicePort': 8181,
     'startedAt': '2026-06-16T00:00:00.000Z',
-    'profile': 'debug',
+    'profile': profile,
     // This project's own directory: `restart` refuses a session that
     // belongs to somebody else, so a fake root here would exercise the
     // refusal path rather than the carry-over these cases are about.

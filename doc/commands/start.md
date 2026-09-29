@@ -44,9 +44,9 @@ dart run artisan start [--device=<target>] [--port=<n>] [--vm-service-port=<n>]
 | `--port` | int | `3100` | Web server port passed as `--web-port` to `flutter run`. Ignored for non-Chrome targets. |
 | `--vm-service-port` | int | `8181` | VM Service listener port. Recorded in `state.json`; used by `mcp:serve` and connected-mode tools to open the WebSocket. |
 | `--dds` | flag | `false` | Enable Dart Development Service. When absent (default), `--no-dds` is forwarded to `flutter run` so dusk and tinker connect directly to the VM Service. |
-| `--profile-static` | flag | `false` | Tag the session as a static-profile run. Sets `profile: "static"` in `state.json`; otherwise `"debug"`. |
+| `--profile-static` | flag | `false` | Start a static-profile run. Sets `profile: "static"` in `state.json`; otherwise `"debug"`. On a device (Android, iOS, desktop) it also forwards `--profile` to `flutter run`, once even when `--flutter-arg=--profile` is passed too; there is no hot reload in that mode. On Chrome it stays a label, because a web profile build has no VM Service. `restart` replays it from `state.json`; `restart --no-profile-static` drops it. |
 | `--cdp-port` | int | (none) | Chrome DevTools Protocol port. When set, `start` pre-launches Chrome with `--remote-debugging-port=<n>` and runs Flutter on `-d web-server`, recording `chromePid` / `tmpProfileDir` / `cdpPort` in `state.json`. Required for `dusk:resize` / `dusk:device`. Only valid with `--device=chrome` or `--device=web-server`, and requires Flutter SDK 3.30.0 or newer. A subsequent `restart` preserves this port. The port is probed before Chrome launches; if it is already in use you receive a clear error with the `--cdp-port` hint instead of a misleading "Is Chrome installed?" message. |
-| `--timeout` | int | `90` | Seconds to wait for the VM Service URI to appear in the `flutter run` log. Increase on cold starts where build and DartDev initialisation takes longer than the default (common on first run after a clean Flutter SDK install or on low-powered CI). Only applies to the `--cdp-port` branch. |
+| `--timeout` | int | `90` | Seconds to wait for the VM Service URI to appear in the `flutter run` log. Increase on cold starts where build and DartDev initialisation takes longer than the default (common on first run after a clean Flutter SDK install or on low-powered CI). Applies to the `--cdp-port` branch and to the plain one alike. |
 | `--flutter-arg` | string | (none) | Extra argument forwarded verbatim to `flutter run`, repeatable. Use it for anything `start` has no flag of its own for: `--flutter-arg=--dart-define=KEY=VALUE`, `--flutter-arg=--flavor=dev`, `--flutter-arg=--web-renderer=html`. Forwarded AFTER the arguments `start` builds, so a repeated flag overrides the default it chose. A value containing commas is kept whole (`splitCommas` is off), so `--flutter-arg=--dart-define=TAGS=a,b` reaches Flutter as one argument. Recorded in `state.json` as `flutterArgs` and replayed by `restart`; `restart --flutter-arg=<arg>` replaces the whole carried set, which is also how to clear one. |
 
 <a name="behavior"></a>
@@ -93,7 +93,7 @@ Field reference:
 | `flutterArgs` | list | The `--flutter-arg` values this session was started with. Absent when there were none. `restart` reads it so the relaunched app keeps the build configuration the running one had; a dropped define compiles clean and behaves differently, where a dropped port at least refuses to bind. |
 | `vmServicePort` | int | Informational; the port embedded in `vmServiceUri`. |
 | `startedAt` | string | ISO 8601 UTC timestamp of the `start` invocation. |
-| `profile` | string | `"debug"` or `"static"` (set by `--profile-static`). |
+| `profile` | string | `"debug"` or `"static"` (set by `--profile-static`). `restart` reads it so a profile session comes back as a profile build. |
 | `projectRoot` | string | Absolute path to the working directory at invocation time. |
 | `device` | string | The `--device` value passed to this run. |
 | `chromePid` | int or null | PID of the Chrome process pre-launched by `--cdp-port`; `null` on non-CDP runs. `stop` reaps it. |
@@ -157,7 +157,7 @@ Allows up to 180 seconds for the VM Service URI to appear in the log. Use this w
 <a name="related"></a>
 ## Related
 
-- [stop](index.md): send SIGTERM to the running Flutter process and delete `state.json`.
+- [stop](index.md): send SIGTERM to the running Flutter process, force-stop the app on an Android device (`adb -s <serial> shell am force-stop <applicationId>`, the id read from `android/app/build.gradle*`), and delete `state.json`.
 - [restart](index.md): full stop + start cycle; preserves the prior session's `--cdp-port` (read from `state.json` before `stop` deletes it, then forwarded into `start`). An explicit `--cdp-port` on the `restart` invocation wins.
 - [reload](index.md): send `r\n` to the FIFO for a hot reload without a full restart.
 - [hot-restart](index.md): send `R\n` to the FIFO for a hot restart that resets app state.

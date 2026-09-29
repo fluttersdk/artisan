@@ -100,6 +100,80 @@ void main() {
       );
     });
 
+    test(
+        'forwards --profile exactly once on a device when profileStatic is set',
+        () {
+      final List<String> args = StartCommand.flutterArgsFor(
+        device: 'emulator-5554',
+        webPort: 3100,
+        vmServicePort: 8181,
+        ddsOn: false,
+        isChromeTarget: false,
+        profileStatic: true,
+      );
+
+      expect(args.where((String a) => a == '--profile'), hasLength(1));
+    });
+
+    test('does not duplicate --profile when it also arrives as a flutter-arg',
+        () {
+      final List<String> args = StartCommand.flutterArgsFor(
+        device: 'emulator-5554',
+        webPort: 3100,
+        vmServicePort: 8181,
+        ddsOn: false,
+        isChromeTarget: false,
+        profileStatic: true,
+        extra: <String>['--profile'],
+      );
+
+      expect(args.where((String a) => a == '--profile'), hasLength(1));
+    });
+
+    test('keeps --profile as a label on a browser target', () {
+      // Web profile builds have no VM Service, so the flag would boot an app
+      // dusk and telescope cannot reach.
+      final List<String> args = StartCommand.flutterArgsFor(
+        device: 'chrome',
+        webPort: 3100,
+        vmServicePort: 8181,
+        ddsOn: false,
+        isChromeTarget: true,
+        profileStatic: true,
+      );
+
+      expect(args, isNot(contains('--profile')));
+    });
+
+    for (final String device in <String>['web-server', 'edge']) {
+      test('keeps --profile as a label on the $device browser target', () {
+        // Not a CDP target, still a browser: the same profile build with no
+        // VM Service, and the scrape would time out waiting for one.
+        final List<String> args = StartCommand.flutterArgsFor(
+          device: device,
+          webPort: 3100,
+          vmServicePort: 8181,
+          ddsOn: false,
+          isChromeTarget: false,
+          profileStatic: true,
+        );
+
+        expect(args, isNot(contains('--profile')));
+      });
+    }
+
+    test('sends no --profile when profileStatic is not set', () {
+      final List<String> args = StartCommand.flutterArgsFor(
+        device: 'emulator-5554',
+        webPort: 3100,
+        vmServicePort: 8181,
+        ddsOn: false,
+        isChromeTarget: false,
+      );
+
+      expect(args, isNot(contains('--profile')));
+    });
+
     test('an empty extra list changes nothing', () {
       final List<String> withNone = StartCommand.flutterArgsFor(
         device: 'chrome',

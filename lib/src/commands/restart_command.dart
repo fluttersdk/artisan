@@ -13,7 +13,8 @@ import 'stop_command.dart';
 /// `StopCommand` deletes the session state, so everything the app was
 /// started with would be lost before `StartCommand` runs. `RestartCommand`
 /// reads the prior state first and carries the CDP port, the web port, the
-/// VM Service port and the device across. An explicit flag on the restart
+/// VM Service port, the device, the extra flutter arguments and the profile
+/// build mode across. An explicit flag on the restart
 /// invocation always wins over the carried value.
 ///
 /// Only the CDP port used to survive, and the other three mattered as much:
@@ -60,6 +61,9 @@ class RestartCommand extends ArtisanCommand {
     return <String, Object?>{
       for (final String key in _carriedKeys)
         if (priorState[key] != null) key: priorState[key],
+      // The one setting whose state key is not its parameter name: the file
+      // records the build mode as a label, `profile: static` or `debug`.
+      if (priorState['profile'] == 'static') 'profileStatic': true,
     };
   }
 
@@ -98,6 +102,16 @@ class RestartCommand extends ArtisanCommand {
           'device; a restart onto the default web-server device renders in no '
           'browser and every later screenshot comes back stale.',
     );
+    parser.addFlag(
+      'profile-static',
+      // Null rather than false when absent, so an omitted flag can fall back
+      // to the carried build mode while an explicit --no-profile-static wins.
+      defaultsTo: null,
+      negatable: true,
+      help: 'Profile build on a device. Omit to keep the previous session\'s '
+          'build mode; a restart between two measurements that came back as a '
+          'debug build would measure a different app from the first run.',
+    );
     parser.addMultiOption(
       'flutter-arg',
       // See `StartCommand.configure` for why the comma split is off.
@@ -133,6 +147,7 @@ class RestartCommand extends ArtisanCommand {
       webPort: carried['webPort'] as int?,
       vmServicePort: carried['vmServicePort'] as int?,
       device: carried['device'] as String?,
+      profileStatic: carried['profileStatic'] as bool?,
       // Through `List<String>.from` rather than a cast: the value came back
       // out of JSON, so it is a `List<dynamic>` whatever was written into it.
       flutterArgs: carried['flutterArgs'] == null

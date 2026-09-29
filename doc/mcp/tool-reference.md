@@ -80,14 +80,16 @@ tinker) can connect to the running VM.
 | `port` | string | `3100` | Web port for the chrome device (numeric string). Ignored for non-web devices. |
 | `vm-service-port` | string | `8181` | Port the VM Service binds to on the host. Change when 8181 is already taken. |
 | `dds` | boolean | `false` | Enable the Dart Development Service (DDS) proxy. Set `true` when a tool requires DDS-only features. |
-| `profile-static` | boolean | `false` | Run Flutter in `--profile` mode (release-like performance, no hot reload). |
+| `profile-static` | boolean | `false` | Run a device (Android, iOS, desktop) with `flutter run --profile`: release-like performance, no hot reload. On `chrome` it only tags the session, because a web profile build has no VM Service. |
 
 ### artisan_stop
 
 Maps to artisan command: `stop`
 
-Sends `SIGTERM` to the recorded Flutter process and deletes this project's session. After
-this call, plugin tools will fail until `artisan_start` is called again.
+Sends `SIGTERM` to the recorded Flutter process and deletes this project's session. On an
+Android device it also runs `adb -s <serial> shell am force-stop <applicationId>` (the id
+comes from `android/app/build.gradle*`), because signalling the flutter tool leaves the app
+running. After this call, plugin tools will fail until `artisan_start` is called again.
 
 No parameters.
 

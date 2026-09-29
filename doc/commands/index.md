@@ -46,7 +46,7 @@ These seven are the only commands surfaced as MCP tools today, which makes them 
 | `stop` | Stop the running flutter app and delete this project's session. | none | artisan_stop |
 | `status` | Print JSON status of the recorded flutter app. | none | artisan_status |
 | `logs` | Print or `--follow` the captured flutter run log. | none | artisan_logs |
-| `restart` | Stop and start the running flutter app; carries the prior session's device, web port, VM Service port and CDP port across. | none | artisan_restart |
+| `restart` | Stop and start the running flutter app; carries the prior session's device, web port, VM Service port, CDP port, `--flutter-arg` values and profile build mode across. | none | artisan_restart |
 | `reload` | Hot reload the running app (sends `r` to flutter run's stdin). State preserved. | none | artisan_reload |
 | `hot-restart` | Hot restart the running app (sends `R` to flutter run's stdin). Drops Dart state, keeps process. | none | artisan_hot_restart |
 
