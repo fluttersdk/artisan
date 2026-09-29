@@ -49,6 +49,30 @@ void main() {
       expect(output.content, contains('nothing to stop'));
     });
 
+    test('finishes with a pid-only SIGTERM when ps cannot run', () async {
+      final List<(int, ProcessSignal)> signals = <(int, ProcessSignal)>[];
+      StopCommand.stopKillFunction = (int pid, ProcessSignal signal) {
+        signals.add((pid, signal));
+        return true;
+      };
+      StopCommand.stopProcessRunner = (String executable, List<String> args) =>
+          throw ProcessException(executable, args, 'not found', 2);
+      await StateFile.write(<String, dynamic>{
+        'pid': 4242,
+        'projectRoot': Directory.current.path,
+      });
+      final BufferedOutput output = BufferedOutput();
+
+      final int code = await StopCommand().handle(
+        ArtisanContext.bare(MapInput(const {}), output),
+      );
+
+      expect(code, 0, reason: output.content);
+      expect(signals, <(int, ProcessSignal)>[(4242, ProcessSignal.sigterm)]);
+      expect(output.content, contains('sent SIGTERM to pid=4242 only'));
+      expect(await StateFile.read(), isNull);
+    });
+
     test('with state file: emits SIGTERM warning + removes state', () async {
       // Use a high PID very unlikely to be alive; Process.killPid will return
       // false but won't throw, so the success branch fires.

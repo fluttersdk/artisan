@@ -852,6 +852,12 @@ class StartCommand extends ArtisanCommand {
     if (result.outcome == ReapOutcome.survived) {
       ctx.output.warning('$label is still alive after SIGKILL.');
     }
+    if (result.outcome == ReapOutcome.unverified) {
+      ctx.output.warning(
+        'Could not list processes (${result.listingError}); sent SIGTERM to '
+        '$label only, so its children may outlive it.',
+      );
+    }
     for (final int port in result.boundPorts) {
       ctx.output.warning(
         'Port $port is still bound after reaping $label; a retry on it fails '

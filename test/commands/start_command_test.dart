@@ -779,6 +779,74 @@ void main() {
     });
 
     test(
+        'a failure after launch on a host without ps still surfaces the '
+        'original error and cleans up the FIFO and the profile dir', () async {
+      StartCommand.cdpTmpProfileDirRoot = tempProfileRoot.path;
+      final versionRunner = _fakeProcessRunner(
+        flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
+      );
+      StartCommand.cdpProcessRunner = (
+        String exec,
+        List<String> args, {
+        String? workingDirectory,
+        Map<String, String>? environment,
+        bool includeParentEnvironment = true,
+        bool runInShell = false,
+        Encoding? stdoutEncoding,
+        Encoding? stderrEncoding,
+      }) {
+        if (exec == 'ps') throw ProcessException(exec, args, 'not found', 2);
+        return versionRunner(exec, args);
+      };
+      StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+      StartCommand.cdpPortProbe = (_) async => true;
+      StartCommand.cdpProcessStarter = (
+        String exec,
+        List<String> args, {
+        String? workingDirectory,
+        ProcessStartMode? mode,
+      }) async {
+        if (exec == '/fake/chrome') return _SpyProcess(pid: 7777);
+        return _FakeFlutterProcess(holderPid: 100, flutterPid: 200);
+      };
+      StartCommand.cdpChromeProber = (port, timeout) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_, __) async {};
+      StartCommand.cdpFifoMaker = (path) async {
+        File(path).writeAsStringSync('');
+      };
+      StartCommand.cdpChromeNavigator = (port, url) async {
+        throw StateError('Page.navigate failed');
+      };
+      final killedPids = <int>[];
+      StartCommand.cdpKillPid = (pid, [signal = ProcessSignal.sigterm]) {
+        killedPids.add(pid);
+        return true;
+      };
+      final output = BufferedOutput();
+
+      final code = await StartCommand().handle(ArtisanContext.bare(
+        MapInput(<String, dynamic>{
+          'device': 'chrome',
+          'port': '3100',
+          'dds': false,
+          'profile-static': false,
+          'cdp-port': '9223',
+        }),
+        output,
+      ));
+
+      expect(code, 1);
+      expect(output.content, contains('Page.navigate failed'));
+      expect(killedPids, containsAll(<int>[100, 200, 7777]));
+      expect(
+        File('${tempHome.path}/.artisan/flutter-dev.fifo').existsSync(),
+        isFalse,
+      );
+      expect(Directory('${tempProfileRoot.path}/dusk-chrome-9223').existsSync(),
+          isFalse);
+    });
+
+    test(
         'vmServiceUri scrape throws after launch: returns 1, reaps Chrome + '
         'flutter pids + deletes FIFO + tmp profile dir', () async {
       StartCommand.cdpTmpProfileDirRoot = tempProfileRoot.path;

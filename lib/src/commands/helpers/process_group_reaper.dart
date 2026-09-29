@@ -20,6 +20,10 @@ enum ReapOutcome {
 
   /// Still alive when the budget after SIGKILL ran out.
   survived,
+
+  /// The process listing could not run, so only the pid was SIGTERMed and
+  /// nothing was waited on: its children and its exit are unknown.
+  unverified,
 }
 
 /// What [ProcessGroupReaper.reap] did, and what it left behind.
@@ -30,6 +34,7 @@ final class ReapResult {
     required this.termDelivered,
     this.boundPorts = const <int>[],
     this.pidReused = false,
+    this.listingError,
   });
 
   final ReapOutcome outcome;
@@ -50,6 +55,11 @@ final class ReapResult {
   /// recorded, so it was left alone: the recorded process is gone and its
   /// number was handed to something else.
   final bool pidReused;
+
+  /// Why the outcome is [ReapOutcome.unverified]: the [io.ProcessException]
+  /// of a host without `ps`, or the [FormatException] of an elapsed time it
+  /// printed in an unknown shape. Null otherwise.
+  final Object? listingError;
 }
 
 /// Stops a detached process together with everything it spawned, and waits,
@@ -69,7 +79,8 @@ final class ReapResult {
 /// be reused too, so a caller holding a stale one passes the time its session
 /// was recorded and a pid that started later is left alone. Zombies do not
 /// count as live members, and a process listing that fails reads as alive,
-/// never as gone. POSIX only (BSD and procps `ps`), like the FIFO the
+/// never as gone; a listing that cannot run at all degrades the reap to the
+/// pid alone. POSIX only (BSD and procps `ps`), like the FIFO the
 /// lifecycle commands already depend on.
 final class ProcessGroupReaper {
   /// [grace] bounds each wait: after SIGTERM, after SIGKILL, and for the
@@ -115,12 +126,42 @@ final class ProcessGroupReaper {
   /// A pid of 1 or below never is either.
   ///
   /// Returns as soon as everything is gone, or when the budget is spent; the
-  /// [ReapResult] says which. Throws [FormatException] when `ps` prints an
-  /// elapsed time it cannot read, rather than guessing whose process it is.
+  /// [ReapResult] says which. When `ps` cannot run, or prints an elapsed time
+  /// it cannot read, the reap falls back to a SIGTERM to [pid] alone, the
+  /// pre-group behaviour, and reports [ReapOutcome.unverified] so the caller
+  /// can say so: a `stop` that throws leaves a session it can never delete.
   Future<ReapResult> reap(
     int pid, {
     List<int> ports = const <int>[],
     DateTime? startedBy,
+  }) async {
+    try {
+      return await _reapGroup(pid, ports: ports, startedBy: startedBy);
+    } on io.ProcessException catch (error) {
+      return _reapPidOnly(pid, ports, error);
+    } on FormatException catch (error) {
+      return _reapPidOnly(pid, ports, error);
+    }
+  }
+
+  Future<ReapResult> _reapPidOnly(
+    int pid,
+    List<int> ports,
+    Object error,
+  ) async {
+    return ReapResult(
+      outcome: ReapOutcome.unverified,
+      pgid: null,
+      termDelivered: _kill(pid, io.ProcessSignal.sigterm),
+      boundPorts: await _waitForPorts(ports),
+      listingError: error,
+    );
+  }
+
+  Future<ReapResult> _reapGroup(
+    int pid, {
+    required List<int> ports,
+    required DateTime? startedBy,
   }) async {
     // 1. Nothing at or below pid 1 is ours: `kill(0)` addresses the caller's
     //    own group and `kill(-1)` every process it may signal.

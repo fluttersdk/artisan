@@ -248,6 +248,56 @@ void main() {
       expect(probed, contains(200));
       expect(result.outcome, ReapOutcome.exited);
     });
+
+    test('falls back to a pid-only SIGTERM when ps cannot run', () async {
+      // A slim container image ships no `ps`; `stop` must still finish.
+      final _FakeProcessTable table = _FakeProcessTable(<int, int>{200: 190});
+      final ProcessGroupReaper reaper = ProcessGroupReaper(
+        kill: table.kill,
+        run: (String executable, List<String> arguments) =>
+            throw ProcessException(executable, arguments, 'not found', 2),
+        grace: Duration.zero,
+        selfPid: _FakeProcessTable.selfPid,
+      );
+
+      final ReapResult result = await reaper.reap(
+        200,
+        startedBy: DateTime.now(),
+      );
+
+      expect(table.signals, <(int, ProcessSignal)>[
+        (200, ProcessSignal.sigterm),
+      ]);
+      expect(result.outcome, ReapOutcome.unverified);
+      expect(result.pgid, isNull);
+      expect(result.termDelivered, isTrue);
+      expect(result.listingError, isA<ProcessException>());
+    });
+
+    test('falls back to a pid-only SIGTERM when ps prints an unreadable etime',
+        () async {
+      final _FakeProcessTable table = _FakeProcessTable(<int, int>{200: 190});
+      final ProcessGroupReaper reaper = ProcessGroupReaper(
+        kill: table.kill,
+        run: (String executable, List<String> arguments) async =>
+            arguments.contains('etime=')
+                ? ProcessResult(0, 0, 'n/a\n', '')
+                : table.run(executable, arguments),
+        grace: Duration.zero,
+        selfPid: _FakeProcessTable.selfPid,
+      );
+
+      final ReapResult result = await reaper.reap(
+        200,
+        startedBy: DateTime.now(),
+      );
+
+      expect(table.signals, <(int, ProcessSignal)>[
+        (200, ProcessSignal.sigterm),
+      ]);
+      expect(result.outcome, ReapOutcome.unverified);
+      expect(result.listingError, isA<FormatException>());
+    });
   });
 }
 

@@ -66,7 +66,7 @@ dart run artisan start [--device=<target>] [--port=<n>] [--vm-service-port=<n>]
 4. Send `SIGKILL` to the group if any member is left, and wait up to 5 seconds again.
 5. Wait up to 5 seconds more for the ports the app held to come free: the web port of a browser session, the CDP port for Chrome. A port that stays bound is reported, never answered with `SIGKILL`: once the group is gone, whatever holds it is not the app.
 
-The command returns as soon as all of it is gone (about 15 seconds at worst per group, 30 with Chrome), or reports what is left when the budget runs out. A `SIGTERM` to the tool pid alone, which is what these paths used to send, ended the tool and left `frontend_server` running under pid 1, still compiling; returning straight after the signal let the next `start` race a port the old app still held.
+The command returns as soon as all of it is gone (about 15 seconds at worst per group, 30 with Chrome), or reports what is left when the budget runs out. On a host where `ps` cannot run (a slim container image) or prints an elapsed time in an unknown shape, the group cannot be found: the pid alone gets `SIGTERM`, as before process groups, nothing is waited on, and a warning says its children may outlive it. A `SIGTERM` to the tool pid alone, which is what these paths used to send, ended the tool and left `frontend_server` running under pid 1, still compiling; returning straight after the signal let the next `start` race a port the old app still held.
 
 <a name="state-file"></a>
 ## State File

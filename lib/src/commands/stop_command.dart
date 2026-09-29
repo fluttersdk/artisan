@@ -228,6 +228,7 @@ class StopCommand extends ArtisanCommand {
         'SIGKILL to $target.',
       );
     }
+    _warnUnverified(ctx, 'flutter run', anchor, result);
     _warnBoundPorts(ctx, result);
     return result;
   }
@@ -238,6 +239,19 @@ class StopCommand extends ArtisanCommand {
   DateTime? _startedAt(Map<String, dynamic> state) {
     final Object? raw = state['startedAt'];
     return raw is String ? DateTime.tryParse(raw) : null;
+  }
+
+  void _warnUnverified(
+    ArtisanContext ctx,
+    String label,
+    int pid,
+    ReapResult result,
+  ) {
+    if (result.outcome != ReapOutcome.unverified) return;
+    ctx.output.warning(
+      'Could not list processes (${result.listingError}); sent SIGTERM to '
+      'pid=$pid only, so $label children may outlive it.',
+    );
   }
 
   void _warnBoundPorts(ArtisanContext ctx, ReapResult result) {
@@ -373,6 +387,7 @@ class StopCommand extends ArtisanCommand {
     if (result.outcome == ReapOutcome.survived) {
       ctx.output.warning('Chrome pid=$chromePid is still alive after SIGKILL.');
     }
+    _warnUnverified(ctx, 'Chrome', chromePid, result);
     _warnBoundPorts(ctx, result);
 
     // 2. Best-effort delete of the tmp profile dir. Missing directories and
