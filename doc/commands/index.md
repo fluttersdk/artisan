@@ -43,7 +43,7 @@ These seven are the only commands surfaced as MCP tools today, which makes them 
 | Command | Description | Boot Mode | MCP Tool |
 |---------|-------------|-----------|----------|
 | `start` | Boot `flutter run -d <device>` detached and record the VM Service URI to this project's session. | none | artisan_start |
-| `stop` | Stop the running flutter app and delete this project's session. | none | artisan_stop |
+| `stop` | Stop the running flutter app's whole process group, wait until it and its web port are gone, and delete this project's session. | none | artisan_stop |
 | `status` | Print JSON status of the recorded flutter app. | none | artisan_status |
 | `logs` | Print or `--follow` the captured flutter run log. | none | artisan_logs |
 | `restart` | Stop and start the running flutter app; carries the prior session's device, web port, VM Service port, CDP port, `--flutter-arg` values and profile build mode across. | none | artisan_restart |

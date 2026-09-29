@@ -86,10 +86,17 @@ tinker) can connect to the running VM.
 
 Maps to artisan command: `stop`
 
-Sends `SIGTERM` to the recorded Flutter process and deletes this project's session. On an
-Android device it also runs `adb -s <serial> shell am force-stop <applicationId>` (the id
-comes from `android/app/build.gradle*`), because signalling the flutter tool leaves the app
-running. After this call, plugin tools will fail until `artisan_start` is called again.
+Sends `SIGTERM` to the process group of the recorded Flutter tool, so `frontend_server` and
+the other children stop with it, and waits up to 5 seconds for the group. A member still
+there is sent `SIGKILL` and waited on for up to 5 seconds more; then, on a web session, the
+web port gets up to 5 seconds to come free. A CDP session's Chrome is stopped the same way,
+with its CDP port. A pid that now belongs to a process started after the session was recorded
+is left alone. The call returns once the app is gone (about 15 seconds at worst, 30 with
+Chrome), so an `artisan_start` straight after it does not race the old app for its port. Then it deletes this project's session; an app that outlives `SIGKILL`
+keeps its session and fails the call, so it can be retried. On an Android device it also runs
+`adb -s <serial> shell am force-stop <applicationId>` (the id comes from
+`android/app/build.gradle*`), because signalling the flutter tool leaves the app running.
+After this call, plugin tools will fail until `artisan_start` is called again.
 
 No parameters.
 

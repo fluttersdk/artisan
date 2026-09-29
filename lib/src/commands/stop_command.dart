@@ -6,12 +6,20 @@ import '../console/artisan_command.dart';
 import '../console/artisan_context.dart';
 import '../console/command_boot.dart';
 import '../state/state_file.dart';
+import 'helpers/process_group_reaper.dart';
 import 'start_command.dart';
 
-/// SIGTERMs the recorded `flutter run` PID + the FIFO stdin holder PID,
-/// deletes the FIFO + state.json. When `chromePid` is present in state,
-/// also delivers SIGTERM (with SIGKILL escalation) to that Chrome process
-/// and deletes the `tmpProfileDir`. Idempotent (silent if state.json absent).
+/// Stops the recorded `flutter run` and returns only once it is gone.
+///
+/// The flutter tool's whole process group is SIGTERMed (so `frontend_server`
+/// and the other children go with it rather than being orphaned), waited on
+/// for [stopGracePeriod], then SIGKILLed and waited on again; a browser
+/// session's web port is waited on too. The FIFO and the session are deleted
+/// afterwards. When `chromePid` is present in state, Chrome is reaped the
+/// same way, its CDP port waited on, and the `tmpProfileDir` deleted. An app
+/// that outlives SIGKILL keeps its session and fails the command, so
+/// `restart` never starts on top of it. Idempotent (silent if state.json
+/// absent).
 class StopCommand extends ArtisanCommand {
   // ---------------------------------------------------------------------------
   // Test seams for Chrome cleanup. Replaced in tests to avoid spawning real
@@ -28,15 +36,25 @@ class StopCommand extends ArtisanCommand {
   @visibleForTesting
   static bool Function(int) stopIsAlive = defaultIsAlive;
 
-  /// Grace period between SIGTERM and the liveness probe. Defaults to 2 s.
+  /// How long each wait of a reap may last: for the process group after
+  /// SIGTERM, after SIGKILL, and for its ports. Defaults to 5 s; a reap
+  /// returns as soon as everything is gone, so this bounds only a stuck app.
   @visibleForTesting
-  static Duration stopGracePeriod = const Duration(seconds: 2);
+  static Duration stopGracePeriod = const Duration(seconds: 5);
 
   /// Runs a host command (`adb`). Argv list, no shell, so a serial or an
   /// application id read from disk is never interpreted.
   @visibleForTesting
   static Future<ProcessResult> Function(String, List<String>)
       stopProcessRunner = Process.run;
+
+  /// Answers whether a port is free to bind; `stop` waits on the web port of
+  /// a browser session and on the CDP port. Defaults to
+  /// [StartCommand.defaultPortProbe], the probe `start` refuses a busy port
+  /// with, so `stop` waits for exactly what the next `start` checks.
+  @visibleForTesting
+  static Future<bool> Function(int port) stopPortProbe =
+      StartCommand.defaultPortProbe;
 
   /// Default liveness probe: exits 0 when the process exists on POSIX.
   @visibleForTesting
@@ -80,19 +98,17 @@ class StopCommand extends ArtisanCommand {
       return 1;
     }
 
-    // 1. flutter run process.
+    // 1. flutter run and its whole process group (frontend_server, the web
+    //    server, device helpers), waited on so a `start` straight after this
+    //    one does not race a port the old tool still holds.
     final pid = state['pid'] as int?;
-    if (pid != null) {
-      try {
-        stopKillFunction(pid, ProcessSignal.sigterm);
-        ctx.output.success('Sent SIGTERM to pid=$pid.');
-      } catch (e) {
-        ctx.output.warning('SIGTERM failed: $e (continuing).');
-      }
-    }
+    final ReapResult? app =
+        pid == null ? null : await _reapApp(ctx, pid, state);
 
-    // 2. FIFO stdin holder (the `sleep infinity > fifo` background process
+    // 2. FIFO stdin holder (the `tail -f /dev/null > fifo` background process
     //    that keeps the pipe's write end open across reload/hot-restart calls).
+    //    It shares the tool's group, so this only matters when the group could
+    //    not be signalled.
     final holderPid = state['stdinHolderPid'] as int?;
     if (holderPid != null) {
       try {
@@ -103,7 +119,7 @@ class StopCommand extends ArtisanCommand {
     }
 
     // 3. Named pipe file. Safe to delete even when readers/writers are
-    //    still attached — POSIX unlinks the inode, fds stay valid until
+    //    still attached; POSIX unlinks the inode, fds stay valid until
     //    closed naturally.
     final pipePath = state['stdinPipe'] as String?;
     if (pipePath != null) {
@@ -121,7 +137,13 @@ class StopCommand extends ArtisanCommand {
     //    that package (no cross-package dep on a downstream plugin).
     final chromePid = state['chromePid'] as int?;
     if (chromePid != null) {
-      await _reapChrome(ctx, chromePid, state['tmpProfileDir'] as String?);
+      await _reapChrome(
+        ctx,
+        chromePid,
+        state['tmpProfileDir'] as String?,
+        state['cdpPort'] as int?,
+        _startedAt(state),
+      );
     }
 
     // 5. Android app. Signalling the flutter tool detaches it from the device
@@ -132,9 +154,98 @@ class StopCommand extends ArtisanCommand {
       await _forceStopAndroidApp(ctx, device, state['projectRoot'] as String?);
     }
 
+    // 6. Keep the session when the app outlived SIGKILL: deleting it would
+    //    leave a live app nothing can find, and `restart` would start on top.
+    if (app?.outcome == ReapOutcome.survived) {
+      ctx.output.error(
+        'flutter run pid=$pid is still alive after SIGKILL; the session is '
+        'kept so `stop` can be run again.',
+      );
+      return 1;
+    }
+
     await StateFile.delete();
     ctx.output.success('state.json removed.');
     return 0;
+  }
+
+  /// The reaper `stop` runs with its own seams, so a test drives both the
+  /// flutter tool and Chrome through the same fakes.
+  ProcessGroupReaper _reaper() {
+    return ProcessGroupReaper(
+      kill: stopKillFunction,
+      run: stopProcessRunner,
+      isAlive: (int pid) async => stopIsAlive(pid),
+      isPortFree: stopPortProbe,
+      grace: stopGracePeriod,
+    );
+  }
+
+  /// Reaps the flutter tool's process group and reports how it ended. The web
+  /// port is waited on for a browser session only: on a device target the
+  /// recorded `webPort` is a default the tool never bound.
+  ///
+  /// The group is found through the tool pid, or through the FIFO holder in
+  /// the same group when the tool is gone and a child of it may not be.
+  Future<ReapResult> _reapApp(
+    ArtisanContext ctx,
+    int pid,
+    Map<String, dynamic> state,
+  ) async {
+    final int? webPort = state['webPort'] as int?;
+    final int? holderPid = state['stdinHolderPid'] as int?;
+    final bool browser = StartCommand.browserDevices.contains(state['device']);
+    final int anchor =
+        holderPid != null && !stopIsAlive(pid) && stopIsAlive(holderPid)
+            ? holderPid
+            : pid;
+    final ReapResult result = await _reaper().reap(
+      anchor,
+      ports: <int>[
+        if (browser && webPort != null) webPort,
+      ],
+      startedBy: _startedAt(state),
+    );
+
+    if (result.pidReused) {
+      ctx.output.warning(
+        'pid=$anchor belongs to a process started after this session was '
+        'recorded; the app is gone and that process was left alone.',
+      );
+      return result;
+    }
+    final String target = result.pgid == null
+        ? 'pid=$anchor'
+        : 'process group ${result.pgid} (flutter run pid=$pid)';
+    if (result.termDelivered) {
+      ctx.output.success('Sent SIGTERM to $target.');
+    } else {
+      ctx.output.warning('SIGTERM to $target reached no process.');
+    }
+    if (result.outcome == ReapOutcome.killed) {
+      ctx.output.warning(
+        'flutter run ignored SIGTERM for ${stopGracePeriod.inSeconds}s; sent '
+        'SIGKILL to $target.',
+      );
+    }
+    _warnBoundPorts(ctx, result);
+    return result;
+  }
+
+  /// When the session was recorded, which every process it names started
+  /// before. Null for a hand-written session without `startedAt`, which the
+  /// reaper then takes on trust.
+  DateTime? _startedAt(Map<String, dynamic> state) {
+    final Object? raw = state['startedAt'];
+    return raw is String ? DateTime.tryParse(raw) : null;
+  }
+
+  void _warnBoundPorts(ArtisanContext ctx, ReapResult result) {
+    for (final int port in result.boundPorts) {
+      ctx.output.warning(
+        'Port $port is still bound; a `start` on it fails until it is freed.',
+      );
+    }
   }
 
   /// True when [device] can be an Android serial: not a web or desktop target
@@ -224,57 +335,47 @@ class StopCommand extends ArtisanCommand {
     }
   }
 
-  /// Delivers SIGTERM to [chromePid], waits [stopGracePeriod], escalates to
-  /// SIGKILL when the liveness probe says the process is still alive, then
-  /// deletes [tmpProfileDir] when non-null and present on disk.
+  /// Reaps Chrome's process group (its renderer and GPU helpers share it,
+  /// since `start` spawns Chrome detached too), waits for [cdpPort] to come
+  /// free, then deletes [tmpProfileDir] when non-null and present on disk.
   ///
-  /// All failures are swallowed: a failed kill or a missing profile dir must
-  /// never surface to the operator as an error; worst case the operator
-  /// cleans up manually.
+  /// A Chrome that survives is a warning, not a failure: the session belongs
+  /// to the flutter tool, and a stray Chrome costs a port, not correctness.
   Future<void> _reapChrome(
     ArtisanContext ctx,
     int chromePid,
     String? tmpProfileDir,
+    int? cdpPort,
+    DateTime? startedBy,
   ) async {
-    // 1. Deliver SIGTERM. Process.killPid returns false when the signal
-    //    cannot be delivered (process already gone, permission denied);
-    //    continue regardless because the liveness probe drives escalation.
-    try {
-      final delivered = stopKillFunction(chromePid, ProcessSignal.sigterm);
-      if (delivered) {
-        ctx.output.success('Chrome SIGTERM sent to pid=$chromePid.');
-      } else {
-        ctx.output.warning(
-          'Chrome SIGTERM not delivered to pid=$chromePid (process '
-          'may already be gone).',
-        );
-      }
-    } catch (_) {
-      // Non-fatal; the probe below drives escalation.
+    // 1. SIGTERM, wait, SIGKILL, wait: the port is what a restart on the same
+    //    --cdp-port probes before it launches a new Chrome.
+    final ReapResult result = await _reaper().reap(
+      chromePid,
+      ports: <int>[
+        if (cdpPort != null) cdpPort,
+      ],
+      startedBy: startedBy,
+    );
+    if (result.pidReused) {
+      ctx.output.warning(
+        'Chrome pid=$chromePid belongs to a process started after this '
+        'session was recorded; it was left alone.',
+      );
+    } else if (result.termDelivered) {
+      ctx.output.success('Chrome SIGTERM sent to pid=$chromePid.');
+    } else {
+      ctx.output.warning(
+        'Chrome SIGTERM not delivered to pid=$chromePid (process '
+        'may already be gone).',
+      );
     }
-
-    // 2. Wait the grace period so Chrome can flush and exit cleanly.
-    await Future<void>.delayed(stopGracePeriod);
-
-    // 3. Liveness probe. If the probe throws, assume dead (safe-fail).
-    bool stillAlive;
-    try {
-      stillAlive = stopIsAlive(chromePid);
-    } catch (_) {
-      stillAlive = false;
+    if (result.outcome == ReapOutcome.survived) {
+      ctx.output.warning('Chrome pid=$chromePid is still alive after SIGKILL.');
     }
+    _warnBoundPorts(ctx, result);
 
-    // 4. Escalate to SIGKILL when the probe reports alive. Failures are
-    //    swallowed; the dual-signal cascade is best-effort.
-    if (stillAlive) {
-      try {
-        stopKillFunction(chromePid, ProcessSignal.sigkill);
-      } catch (_) {
-        // Nothing actionable.
-      }
-    }
-
-    // 5. Best-effort delete of the tmp profile dir. Missing directories and
+    // 2. Best-effort delete of the tmp profile dir. Missing directories and
     //    permission errors are non-fatal.
     if (tmpProfileDir != null && tmpProfileDir.isNotEmpty) {
       try {

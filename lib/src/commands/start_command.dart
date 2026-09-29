@@ -12,6 +12,7 @@ import '../console/pid_parser.dart';
 import '../console/shell_quote.dart';
 import '../state/state_file.dart';
 import '../state/vm_service_log.dart';
+import 'helpers/process_group_reaper.dart';
 
 /// Signature for [Process.start] test seam. Mirrors the upstream subset
 /// [StartCommand] needs. The [mode] parameter is nullable so test fakes can
@@ -53,10 +54,14 @@ typedef CdpVmServiceScraper = Future<String> Function(File logFile);
 /// tests stub to a regular file.
 typedef CdpFifoMaker = Future<void> Function(String path);
 
-/// Waits until the web-server log emits the "is being served at" line.
-/// Used to inject a fake (instant-return) in tests so the CDP branch can
-/// be exercised without a real flutter process writing to the log.
-typedef CdpWebServerReadyWaiter = Future<void> Function(File logFile);
+/// Waits until the web-server log emits the "is being served at" line, for at
+/// most [timeoutSeconds] (the resolved `--timeout`). Used to inject a fake
+/// (instant-return) in tests so the CDP branch can be exercised without a
+/// real flutter process writing to the log.
+typedef CdpWebServerReadyWaiter = Future<void> Function(
+  File logFile,
+  int timeoutSeconds,
+);
 
 /// Probes whether [port] is available for binding on loopback.
 /// Returns `true` when the port is free, `false` when already in use.
@@ -190,11 +195,16 @@ class StartCommand extends ArtisanCommand {
   @visibleForTesting
   static CdpKillPid cdpKillPid = Process.killPid;
 
+  /// Test seam: how long each wait of the failure-path reap may last (after
+  /// SIGTERM, after SIGKILL, for the ports). Defaults to 5 s.
+  @visibleForTesting
+  static Duration cdpReapGrace = const Duration(seconds: 5);
+
   /// Default [CdpPortProbe] implementation. Binds [ServerSocket] on
   /// [InternetAddress.loopbackIPv4] and immediately closes it.
   /// Returns `true` when the port is free; `false` on [SocketException]
-  /// (port already in use).
-  @visibleForTesting
+  /// (port already in use). `stop` waits on the same probe, so it waits for
+  /// exactly what the next `start` checks.
   static Future<bool> defaultPortProbe(int port) async {
     try {
       final socket = await ServerSocket.bind(
@@ -238,8 +248,9 @@ class StartCommand extends ArtisanCommand {
         'timeout',
         defaultsTo: '90',
         help: 'Seconds to wait for the VM Service URI to appear in the flutter '
-            'run log. Increase on cold starts where build + DartDev init takes '
-            'longer than the default.',
+            'run log, and on the --cdp-port branch for the web server to '
+            'report that it is being served. Increase on cold starts where '
+            'build + DartDev init takes longer than the default.',
       )
       ..addMultiOption(
         'flutter-arg',
@@ -713,7 +724,7 @@ class StartCommand extends ArtisanCommand {
       //     has a client to emit the VM Service URI to. Scraping the URI before
       //     navigation deadlocks: -d web-server only emits "Debug service
       //     listening on ws://..." AFTER a debugger client connects.
-      await _runWebServerReadyWait(logFile);
+      await _runWebServerReadyWait(logFile, scrapeTimeout);
       await cdpChromeNavigator(cdpPort, 'http://localhost:$webPort/');
 
       // 11. Record the session BEFORE the scrape, so a caller that gives up
@@ -746,69 +757,78 @@ class StartCommand extends ArtisanCommand {
       ctx.output.success('log=${logFile.path}');
       return 0;
     } catch (error) {
-      // 13. Best-effort reap of everything launched above so a post-Chrome
-      //     failure leaks no Chrome, no flutter web-server, no FIFO, no tmp
-      //     profile dir. Every action is individually guarded and swallows so
-      //     one cleanup failure cannot abort the rest; the error surfaced to
-      //     the operator is the ORIGINAL throw, never a cleanup error. This is
-      //     best-effort SIGTERM only (no SIGKILL grace loop): the OS reaps
-      //     detached children and `fsa stop` is the deliberate full reaper.
-      _reapAfterCdpFailure(
+      // 13. Reap everything launched above so a post-Chrome failure leaks no
+      //     Chrome, no flutter web-server, no orphaned frontend_server, no
+      //     FIFO, no tmp profile dir, and holds none of the ports the retry
+      //     that usually follows will bind. The error surfaced to the operator
+      //     is the ORIGINAL throw, never a cleanup error.
+      ctx.output.error('CDP start failed after launch: $error');
+      await _reapAfterCdpFailure(
+        ctx: ctx,
         flutterProcess: flutterProcess,
         holderPid: holderPid,
         childPid: childPid,
         chromeProcess: chromeProcess,
+        webPort: webPort,
+        cdpPort: cdpPort,
         fifoPath: fifoPath,
         tmpProfileDir: tmpProfileDir,
       );
-      ctx.output.error('CDP start failed after launch: $error');
       return 1;
     }
   }
 
-  /// Best-effort reap of every child the CDP branch spawned, invoked only from
-  /// the failure-cleanup catch in [_handleCdpBranch]. Mirrors the kill + rm
-  /// cascade of `StopCommand._reapChrome` but without a SIGKILL grace loop:
-  /// this is the failure path, the handles are still held, and `fsa stop`
-  /// remains the deliberate full reaper.
+  /// Reaps every child the CDP branch spawned, invoked only from the
+  /// failure-cleanup catch in [_handleCdpBranch], with the same
+  /// [ProcessGroupReaper] `stop` uses: the flutter tool's group (its holder
+  /// and `frontend_server` included) and Chrome's group, each SIGTERMed,
+  /// waited on, SIGKILLed when still there, with the web and CDP ports waited
+  /// on as well. A SIGTERM to the tool pid alone used to return at once and
+  /// orphan `frontend_server` to pid 1, where it kept compiling.
   ///
-  /// Every action is wrapped in its own `try`/swallow so a single failure
-  /// (process already gone, missing FIFO, locked profile dir) never aborts the
-  /// remaining cleanup and never replaces the original error surfaced upstream.
-  void _reapAfterCdpFailure({
+  /// Anything left behind is a warning; the file cleanup that follows is
+  /// individually guarded so a missing FIFO or a locked profile dir never
+  /// replaces the original error surfaced upstream.
+  Future<void> _reapAfterCdpFailure({
+    required ArtisanContext ctx,
     required Process? flutterProcess,
     required int? holderPid,
     required int? childPid,
     required Process chromeProcess,
+    required int webPort,
+    required int cdpPort,
     required String fifoPath,
     required String tmpProfileDir,
-  }) {
-    // 1. SIGTERM the flutter child + holder. When the PIDs were captured, reap
-    //    by pid (the detached holder + child outlive the wrapper handle);
-    //    otherwise fall back to killing the wrapper Process handle directly.
-    if (childPid != null || holderPid != null) {
-      for (final pid in <int?>[childPid, holderPid]) {
-        if (pid == null) continue;
-        try {
-          cdpKillPid(pid, ProcessSignal.sigterm);
-        } catch (_) {
-          // Non-fatal: the process may already be gone.
-        }
-      }
-    } else if (flutterProcess != null) {
-      try {
-        flutterProcess.kill();
-      } catch (_) {
-        // Non-fatal.
+  }) async {
+    final ProcessGroupReaper reaper = ProcessGroupReaper(
+      kill: (int pid, ProcessSignal signal) => cdpKillPid(pid, signal),
+      run: (String executable, List<String> arguments) =>
+          cdpProcessRunner(executable, arguments),
+      isPortFree: cdpPortProbe,
+      grace: cdpReapGrace,
+    );
+
+    // 1. The flutter tool's group. Without the captured PIDs the wrapper
+    //    shell is the only handle, and it shares the same group while alive.
+    final int? flutterPid = childPid ?? flutterProcess?.pid;
+    if (flutterPid != null) {
+      final ReapResult flutter = await reaper.reap(
+        flutterPid,
+        ports: <int>[webPort],
+      );
+      _warnUnreaped(ctx, 'flutter run pid=$flutterPid', flutter);
+      // The holder dies with the group; only a pid-only reap misses it.
+      if (flutter.pgid == null && holderPid != null) {
+        cdpKillPid(holderPid, ProcessSignal.sigterm);
       }
     }
 
-    // 2. SIGTERM Chrome via the held handle.
-    try {
-      chromeProcess.kill();
-    } catch (_) {
-      // Non-fatal.
-    }
+    // 2. Chrome's group: its renderer and GPU helpers, and the CDP port.
+    final ReapResult chrome = await reaper.reap(
+      chromeProcess.pid,
+      ports: <int>[cdpPort],
+    );
+    _warnUnreaped(ctx, 'Chrome pid=${chromeProcess.pid}', chrome);
 
     // 3. Delete the FIFO file.
     try {
@@ -824,6 +844,19 @@ class StartCommand extends ArtisanCommand {
       if (dir.existsSync()) dir.deleteSync(recursive: true);
     } catch (_) {
       // Non-fatal: a stale profile directory is not worth surfacing.
+    }
+  }
+
+  /// Warns about whatever a failure-path reap of [label] left behind.
+  void _warnUnreaped(ArtisanContext ctx, String label, ReapResult result) {
+    if (result.outcome == ReapOutcome.survived) {
+      ctx.output.warning('$label is still alive after SIGKILL.');
+    }
+    for (final int port in result.boundPorts) {
+      ctx.output.warning(
+        'Port $port is still bound after reaping $label; a retry on it fails '
+        'until it is freed.',
+      );
     }
   }
 
@@ -875,16 +908,26 @@ class StartCommand extends ArtisanCommand {
   }
 
   /// Runs the web-server readiness wait, honoring the test seam when set.
-  Future<void> _runWebServerReadyWait(File logFile) {
+  Future<void> _runWebServerReadyWait(File logFile, int timeoutSeconds) {
     final waiter = cdpWebServerReadyWaiter;
-    if (waiter != null) return waiter(logFile);
-    return _waitForWebServerReady(logFile);
+    if (waiter != null) return waiter(logFile, timeoutSeconds);
+    return _waitForWebServerReady(logFile, timeoutSeconds);
   }
+
+  /// Test-only entry to the live web-server readiness loop, the production
+  /// path the [cdpWebServerReadyWaiter] seam otherwise bypasses.
+  @visibleForTesting
+  Future<void> waitForWebServerReadyForTest(File logFile, int timeoutSeconds) =>
+      _waitForWebServerReady(logFile, timeoutSeconds);
 
   /// Wait until the web-server log emits "is being served at" so the URL
   /// is bound and Chrome's navigation will not race the bind.
-  Future<void> _waitForWebServerReady(File logFile) async {
-    final deadline = DateTime.now().add(const Duration(seconds: 60));
+  ///
+  /// Bounded by the resolved `--timeout`, like the scrape that follows. A
+  /// literal 60 s used to fail a start whose web compile ran long under load
+  /// although `--timeout` allowed more.
+  Future<void> _waitForWebServerReady(File logFile, int timeoutSeconds) async {
+    final deadline = DateTime.now().add(Duration(seconds: timeoutSeconds));
     while (DateTime.now().isBefore(deadline)) {
       if (logFile.existsSync()) {
         final content = logFile.readAsStringSync();
@@ -893,7 +936,8 @@ class StartCommand extends ArtisanCommand {
       await Future<void>.delayed(const Duration(milliseconds: 250));
     }
     throw StateError(
-      'Timed out after 60s waiting for "is being served at" in ${logFile.path}.',
+      'Timed out after ${timeoutSeconds}s waiting for "is being served at" in '
+      '${logFile.path}.',
     );
   }
 

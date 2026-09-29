@@ -220,6 +220,7 @@ void main() {
       StartCommand.cdpWebServerReadyWaiter = null;
       StartCommand.cdpPortProbe = StartCommand.defaultPortProbe;
       StartCommand.cdpKillPid = Process.killPid;
+      StartCommand.cdpReapGrace = const Duration(seconds: 5);
       if (tempHome.existsSync()) {
         await tempHome.delete(recursive: true);
       }
@@ -477,7 +478,7 @@ void main() {
       // Skip the real VM Service URI scrape (would require log file flow).
       StartCommand.cdpVmServiceScraper =
           (_) async => 'ws://127.0.0.1:8181/abc/ws';
-      StartCommand.cdpWebServerReadyWaiter = (_) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_, __) async {};
       StartCommand.cdpFifoMaker = (path) async {
         // Pretend we created the FIFO.
         File(path).writeAsStringSync('');
@@ -557,7 +558,7 @@ void main() {
       StartCommand.cdpChromeNavigator = (port, url) async {};
       StartCommand.cdpVmServiceScraper =
           (_) async => 'ws://127.0.0.1:8282/abc/ws';
-      StartCommand.cdpWebServerReadyWaiter = (_) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_, __) async {};
       StartCommand.cdpFifoMaker = (path) async {
         File(path).writeAsStringSync('');
       };
@@ -612,7 +613,7 @@ void main() {
       StartCommand.cdpChromeNavigator = (port, url) async {};
       StartCommand.cdpVmServiceScraper =
           (_) async => 'ws://127.0.0.1:8181/abc/ws';
-      StartCommand.cdpWebServerReadyWaiter = (_) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_, __) async {};
       StartCommand.cdpFifoMaker = (path) async {
         File(path).writeAsStringSync('');
       };
@@ -665,7 +666,7 @@ void main() {
       // deadlock under DWDS because the URI emits only after Chrome connects).
       final timeline = <String>[];
       final readyCompleter = Completer<void>();
-      StartCommand.cdpWebServerReadyWaiter = (_) async {
+      StartCommand.cdpWebServerReadyWaiter = (_, __) async {
         timeline.add('ready:start');
         await readyCompleter.future;
         timeline.add('ready:done');
@@ -717,7 +718,6 @@ void main() {
       StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
       StartCommand.cdpPortProbe = (_) async => true;
 
-      var chromeKilled = false;
       Process? flutterHandle;
       StartCommand.cdpProcessStarter = (
         String exec,
@@ -726,14 +726,14 @@ void main() {
         ProcessStartMode? mode,
       }) async {
         if (exec == '/fake/chrome') {
-          return _SpyProcess(pid: 7777, onKill: (_) => chromeKilled = true);
+          return _SpyProcess(pid: 7777);
         }
         flutterHandle = _FakeFlutterProcess(holderPid: 100, flutterPid: 200);
         return flutterHandle!;
       };
 
       StartCommand.cdpChromeProber = (port, timeout) async {};
-      StartCommand.cdpWebServerReadyWaiter = (_) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_, __) async {};
       StartCommand.cdpFifoMaker = (path) async {
         File(path).writeAsStringSync('');
       };
@@ -768,9 +768,8 @@ void main() {
       expect(output.content, contains('Page.navigate failed'),
           reason: 'surfaced error must be the original throw, not a cleanup '
               'error');
-      expect(chromeKilled, isTrue, reason: 'Chrome must be reaped');
-      expect(killedPids, containsAll(<int>[100, 200]),
-          reason: 'both flutter holder + child pids must be SIGTERMed');
+      expect(killedPids, containsAll(<int>[100, 200, 7777]),
+          reason: 'flutter holder + child and Chrome pids must be SIGTERMed');
       final fifoPath = '${tempHome.path}/.artisan/flutter-dev.fifo';
       expect(File(fifoPath).existsSync(), isFalse,
           reason: 'FIFO must be deleted on failure');
@@ -789,21 +788,18 @@ void main() {
       StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
       StartCommand.cdpPortProbe = (_) async => true;
 
-      var chromeKilled = false;
       StartCommand.cdpProcessStarter = (
         String exec,
         List<String> args, {
         String? workingDirectory,
         ProcessStartMode? mode,
       }) async {
-        if (exec == '/fake/chrome') {
-          return _SpyProcess(pid: 4242, onKill: (_) => chromeKilled = true);
-        }
+        if (exec == '/fake/chrome') return _SpyProcess(pid: 4242);
         return _FakeFlutterProcess(holderPid: 300, flutterPid: 400);
       };
 
       StartCommand.cdpChromeProber = (port, timeout) async {};
-      StartCommand.cdpWebServerReadyWaiter = (_) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_, __) async {};
       StartCommand.cdpChromeNavigator = (port, url) async {};
       StartCommand.cdpFifoMaker = (path) async {
         File(path).writeAsStringSync('');
@@ -838,9 +834,8 @@ void main() {
       expect(code, 1, reason: 'scrape failure must exit 1');
       expect(output.content, contains('VM Service scrape timed out'),
           reason: 'surfaced error must be the original throw');
-      expect(chromeKilled, isTrue, reason: 'Chrome must be reaped');
-      expect(killedPids, containsAll(<int>[300, 400]),
-          reason: 'both flutter holder + child pids must be SIGTERMed');
+      expect(killedPids, containsAll(<int>[300, 400, 4242]),
+          reason: 'flutter holder + child and Chrome pids must be SIGTERMed');
       final fifoPath = '${tempHome.path}/.artisan/flutter-dev.fifo';
       expect(File(fifoPath).existsSync(), isFalse,
           reason: 'FIFO must be deleted on failure');
@@ -859,8 +854,12 @@ void main() {
       StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
       StartCommand.cdpPortProbe = (_) async => true;
 
-      var chromeKilled = false;
       var flutterSpawned = false;
+      final killedPids = <int>[];
+      StartCommand.cdpKillPid = (pid, [signal = ProcessSignal.sigterm]) {
+        killedPids.add(pid);
+        return true;
+      };
       StartCommand.cdpProcessStarter = (
         String exec,
         List<String> args, {
@@ -868,7 +867,7 @@ void main() {
         ProcessStartMode? mode,
       }) async {
         if (exec == '/fake/chrome') {
-          return _SpyProcess(pid: 5151, onKill: (_) => chromeKilled = true);
+          return _SpyProcess(pid: 5151);
         }
         flutterSpawned = true;
         return _FakeFlutterProcess(holderPid: 500, flutterPid: 600);
@@ -898,7 +897,7 @@ void main() {
       expect(code, 1, reason: 'FIFO setup failure must exit 1');
       expect(output.content, contains('mkfifo failed'),
           reason: 'surfaced error must be the original throw');
-      expect(chromeKilled, isTrue,
+      expect(killedPids, contains(5151),
           reason: 'Chrome must be reaped even when the failure precedes the '
               'flutter spawn');
       expect(flutterSpawned, isFalse,
@@ -1017,7 +1016,7 @@ void main() {
       };
 
       StartCommand.cdpChromeProber = (port, timeout) async {};
-      StartCommand.cdpWebServerReadyWaiter = (_) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_, __) async {};
       StartCommand.cdpChromeNavigator = (port, url) async {};
       StartCommand.cdpFifoMaker = (path) async {
         File(path).writeAsStringSync('');
@@ -1091,6 +1090,186 @@ void main() {
           ),
         ),
       );
+    });
+
+    test('--timeout reaches the web-server readiness wait, not a literal 60s',
+        () async {
+      // Under load the web compile took longer than 60s and the start failed
+      // although --timeout allowed 90.
+      StartCommand.cdpProcessRunner = _fakeProcessRunner(
+        flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
+      );
+      StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+      StartCommand.cdpPortProbe = (_) async => true;
+      StartCommand.cdpTmpProfileDirRoot = tempProfileRoot.path;
+      StartCommand.cdpProcessStarter = (
+        String exec,
+        List<String> args, {
+        String? workingDirectory,
+        ProcessStartMode? mode,
+      }) async {
+        if (exec == '/fake/chrome') return _SpyProcess(pid: 111);
+        return _FakeFlutterProcess(holderPid: 10, flutterPid: 20);
+      };
+      StartCommand.cdpChromeProber = (port, timeout) async {};
+      StartCommand.cdpChromeNavigator = (port, url) async {};
+      StartCommand.cdpVmServiceScraper =
+          (_) async => 'ws://127.0.0.1:8181/abc/ws';
+      StartCommand.cdpFifoMaker = (path) async {
+        File(path).writeAsStringSync('');
+      };
+      int? waitedSeconds;
+      StartCommand.cdpWebServerReadyWaiter = (_, int timeoutSeconds) async {
+        waitedSeconds = timeoutSeconds;
+      };
+
+      final output = BufferedOutput();
+      final code = await StartCommand().handle(
+        ArtisanContext.bare(
+          MapInput(<String, dynamic>{
+            'device': 'chrome',
+            'port': '3100',
+            'dds': false,
+            'profile-static': false,
+            'cdp-port': '9223',
+            'timeout': '150',
+          }),
+          output,
+        ),
+      );
+
+      expect(code, 0, reason: output.content);
+      expect(waitedSeconds, 150);
+    });
+
+    test('live web-server wait throws at the configured deadline', () async {
+      final dir = Directory.systemTemp.createTempSync('artisan_ready_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final log = File('${dir.path}/run.log')
+        ..writeAsStringSync('Compiling lib/main.dart for the Web...\n');
+
+      await expectLater(
+        StartCommand().waitForWebServerReadyForTest(log, 1),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.toString(),
+            'message',
+            contains('Timed out after 1s'),
+          ),
+        ),
+      );
+    }, timeout: const Timeout(Duration(seconds: 10)));
+
+    test(
+        'a failed CDP start reaps the flutter and Chrome process groups and '
+        'waits for them', () async {
+      // A timed-out start SIGTERMed the tool pid and returned: its
+      // frontend_server was orphaned to pid 1 and kept compiling, and the
+      // next start raced the old Chrome for the CDP port.
+      StartCommand.cdpTmpProfileDirRoot = tempProfileRoot.path;
+      StartCommand.cdpChromeBinaryResolver = (_) => '/fake/chrome';
+      StartCommand.cdpPortProbe = (_) async => true;
+      StartCommand.cdpReapGrace = const Duration(seconds: 1);
+      final Map<int, int> groupOf = <int, int>{
+        200: 190, // flutter tool
+        100: 190, // FIFO holder
+        201: 190, // frontend_server
+        7777: 7770, // Chrome
+        7778: 7770, // Chrome renderer
+      };
+      final Map<int, int> exitingIn = <int, int>{};
+      final List<(int, ProcessSignal)> signals = <(int, ProcessSignal)>[];
+      StartCommand.cdpKillPid =
+          (int target, [ProcessSignal signal = ProcessSignal.sigterm]) {
+        signals.add((target, signal));
+        for (final int pid in groupOf.keys) {
+          if (pid == target || groupOf[pid] == -target) {
+            exitingIn.putIfAbsent(pid, () => 2);
+          }
+        }
+        return true;
+      };
+      final CdpProcessRunner versionRunner = _fakeProcessRunner(
+        flutterVersionStdout: '{"frameworkVersion":"3.30.0"}',
+      );
+      StartCommand.cdpProcessRunner = (
+        String exec,
+        List<String> args, {
+        String? workingDirectory,
+        Map<String, String>? environment,
+        bool includeParentEnvironment = true,
+        bool runInShell = false,
+        Encoding? stdoutEncoding,
+        Encoding? stderrEncoding,
+      }) async {
+        if (exec != 'ps') return versionRunner(exec, args);
+        for (final int pid in exitingIn.keys.toList()) {
+          exitingIn[pid] = exitingIn[pid]! - 1;
+          if (exitingIn[pid]! <= 0) {
+            exitingIn.remove(pid);
+            groupOf.remove(pid);
+          }
+        }
+        final String argv = args.join(' ');
+        if (argv == '-A -o pgid=,stat=') {
+          return ProcessResult(
+            0,
+            0,
+            groupOf.values.map((int g) => '$g S').join('\n'),
+            '',
+          );
+        }
+        if (argv.startsWith('-o pgid= -p ')) {
+          final int? pgid = groupOf[int.parse(args.last)];
+          return pgid == null
+              ? ProcessResult(0, 1, '', '')
+              : ProcessResult(0, 0, '$pgid', '');
+        }
+        return ProcessResult(0, 1, '', '');
+      };
+      StartCommand.cdpProcessStarter = (
+        String exec,
+        List<String> args, {
+        String? workingDirectory,
+        ProcessStartMode? mode,
+      }) async {
+        if (exec == '/fake/chrome') return _SpyProcess(pid: 7777);
+        return _FakeFlutterProcess(holderPid: 100, flutterPid: 200);
+      };
+      StartCommand.cdpChromeProber = (port, timeout) async {};
+      StartCommand.cdpChromeNavigator = (port, url) async {};
+      StartCommand.cdpWebServerReadyWaiter = (_, __) async {
+        throw StateError(
+            'Timed out after 90s waiting for "is being served at"');
+      };
+      StartCommand.cdpFifoMaker = (path) async {
+        File(path).writeAsStringSync('');
+      };
+
+      final output = BufferedOutput();
+      final code = await StartCommand().handle(
+        ArtisanContext.bare(
+          MapInput(<String, dynamic>{
+            'device': 'chrome',
+            'port': '3100',
+            'dds': false,
+            'profile-static': false,
+            'cdp-port': '9223',
+          }),
+          output,
+        ),
+      );
+
+      expect(code, 1);
+      expect(output.content, contains('Timed out after 90s'));
+      expect(
+        signals,
+        containsAll(<(int, ProcessSignal)>[
+          (-190, ProcessSignal.sigterm),
+          (-7770, ProcessSignal.sigterm),
+        ]),
+      );
+      expect(groupOf, isEmpty, reason: 'nothing may outlive the failed start');
     });
 
     test(
@@ -1359,6 +1538,9 @@ Future<ProcessResult> Function(
       // Allow mkfifo to run for real OR delegate; we delegate to real here.
       return Process.run(exec, args);
     }
+    // No real process table: every `ps` probe of the failure-path reap
+    // answers "no such process".
+    if (exec == 'ps') return ProcessResult(0, 1, '', '');
     return ProcessResult(0, 0, '', '');
   };
 }

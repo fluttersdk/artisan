@@ -59,7 +59,7 @@ on first call.
 | Tool | Maps to CLI command | Purpose |
 |---|---|---|
 | `artisan_start` | `start` | Launch the Flutter app via `flutter run` and write `state.json` |
-| `artisan_stop` | `stop` | Send SIGTERM to the running Flutter process and delete `state.json` |
+| `artisan_stop` | `stop` | Stop the running Flutter process group, wait until it is gone, and delete `state.json` |
 | `artisan_status` | `status` | Read `state.json` and return the current process metadata as JSON |
 | `artisan_logs` | `logs` | Stream the most recent stdout lines captured from `flutter run` |
 | `artisan_restart` | `restart` | Full restart (equivalent to `R` in the flutter run TTY) |

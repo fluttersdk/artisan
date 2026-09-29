@@ -530,15 +530,23 @@ final class McpServer extends MCPServer with ToolsSupport {
         return 'Stop the currently-running Flutter app and clear its state '
             'file.\n'
             '\n'
-            'Sends SIGTERM to the `flutter run` process recorded in '
-            '`~/.artisan/state.json`, then deletes the state file. Safe to '
-            'call when no app is running (returns success, no-op).\n'
+            'Sends SIGTERM to the process group of the `flutter run` '
+            'recorded in `~/.artisan/state.json` (frontend_server and the '
+            'other children included), waits up to 5s, SIGKILLs the group '
+            'if a member is left and waits up to 5s again, then waits up to '
+            '5s for a web session\'s port; Chrome gets the same on a CDP '
+            'session. Returns only once it is gone (about 15s at worst, 30s '
+            'with Chrome), then deletes the state file. '
+            'Safe to call when no app is running (returns success, no-op).\n'
             '\n'
             'Usage:\n'
             '- Call after development is done OR before `artisan_start` if '
-            'the previous app process is stale.\n'
+            'the previous app process is stale. A start straight after it '
+            'does not need a wait of its own.\n'
             '- No-op when `~/.artisan/state.json` is absent; never errors '
-            'on missing state.';
+            'on missing state.\n'
+            '- Fails with "still alive after SIGKILL" and keeps the state '
+            'when the app cannot be stopped; call it again.';
 
       case 'status':
         return 'Return the JSON status of the recorded Flutter app.\n'
