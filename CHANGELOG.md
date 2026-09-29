@@ -8,6 +8,8 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.17] - 2026-09-29
+
 ### Fixed
 
 - **`stop`, `restart` and a failed `start --cdp-port` stop the app's whole process group and wait until it is gone.** `stop` sent SIGTERM to the flutter tool pid and returned at once, so `restart` (and any caller starting right after a stop) raced the old tool for its web port and CDP port; a `--cdp-port` start failed on the spot with "Port ... is already in use". A timed-out `--cdp-port` start sent the same bare SIGTERM and returned, which ended the tool and orphaned its `frontend_server` to pid 1, where it kept compiling and loading the machine. The wrapper was already spawned in Dart's detached mode, which calls `setsid()`, so the tool, its FIFO holder and every child it starts share one process group of their own; nothing signalled it. The new `ProcessGroupReaper` reads the group from the live pid (`ps -o pgid=`, never stored, since a dead group's id can be reused; through the FIFO holder when the tool is already gone), SIGTERMs the group and waits up to 5 seconds for every member, SIGKILLs the group when a member is left and waits again, then waits up to 5 seconds for the ports the app held (a browser session's web port, Chrome's CDP port); a port that stays bound is reported and never answered with SIGKILL. It never signals the caller's own group or a pid of 1 or below, does not count zombies as live, reads a failed `ps` listing as alive rather than gone, falls back to a SIGTERM to the pid alone with a warning when `ps` cannot run or prints an unreadable elapsed time (so `stop` still finishes on a host without it), and leaves alone a recorded pid whose process started after the session's `startedAt` (`ps -o etime=`): a stale session's number may have been handed to an unrelated process, whose group would otherwise be SIGKILLed. `stop` deletes the session only after that; an app that outlives SIGKILL keeps its session and `stop` exits 1, which also stops `restart` from starting on top of it. A port still bound by someone else is a warning. Chrome is reaped the same way on both paths, since its helpers share its group. `StartCommand.defaultPortProbe` is no longer `@visibleForTesting`, because `stop` waits on the same probe `start` refuses a busy port with. (`lib/src/commands/helpers/process_group_reaper.dart`, `lib/src/commands/stop_command.dart`, `lib/src/commands/start_command.dart`, `lib/src/mcp/mcp_server.dart`, `test/commands/`, `doc/commands/`, `doc/mcp/`, `skills/fluttersdk-artisan/references/`)
@@ -372,6 +374,7 @@ Both write through `.tmp` + atomic rename; never hand-edit.
 
 ---
 
+[0.0.17]: https://github.com/fluttersdk/artisan/compare/0.0.16...0.0.17
 [0.0.16]: https://github.com/fluttersdk/artisan/compare/0.0.15...0.0.16
 [0.0.15]: https://github.com/fluttersdk/artisan/compare/0.0.14...0.0.15
 [0.0.14]: https://github.com/fluttersdk/artisan/compare/0.0.13...0.0.14

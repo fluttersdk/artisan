@@ -172,7 +172,7 @@ match the package's `providerName` (or a recognizable abbreviation thereof).
 
    ```yaml
    dependencies:
-     fluttersdk_artisan: ^0.0.16
+     fluttersdk_artisan: ^0.0.17
    ```
 
 3. Validate the archive before tagging:
