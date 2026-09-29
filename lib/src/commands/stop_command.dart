@@ -6,6 +6,7 @@ import '../console/artisan_command.dart';
 import '../console/artisan_context.dart';
 import '../console/command_boot.dart';
 import '../state/state_file.dart';
+import 'start_command.dart';
 
 /// SIGTERMs the recorded `flutter run` PID + the FIFO stdin holder PID,
 /// deletes the FIFO + state.json. When `chromePid` is present in state,
@@ -137,27 +138,24 @@ class StopCommand extends ArtisanCommand {
   }
 
   /// True when [device] can be an Android serial: not a web or desktop target
-  /// and not an iOS device or simulator id (`<8 hex>-<16 hex>` UDID, or UUID).
+  /// and not an iOS device or simulator id (`<8 hex>-<16 hex>` UDID, a legacy
+  /// 40-hex UDID, or a UUID).
   ///
   /// Serials of physical devices have no fixed shape, so the test is by
   /// exclusion; the `applicationId` lookup that follows is what confirms the
   /// project builds for Android at all.
   @visibleForTesting
   static bool isAndroidSerial(String device) {
-    const nonAndroid = <String>{
-      'chrome',
-      'edge',
-      'web-server',
-      'macos',
-      'linux',
-      'windows',
-    };
-    if (nonAndroid.contains(device)) return false;
+    const desktop = <String>{'macos', 'linux', 'windows'};
+    if (StartCommand.browserDevices.contains(device) ||
+        desktop.contains(device)) {
+      return false;
+    }
     return !_iosDeviceId.hasMatch(device);
   }
 
   static final RegExp _iosDeviceId = RegExp(
-    r'^([0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}|'
+    r'^([0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}|[0-9A-Fa-f]{40}|'
     r'[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})$',
   );
 

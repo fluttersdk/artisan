@@ -359,10 +359,13 @@ android {
 
       for (final String device in <String>[
         'chrome',
+        'edge',
         'web-server',
         'macos',
         '00008110-001A2B3C4D5E601E',
         '4B2C9F0E-7D31-4A5B-9C8E-1F2A3B4C5D6E',
+        // The 40-hex UDID of a pre-2018 iPhone.
+        'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
       ]) {
         await stopDevice(device);
       }

@@ -260,6 +260,14 @@ class StartCommand extends ArtisanCommand {
       );
   }
 
+  /// The `flutter run` device ids that build for a browser. [StopCommand]
+  /// reads the same set to tell a browser from an Android serial.
+  static const Set<String> browserDevices = <String>{
+    'chrome',
+    'edge',
+    'web-server',
+  };
+
   /// The `flutter run` argv, as a pure function of the settings.
   ///
   /// Extracted so the argv can be asserted without spawning a real
@@ -274,9 +282,10 @@ class StartCommand extends ArtisanCommand {
   /// than being quietly outranked by it.
   ///
   /// [profileStatic] becomes `--profile` on a device only. A web profile build
-  /// serves no VM Service, so on a browser target the flag stays the label it
-  /// has always been. A caller who already passed `--profile` through [extra]
-  /// keeps their one flag rather than getting a second.
+  /// serves no VM Service, so on any of the [browserDevices] (a CDP target or
+  /// not) the flag stays the label it has always been. A caller who already
+  /// passed `--profile` through [extra] keeps their one flag rather than
+  /// getting a second.
   static List<String> flutterArgsFor({
     required String device,
     required int webPort,
@@ -295,7 +304,9 @@ class StartCommand extends ArtisanCommand {
       if (webExperimentalHotReload) '--web-experimental-hot-reload',
       '--host-vmservice-port=$vmServicePort',
       if (!ddsOn) '--no-dds',
-      if (profileStatic && !isChromeTarget && !extra.contains('--profile'))
+      if (profileStatic &&
+          !browserDevices.contains(device) &&
+          !extra.contains('--profile'))
         '--profile',
       '--dart-define=AI_TEST=1',
       ...extra,

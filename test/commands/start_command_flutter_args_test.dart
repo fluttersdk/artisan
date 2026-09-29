@@ -145,6 +145,23 @@ void main() {
       expect(args, isNot(contains('--profile')));
     });
 
+    for (final String device in <String>['web-server', 'edge']) {
+      test('keeps --profile as a label on the $device browser target', () {
+        // Not a CDP target, still a browser: the same profile build with no
+        // VM Service, and the scrape would time out waiting for one.
+        final List<String> args = StartCommand.flutterArgsFor(
+          device: device,
+          webPort: 3100,
+          vmServicePort: 8181,
+          ddsOn: false,
+          isChromeTarget: false,
+          profileStatic: true,
+        );
+
+        expect(args, isNot(contains('--profile')));
+      });
+    }
+
     test('sends no --profile when profileStatic is not set', () {
       final List<String> args = StartCommand.flutterArgsFor(
         device: 'emulator-5554',
