@@ -185,6 +185,7 @@ neither field.
 |---|---|---|
 | `injectAndroidPermission(permission)` | `InjectAndroidPermission` | Adds `<uses-permission>` to `AndroidManifest.xml`; silently skipped on non-Android consumers |
 | `injectAndroidMetaData(name:, value:)` | `InjectAndroidMetaData` | Adds `<meta-data>` inside `<application>` in `AndroidManifest.xml` |
+| `injectAndroidActivity(name:, exported:, [taskAffinity:], [intentFilters:])` | `InjectAndroidActivity` | Adds an `<activity>` with its `<intent-filter>` elements inside `<application>` in `AndroidManifest.xml`; idempotent by content (see below) |
 | `injectGradlePlugin(pluginId:, [version:])` | `InjectGradlePlugin` | Adds a plugin entry to the `plugins { }` block in `build.gradle.kts` |
 | `injectGradleDependency(scope:, notation:)` | `InjectGradleDependency` | Adds a dependency under `scope` in `android/app/build.gradle.kts` |
 
@@ -193,28 +194,94 @@ neither field.
 | Method | Operation | Description |
 |---|---|---|
 | `injectInfoPlistKey(key:, value:, [platform:])` | `InjectInfoPlistKey` | Sets a key in `ios/Runner/Info.plist` or `macos/Runner/Info.plist`; value may be `String`, `bool`, or `List<String>` |
-| `injectEntitlement(platform:, key:, value:)` | `InjectEntitlement` | Sets a key in `<platform>/Runner/Runner.entitlements` AND writes `CODE_SIGN_ENTITLEMENTS` into `<platform>/Runner.xcodeproj/project.pbxproj`; `platform` is `'ios'` or `'macos'` |
+| `injectInfoPlistUrlScheme(scheme:, [platform:])` | `InjectInfoPlistUrlScheme` | Registers a custom URL scheme under `CFBundleURLTypes` in `ios/Runner/Info.plist` or `macos/Runner/Info.plist`; `scheme` is written without the `://` suffix |
+| `injectEntitlement(platform:, key:, value:)` | `InjectEntitlement` | Sets a key in every entitlements file the application target signs with; when the project names none, writes `<platform>/Runner/Runner.entitlements` AND `CODE_SIGN_ENTITLEMENTS` into `<platform>/Runner.xcodeproj/project.pbxproj`; `platform` is `'ios'` or `'macos'`; value may be `String`, `bool` or `List<String>` |
 | `injectPodfileLine([platform:], line:)` | `InjectPodfileLine` | Appends a CocoaPods pod declaration to the `target 'Runner'` Podfile block |
 
 Platform-scoped ops are silently skipped when the target platform directory is absent.
 
-#### injectEntitlement writes two files
+#### injectAndroidActivity compares content
+
+`injectAndroidActivity` takes the activity's `name` and `exported`, an optional `taskAffinity` (`''`
+renders an empty affinity, `null` omits the attribute) and a list of `AndroidIntentFilter`, each with
+`autoVerify`, `actions`, `categories` and a list of `AndroidIntentData` (`scheme`, `host`, `path`,
+`pathPrefix`). `AndroidIntentFilter` and `AndroidIntentData` come from
+`package:fluttersdk_artisan/artisan.dart`.
+
+```dart
+installer.injectAndroidActivity(
+  name: 'com.linusu.flutter_web_auth_2.CallbackActivity',
+  exported: true,
+  taskAffinity: '',
+  intentFilters: [
+    AndroidIntentFilter(
+      autoVerify: true,
+      actions: ['android.intent.action.VIEW'],
+      categories: [
+        'android.intent.category.DEFAULT',
+        'android.intent.category.BROWSABLE',
+      ],
+      data: [
+        AndroidIntentData(
+          scheme: 'https',
+          host: 'auth.example.com',
+          path: '/social/callback',
+        ),
+      ],
+    ),
+  ],
+);
+```
+
+The manifest is parsed to decide, and the element is spliced in as text just before the real
+`</application>` (a closing tag spelled inside an XML comment is ignored), so every other byte of
+the file keeps its bytes. The write is helper-backed, so the transaction's `.tmp` rollback does not
+cover it.
+
+| Manifest state | Result |
+|---|---|
+| No `<activity>` with this `android:name` under `<application>` | The element is inserted |
+| One exists with an equal set of intent filters (same `autoVerify`, actions, categories and `<data>` attributes, in any order) | No-op |
+| One exists with a different set | Left alone, never rewritten; the install finishes and warns with the block it expected so you can reconcile it by hand |
+
+`exported` and `taskAffinity` are not part of the comparison. A `<data>` carrying an attribute other
+than `scheme`, `host`, `path` or `pathPrefix` compares as different.
+
+#### injectInfoPlistUrlScheme
+
+Appends one `CFBundleURLTypes` dict (`CFBundleTypeRole` = `Editor`, one `CFBundleURLSchemes` entry)
+beside the existing ones, creating the array when the plist has none. When ANY existing dict already
+lists the scheme the call is a no-op and the file is not rewritten. A `CFBundleURLTypes` value that is
+not an `<array>` fails the install.
+
+#### injectEntitlement writes to the files Xcode signs with
 
 Xcode reads an entitlements plist only when the application target's `CODE_SIGN_ENTITLEMENTS` build
-setting names it, so writing the plist alone leaves the entitlement inert. That is why the op also
-edits `<platform>/Runner.xcodeproj/project.pbxproj`, scoped to the build configurations of the target
-whose `productType` is `com.apple.product-type.application` (never the test bundle, never the
-project-level defaults). Both writes are helper-backed, so neither is covered by the transaction's
-`.tmp` rollback. Plan for that when you stage this op.
+setting names it. The op therefore asks the project which files the application target (the target
+whose `productType` is `com.apple.product-type.application`, never the test bundle, never the
+project-level defaults) already signs with, one per distinct `CODE_SIGN_ENTITLEMENTS` value across its
+build configurations, and sets the key in each of them. The build settings stay untouched.
 
-Three cases leave the build setting alone, print a warning naming what to set by hand, and let the
-install finish instead of aborting on top of the writes that already landed:
+- A split project, a Debug and a Release configuration signing against different files, gets the key
+  in both. A macOS Flutter project (`Runner/DebugProfile.entitlements` plus
+  `Runner/Release.entitlements`) is this case.
+- A project whose configurations name no entitlements file at all gets `<platform>/Runner/Runner.entitlements`
+  written AND the application target pointed at it through `CODE_SIGN_ENTITLEMENTS`. That second write
+  edits `<platform>/Runner.xcodeproj/project.pbxproj`.
+- A `List<String>` value is merged into the array the file already carries, entry by entry, so entries
+  another plugin or the app put there survive. A value of any other type fails the install with an
+  `Error`.
+
+All of these writes are helper-backed, so none is covered by the transaction's `.tmp` rollback. Plan
+for that when you stage this op.
+
+Only the last case, pointing the target at a new file, can leave the build setting alone. It prints a
+warning naming what to set by hand and lets the install finish instead of aborting on top of the writes
+that already landed:
 
 - The project has no `<platform>/Runner.xcodeproj` at all, so there is nothing to point at.
-- The application target already signs with a DIFFERENT entitlements file. Every macOS Flutter
-  project does (`Runner/DebugProfile.entitlements` plus `Runner/Release.entitlements`), so a macOS
-  consumer normally takes this path: repointing would drop the sandbox grants those files hold, and
-  the operator copies the keys across by hand instead.
+- A configuration holds a non-string `CODE_SIGN_ENTITLEMENTS`, which the reader cannot resolve to a
+  file and the editor will not overwrite.
 - The reader read the project and declined to edit it. Two shapes reach this. The re-emission does
   not match byte for byte, so it refuses to write a file it cannot reproduce exactly: Xcode escapes
   non-ASCII in that file as `\Uxxxx`, and an accented `PRODUCT_NAME` is enough. Or the project is

@@ -195,7 +195,9 @@ class ConflictDetector {
       InjectRouteRegistration() => true,
       InjectAndroidPermission() => true,
       InjectAndroidMetaData() => true,
+      InjectAndroidActivity() => true,
       InjectInfoPlistKey() => true,
+      InjectInfoPlistUrlScheme() => true,
       InjectEntitlement() => true,
       InjectPodfileLine() => true,
       InjectGradlePlugin() => true,
@@ -257,10 +259,14 @@ class ConflictDetector {
       InjectAndroidMetaData() => PlatformHelper.androidManifestPath(
           _ctx.projectRoot,
         ),
+      InjectAndroidActivity() => PlatformHelper.androidManifestPath(
+          _ctx.projectRoot,
+        ),
       InjectGradlePlugin() => _appBuildGradlePath(),
       InjectGradleDependency() => _appBuildGradlePath(),
       // iOS / macOS native writes.
       InjectInfoPlistKey(:final platform) => _infoPlistPathFor(platform),
+      InjectInfoPlistUrlScheme(:final platform) => _infoPlistPathFor(platform),
       InjectEntitlement(:final platform) => _entitlementsPathFor(platform),
       InjectPodfileLine(:final platform) => _podfilePathFor(platform),
       // Web writes.

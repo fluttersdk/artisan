@@ -169,6 +169,100 @@ void main() {
     });
 
     // -------------------------------------------------------------------------
+    // addUrlScheme
+    // -------------------------------------------------------------------------
+
+    test('addUrlScheme creates CFBundleURLTypes when the key is absent', () {
+      PlistWriter.addUrlScheme(plistPath, 'com.example.app');
+
+      final root = XmlDocument.parse(File(plistPath).readAsStringSync())
+          .findAllElements('dict')
+          .first;
+      final types = root.childElements
+          .skipWhile((e) => e.innerText != 'CFBundleURLTypes')
+          .elementAt(1);
+      expect(types.name.local, 'array');
+
+      final entry = types.findElements('dict').single;
+      final entryKeys = entry.findElements('key').map((e) => e.innerText);
+      expect(entryKeys, ['CFBundleTypeRole', 'CFBundleURLSchemes']);
+      expect(entry.findElements('string').single.innerText, 'Editor');
+      expect(
+        entry
+            .findElements('array')
+            .single
+            .findElements('string')
+            .map((e) => e.innerText),
+        ['com.example.app'],
+      );
+    });
+
+    test('addUrlScheme appends a dict beside an existing one', () {
+      PlistWriter.addUrlScheme(plistPath, 'first');
+      PlistWriter.addUrlScheme(plistPath, 'second');
+
+      final doc = XmlDocument.parse(File(plistPath).readAsStringSync());
+      final dicts = doc
+          .findAllElements('array')
+          .first
+          .findElements('dict')
+          .map((d) => d.findAllElements('string').last.innerText)
+          .toList();
+      expect(dicts, ['first', 'second']);
+    });
+
+    test('addUrlScheme leaves the file byte-identical on a second run', () {
+      PlistWriter.addUrlScheme(plistPath, 'com.example.app');
+      final afterFirst = File(plistPath).readAsStringSync();
+
+      PlistWriter.addUrlScheme(plistPath, 'com.example.app');
+
+      expect(File(plistPath).readAsStringSync(), afterFirst);
+    });
+
+    test('addUrlScheme skips a scheme another dict already lists', () {
+      File(plistPath)
+          .writeAsStringSync('''<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>one</string>
+				<string>shared</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
+''');
+      final before = File(plistPath).readAsStringSync();
+
+      PlistWriter.addUrlScheme(plistPath, 'shared');
+
+      expect(File(plistPath).readAsStringSync(), before);
+    });
+
+    test('addUrlScheme refuses a CFBundleURLTypes that is not an array', () {
+      PlistWriter.setStringKey(plistPath, 'CFBundleURLTypes', 'oops');
+
+      expect(
+        () => PlistWriter.addUrlScheme(plistPath, 'com.example.app'),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('addUrlScheme throws for a missing Info.plist', () {
+      expect(
+        () => PlistWriter.addUrlScheme(
+            p.join(tempDir.path, 'Missing.plist'), 'com.example.app'),
+        throwsA(isA<FileSystemException>()),
+      );
+    });
+
+    // -------------------------------------------------------------------------
     // removeKey
     // -------------------------------------------------------------------------
 

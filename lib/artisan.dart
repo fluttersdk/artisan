@@ -82,6 +82,7 @@ export 'src/commands/tinker_command.dart';
 export 'src/commands/helpers/workspace_enroller.dart';
 
 // Installer DSL: typed exceptions + driver abstractions + DI container + FS + operation taxonomy.
+export 'src/installer/android_intent_filter.dart';
 export 'src/installer/artisan_install_command.dart';
 export 'src/installer/conflict_detector.dart';
 export 'src/installer/dry_run_renderer.dart';

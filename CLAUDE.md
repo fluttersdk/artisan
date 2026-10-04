@@ -45,7 +45,7 @@ Single barrel: `package:fluttersdk_artisan/artisan.dart` re-exports the full pub
 |---|---|
 | `console/` | `ArtisanApplication` + `ArtisanRegistry` + `CommandSignature` (signature DSL) + `ArtisanContext` / `Input` / `Output`. `runArtisan(args, collectMcpTools:, delegateToConsumer:)` is the shared entry. |
 | `commands/` | 21 builtin commands. Naming: `<Verb>Command extends ArtisanCommand`. Six declare `String get signature`; five declare `configure(ArgParser)` with flags; ten have no flag surface. |
-| `installer/` | `PluginInstaller` fluent DSL + `ManifestInstaller` + `InstallTransaction` + `PluginsRegistryFile` + sealed `InstallOperation` hierarchy (26 variants). See `.claude/rules/installer.md`. |
+| `installer/` | `PluginInstaller` fluent DSL + `ManifestInstaller` + `InstallTransaction` + `PluginsRegistryFile` + sealed `InstallOperation` hierarchy (28 variants). See `.claude/rules/installer.md`. |
 | `mcp/` | `McpServer extends MCPServer with ToolsSupport` (dart_mcp) + `McpToolDescriptor` + `McpFilterConfig` (3-layer Cargo-style: file + env + CLI). Substrate commands surface as `artisan_*` MCP tools via the 10-entry allowlist at `lib/src/mcp/mcp_server.dart:744-755`: `start` / `stop` / `status` / `logs` / `restart` / `reload` / `hot-restart` / `doctor` / `list` / `tinker`. |
 | `helpers/` | `FileHelper`, `ConfigEditor` (idempotent injects), `MainDartEditor`, `EnvEditor`, `PlistWriter`, `GradleEditor`, `PodfileEditor`, `HtmlEditor`, `JsonEditor`, `XmlEditor`, `RouteRegistryEditor`. |
 | `stubs/` | `StubLoader` (4-tier resolution: env, package_config, pubspec walk, fallback). Stub assets under `assets/stubs/`. |
@@ -86,7 +86,7 @@ User-facing assets:
 
 ## Release
 
-- Version: `0.0.15`. Bump per SemVer in `pubspec.yaml` and promote the `[Unreleased]` block of `CHANGELOG.md` to a dated section (with its footer compare link) before publishing.
+- Version: `0.0.18`. Bump per SemVer in `pubspec.yaml` and promote the `[Unreleased]` block of `CHANGELOG.md` to a dated section (with its footer compare link) before publishing.
 - SIX files carry the version, all hand-edited: `pubspec.yaml`, `lib/src/mcp/mcp_server.dart` (the MCP handshake string), `example/pubspec.yaml`, `example/packages/awesome_plugin/pubspec.yaml`, `server.json` (the MCP registry manifest), and the stamp comment in `skills/fluttersdk-artisan/SKILL.md`. Grep the old number before opening the release PR; every cut so far has missed one.
 - Four of the six are guarded. The MCP string shipped a release behind on the 0.0.9 cut, and `test/mcp/mcp_server_version_test.dart` now fails the build when it drifts from the pubspec. The two `example/**/pubspec.yaml` pins are enforced by `flutter pub get` itself: they both carry a `path:` dep on this package plus an explicit `version:`, so bumping one and not the other fails resolution with `version solving failed` in the CI install step. `server.json` is covered by `test/server_json_version_test.dart`, and it is the site where drift is least forgiving: the MCP registry refuses to rewrite a version it has already published, so a stale number fails the cut outright instead of shipping quietly. The `SKILL.md` stamp is the only one nothing checks.
 - Docs that quote the caret constraint (`doc/getting-started/installation.md`, `doc/commands/install.md`, `doc/plugins/authoring.md`) track the released version; a stale `^0.0.1` there tells a reader the package never moved.

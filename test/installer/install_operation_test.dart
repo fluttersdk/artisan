@@ -185,6 +185,39 @@ void main() {
   });
 
   // ---------------------------------------------------------------------------
+  // InjectAndroidActivity
+  // ---------------------------------------------------------------------------
+
+  test('InjectAndroidActivity.describe names the activity and its filters', () {
+    const op = InjectAndroidActivity(
+      name: 'com.linusu.flutter_web_auth_2.CallbackActivity',
+      exported: true,
+      taskAffinity: '',
+      intentFilters: [
+        AndroidIntentFilter(
+          autoVerify: true,
+          actions: ['android.intent.action.VIEW'],
+          data: [AndroidIntentData(scheme: 'https', host: 'auth.example.com')],
+        ),
+      ],
+    );
+    expect(
+      op.describe(),
+      '[inject-android-activity] '
+      'com.linusu.flutter_web_auth_2.CallbackActivity '
+      '(exported=true, intent-filters=1)',
+    );
+  });
+
+  test('InjectAndroidActivity defaults to no task affinity and no filters', () {
+    const op = InjectAndroidActivity(name: '.Foo', exported: false);
+    expect(op.taskAffinity, isNull);
+    expect(op.intentFilters, isEmpty);
+    expect(op.describe(),
+        '[inject-android-activity] .Foo (exported=false, intent-filters=0)');
+  });
+
+  // ---------------------------------------------------------------------------
   // InjectInfoPlistKey
   // ---------------------------------------------------------------------------
 
@@ -207,6 +240,24 @@ void main() {
   });
 
   // ---------------------------------------------------------------------------
+  // InjectInfoPlistUrlScheme
+  // ---------------------------------------------------------------------------
+
+  test('InjectInfoPlistUrlScheme.describe outputs the platform and scheme', () {
+    const op = InjectInfoPlistUrlScheme(scheme: 'com.example.app');
+    expect(op.platform, 'ios');
+    expect(op.describe(), '[inject-plist-url-scheme:ios] com.example.app');
+  });
+
+  test('InjectInfoPlistUrlScheme.describe carries an explicit macos tag', () {
+    const op = InjectInfoPlistUrlScheme(
+      scheme: 'com.example.app',
+      platform: 'macos',
+    );
+    expect(op.describe(), '[inject-plist-url-scheme:macos] com.example.app');
+  });
+
+  // ---------------------------------------------------------------------------
   // InjectEntitlement
   // ---------------------------------------------------------------------------
 
@@ -220,7 +271,8 @@ void main() {
     expect(
       op.describe(),
       '[inject-entitlement] ios: com.apple.security.network.client = true '
-      '(plus CODE_SIGN_ENTITLEMENTS on the application target)',
+      '(in every file the application target signs with, or '
+      'Runner.entitlements plus CODE_SIGN_ENTITLEMENTS when it names none)',
     );
   });
 
@@ -236,6 +288,16 @@ void main() {
       value: 'development',
     );
     expect(op.describe(), contains('CODE_SIGN_ENTITLEMENTS'));
+  });
+
+  test('InjectEntitlement.describe renders a list value', () {
+    const op = InjectEntitlement(
+      platform: 'ios',
+      key: 'com.apple.developer.applesignin',
+      value: <String>['Default'],
+    );
+    expect(op.describe(), contains('com.apple.developer.applesignin = '));
+    expect(op.describe(), contains('Default'));
   });
 
   // ---------------------------------------------------------------------------
@@ -414,7 +476,9 @@ void main() {
           code: '// after'),
       const InjectAndroidPermission(permission: 'android.permission.CAMERA'),
       const InjectAndroidMetaData(name: 'com.example.key', value: 'v'),
+      const InjectAndroidActivity(name: '.Foo', exported: true),
       const InjectInfoPlistKey(key: 'NSPhotoUsageDescription', value: 'Photos'),
+      const InjectInfoPlistUrlScheme(scheme: 'com.example.app'),
       const InjectEntitlement(
           platform: 'ios', key: 'com.apple.developer.maps', value: true),
       const InjectPodfileLine(platform: 'ios', line: "pod 'Foo'"),
@@ -453,7 +517,9 @@ void main() {
         InjectAfterPattern() => 'inject-after-pattern',
         InjectAndroidPermission() => 'inject-android-permission',
         InjectAndroidMetaData() => 'inject-android-meta-data',
+        InjectAndroidActivity() => 'inject-android-activity',
         InjectInfoPlistKey() => 'inject-info-plist-key',
+        InjectInfoPlistUrlScheme() => 'inject-info-plist-url-scheme',
         InjectEntitlement() => 'inject-entitlement',
         InjectPodfileLine() => 'inject-podfile-line',
         InjectGradlePlugin() => 'inject-gradle-plugin',
@@ -469,7 +535,7 @@ void main() {
       labels.add(label);
     }
 
-    // 26 subclasses must all be dispatched.
-    expect(labels, hasLength(26));
+    // 28 subclasses must all be dispatched.
+    expect(labels, hasLength(28));
   });
 }

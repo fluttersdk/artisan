@@ -12,6 +12,8 @@ library;
 
 import 'package:yaml/yaml.dart';
 
+import 'android_intent_filter.dart';
+
 /// Root manifest carrying every section a plugin can declare.
 ///
 /// Every field except [pluginName] has a sensible empty default so partial
@@ -163,7 +165,7 @@ class MagicIntegration {
 
 /// Per-platform native configuration. Each slot is independently optional.
 class NativeConfig {
-  /// Android sub-section (permissions / meta_data / gradle).
+  /// Android sub-section (permissions / meta_data / activities / gradle).
   final AndroidConfig? android;
 
   /// iOS sub-section (info_plist / entitlements / podfile).
@@ -201,6 +203,9 @@ class AndroidConfig {
   /// `<meta-data>` entries (name → value).
   final Map<String, String> metaData;
 
+  /// `<activity>` elements to declare inside `<application>`.
+  final List<AndroidActivitySpec> activities;
+
   /// Optional Gradle plugins + dependencies block.
   final GradleConfig? gradle;
 
@@ -208,6 +213,7 @@ class AndroidConfig {
   const AndroidConfig({
     required this.permissions,
     required this.metaData,
+    this.activities = const <AndroidActivitySpec>[],
     this.gradle,
   });
 
@@ -216,10 +222,72 @@ class AndroidConfig {
     return AndroidConfig(
       permissions: _stringList(m['permissions']),
       metaData: _stringMap(m['meta_data']),
+      activities: _mapList(m['activities'], AndroidActivitySpec.fromYaml),
       gradle:
           m['gradle'] is YamlMap ? GradleConfig.fromYaml(m['gradle']) : null,
     );
   }
+}
+
+/// One activity entry under `native.android.activities`:
+/// `{name, exported, task_affinity, intent_filters: [{auto_verify, actions,
+/// categories, data: [{scheme, host, path, path_prefix}]}]}`.
+class AndroidActivitySpec {
+  /// `android:name`, a class name or a fully-qualified one.
+  final String name;
+
+  /// `android:exported`; `false` when the manifest does not say.
+  final bool exported;
+
+  /// `android:taskAffinity`; `''` is an empty affinity, `null` omits it.
+  final String? taskAffinity;
+
+  /// The `<intent-filter>` elements to declare.
+  final List<AndroidIntentFilter> intentFilters;
+
+  /// Creates an [AndroidActivitySpec].
+  const AndroidActivitySpec({
+    required this.name,
+    this.exported = false,
+    this.taskAffinity,
+    this.intentFilters = const <AndroidIntentFilter>[],
+  });
+
+  /// Parses one activity entry.
+  factory AndroidActivitySpec.fromYaml(YamlMap m) {
+    final name = m['name'];
+    if (name is! String) {
+      throw FormatException('Android activity missing required "name".');
+    }
+    return AndroidActivitySpec(
+      name: name,
+      exported: m['exported'] == true,
+      taskAffinity:
+          m['task_affinity'] is String ? m['task_affinity'] as String : null,
+      intentFilters: _mapList(m['intent_filters'], _intentFilterFromYaml),
+    );
+  }
+}
+
+/// Parses one `intent_filters` entry.
+AndroidIntentFilter _intentFilterFromYaml(YamlMap m) {
+  return AndroidIntentFilter(
+    autoVerify: m['auto_verify'] == true,
+    actions: _stringList(m['actions']),
+    categories: _stringList(m['categories']),
+    data: _mapList(m['data'], _intentDataFromYaml),
+  );
+}
+
+/// Parses one `data` entry of an intent filter.
+AndroidIntentData _intentDataFromYaml(YamlMap m) {
+  String? text(String key) => m[key] is String ? m[key] as String : null;
+  return AndroidIntentData(
+    scheme: text('scheme'),
+    host: text('host'),
+    path: text('path'),
+    pathPrefix: text('path_prefix'),
+  );
 }
 
 /// Gradle plugins + dependencies block (lives under `native.android.gradle`).
@@ -299,7 +367,10 @@ class IosConfig {
   /// Info.plist key → value map. Values may be String / bool / num / List.
   final Map<String, Object> infoPlist;
 
-  /// Entitlements key → value map.
+  /// URL schemes to register under `CFBundleURLTypes`.
+  final List<String> urlSchemes;
+
+  /// Entitlements key → value map. Values may be String / bool / List.
   final Map<String, Object> entitlements;
 
   /// Optional Podfile block.
@@ -309,6 +380,7 @@ class IosConfig {
   const IosConfig({
     required this.infoPlist,
     required this.entitlements,
+    this.urlSchemes = const <String>[],
     this.podfile,
   });
 
@@ -316,6 +388,7 @@ class IosConfig {
   factory IosConfig.fromYaml(YamlMap m) {
     return IosConfig(
       infoPlist: _objectMap(m['info_plist']),
+      urlSchemes: _stringList(m['url_schemes']),
       entitlements: _objectMap(m['entitlements']),
       podfile:
           m['podfile'] is YamlMap ? PodfileConfig.fromYaml(m['podfile']) : null,
@@ -328,7 +401,10 @@ class MacosConfig {
   /// Info.plist key → value map.
   final Map<String, Object> infoPlist;
 
-  /// Entitlements key → value map.
+  /// URL schemes to register under `CFBundleURLTypes`.
+  final List<String> urlSchemes;
+
+  /// Entitlements key → value map. Values may be String / bool / List.
   final Map<String, Object> entitlements;
 
   /// Optional Podfile block.
@@ -338,6 +414,7 @@ class MacosConfig {
   const MacosConfig({
     required this.infoPlist,
     required this.entitlements,
+    this.urlSchemes = const <String>[],
     this.podfile,
   });
 
@@ -345,6 +422,7 @@ class MacosConfig {
   factory MacosConfig.fromYaml(YamlMap m) {
     return MacosConfig(
       infoPlist: _objectMap(m['info_plist']),
+      urlSchemes: _stringList(m['url_schemes']),
       entitlements: _objectMap(m['entitlements']),
       podfile:
           m['podfile'] is YamlMap ? PodfileConfig.fromYaml(m['podfile']) : null,

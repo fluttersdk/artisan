@@ -334,6 +334,76 @@ void main() {
     });
   });
 
+  group('XcodeProjectEditor.entitlementsPaths', () {
+    test('reads nothing from a project that signs with no entitlements', () {
+      expect(XcodeProjectEditor.entitlementsPaths(pbxprojPath), isEmpty);
+    });
+
+    test('reads one distinct path when every configuration shares it', () {
+      XcodeProjectEditor.setEntitlementsPath(
+        pbxprojPath,
+        'Runner/Runner.entitlements',
+      );
+
+      expect(
+        XcodeProjectEditor.entitlementsPaths(pbxprojPath),
+        {'Runner/Runner.entitlements'},
+      );
+    });
+
+    test('reads both files of a split Debug and Release project', () {
+      XcodeProjectEditor.setEntitlementsPaths(pbxprojPath, {
+        'Debug': 'Runner/Runner.entitlements',
+        'Profile': 'Runner/Runner.entitlements',
+        'Release': 'Runner/RunnerRelease.entitlements',
+      });
+
+      expect(
+        XcodeProjectEditor.entitlementsPaths(pbxprojPath),
+        {'Runner/Runner.entitlements', 'Runner/RunnerRelease.entitlements'},
+      );
+    });
+
+    test('ignores the test bundle and project-level configurations', () {
+      final content = File(pbxprojPath).readAsStringSync();
+      final bundleStart =
+          content.indexOf('331C8088294A63A400263BE5 /* Debug */ = {');
+      expect(bundleStart, isNot(-1));
+      File(pbxprojPath).writeAsStringSync(
+        content.substring(0, bundleStart) +
+            content.substring(bundleStart).replaceFirst(
+                  'buildSettings = {\n',
+                  'buildSettings = {\n\t\t\t\tCODE_SIGN_ENTITLEMENTS = Tests/Tests.entitlements;\n',
+                ),
+      );
+      expect(_entitlementsKeyCount(File(pbxprojPath).readAsStringSync()), 1);
+
+      expect(XcodeProjectEditor.entitlementsPaths(pbxprojPath), isEmpty);
+    });
+
+    test('never writes the project', () {
+      XcodeProjectEditor.setEntitlementsPath(
+        pbxprojPath,
+        'Runner/Runner.entitlements',
+      );
+      final before = _md5(pbxprojPath);
+
+      XcodeProjectEditor.entitlementsPaths(pbxprojPath);
+
+      expect(_md5(pbxprojPath), before);
+      expect(File('$pbxprojPath.tmp').existsSync(), isFalse);
+    });
+
+    test('throws FileSystemException when the project file is missing', () {
+      File(pbxprojPath).deleteSync();
+
+      expect(
+        () => XcodeProjectEditor.entitlementsPaths(pbxprojPath),
+        throwsA(isA<FileSystemException>()),
+      );
+    });
+  });
+
   group('XcodeProjectEditor.setEntitlementsPaths', () {
     test('writes only the configurations it names', () {
       final blocked = XcodeProjectEditor.setEntitlementsPaths(

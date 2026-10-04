@@ -37,7 +37,7 @@ Concurrent readers (open editors, lint daemons) never observe partial state. Tes
 
 ## Sealed hierarchies
 
-`InstallOperation` is a sealed class with 26 final subclasses (`WriteFile`, `InjectImport`, `InjectAfterPattern`, etc.). `TransactionResult` is sealed with 4 final subclasses (`Success`, `DryRun`, `Conflict`, `Error`). Consumers use exhaustive `switch` (no default branch); Dart's `sealed` modifier enforces this at the analyzer level. Adding a new op or result variant requires updating every dispatcher in `install_transaction.dart` + `dry_run_renderer.dart` + `conflict_detector.dart` + `manifest_installer.dart`.
+`InstallOperation` is a sealed class with 28 final subclasses (`WriteFile`, `InjectImport`, `InjectAfterPattern`, etc.). `TransactionResult` is sealed with 4 final subclasses (`Success`, `DryRun`, `Conflict`, `Error`). Consumers use exhaustive `switch` (no default branch); Dart's `sealed` modifier enforces this at the analyzer level. Adding a new op or result variant requires updating every dispatcher in `install_transaction.dart` + `dry_run_renderer.dart` + `conflict_detector.dart` + `manifest_installer.dart`.
 
 ## Indentation contract
 
