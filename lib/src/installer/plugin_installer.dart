@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 
+import 'android_intent_filter.dart';
 import 'install_context.dart';
 import 'install_operation.dart';
 import 'install_transaction.dart';
@@ -618,6 +619,37 @@ class PluginInstaller {
     return this;
   }
 
+  /// Enqueues an [InjectAndroidActivity] adding an `<activity>` element, with
+  /// its intent filters, inside `<application>`. Skipped on non-Android
+  /// consumers.
+  ///
+  /// Idempotent by content: an activity with this [name] and an equal set of
+  /// [intentFilters] is left alone, and one with different filters is never
+  /// rewritten; the install warns with the block it expected.
+  ///
+  /// @param name           `android:name` attribute value.
+  /// @param exported       `android:exported` attribute value.
+  /// @param taskAffinity   `android:taskAffinity`; `''` is an empty affinity,
+  ///                       `null` omits the attribute.
+  /// @param intentFilters  The `<intent-filter>` elements to declare.
+  /// @return This installer (chainable).
+  PluginInstaller injectAndroidActivity({
+    required String name,
+    required bool exported,
+    String? taskAffinity,
+    List<AndroidIntentFilter> intentFilters = const <AndroidIntentFilter>[],
+  }) {
+    _ops.add(
+      InjectAndroidActivity(
+        name: name,
+        exported: exported,
+        taskAffinity: taskAffinity,
+        intentFilters: intentFilters,
+      ),
+    );
+    return this;
+  }
+
   /// Enqueues an [InjectInfoPlistKey] setting [key] to [value] inside
   /// `<projectRoot>/<platform>/Runner/Info.plist`.
   ///
@@ -641,15 +673,33 @@ class PluginInstaller {
     return this;
   }
 
-  /// Enqueues an [InjectEntitlement] setting [key] to [value] in
-  /// `<projectRoot>/<platform>/Runner/Runner.entitlements`.
+  /// Enqueues an [InjectInfoPlistUrlScheme] registering [scheme] under
+  /// `CFBundleURLTypes` in `<projectRoot>/<platform>/Runner/Info.plist`.
   ///
-  /// Dispatcher branches on `value` type ([String] / [bool]). Skipped
-  /// silently when the platform directory is absent.
+  /// Idempotent: a scheme any existing `CFBundleURLTypes` dict already lists
+  /// is left alone. Skipped silently when the platform directory is absent.
+  ///
+  /// @param scheme    URL scheme without the `://` suffix.
+  /// @param platform  `'ios'` (default) or `'macos'`.
+  /// @return This installer (chainable).
+  PluginInstaller injectInfoPlistUrlScheme({
+    required String scheme,
+    String platform = 'ios',
+  }) {
+    _ops.add(InjectInfoPlistUrlScheme(scheme: scheme, platform: platform));
+    return this;
+  }
+
+  /// Enqueues an [InjectEntitlement] setting [key] to [value] in every
+  /// entitlements file the application target of `<projectRoot>/<platform>`
+  /// signs with (`Runner/Runner.entitlements` when the project names none).
+  ///
+  /// Dispatcher branches on `value` type ([String] / [bool] / `List<String>`).
+  /// Skipped silently when the platform directory is absent.
   ///
   /// @param platform  `'ios'` or `'macos'`.
   /// @param key       Entitlement key.
-  /// @param value     Entitlement value (String / bool).
+  /// @param value     Entitlement value (String / bool / `List<String>`).
   /// @return This installer (chainable).
   PluginInstaller injectEntitlement({
     required String platform,

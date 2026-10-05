@@ -16,6 +16,7 @@ import '../helpers/podfile_editor.dart';
 import '../helpers/route_registry_editor.dart';
 import '../helpers/xcode_project_editor.dart';
 import '../helpers/xml_editor.dart';
+import 'android_intent_filter.dart';
 import 'conflict_detector.dart';
 import 'dry_run_renderer.dart';
 import 'install_context.dart';
@@ -76,6 +77,15 @@ class InstallTransaction {
   /// directory holding the `.xcodeproj`, which is exactly where
   /// [_entitlementsPathFor] writes the file.
   static const String _entitlementsSettingValue = 'Runner/Runner.entitlements';
+
+  /// Leading `$(SRCROOT)/` or `$(PROJECT_DIR)/` of a build-setting path: both
+  /// name the directory holding the `.xcodeproj`, the base the path is
+  /// relative to anyway.
+  static final RegExp _projectDirectoryVariable =
+      RegExp(r'^\$[({](?:SRCROOT|PROJECT_DIR)[)}]/');
+
+  /// Any build variable reference, `$(NAME)` or `${NAME}`.
+  static final RegExp _buildVariable = RegExp(r'\$[({]');
 
   final InstallContext _ctx;
   final String _pluginName;
@@ -469,6 +479,24 @@ class InstallTransaction {
           );
           _helperWrittenTargets.add(manifest);
           return null;
+        case InjectAndroidActivity():
+          if (!PlatformHelper.hasPlatform(_ctx.projectRoot, 'android')) {
+            _logSkip('InjectAndroidActivity', 'android');
+            return null;
+          }
+          final manifest = PlatformHelper.androidManifestPath(_ctx.projectRoot);
+          final outcome = XmlEditor.addAndroidActivity(
+            manifest,
+            name: op.name,
+            exported: op.exported,
+            taskAffinity: op.taskAffinity,
+            intentFilters: op.intentFilters,
+          );
+          if (outcome == AndroidActivityOutcome.conflict) {
+            _warnActivityConflict(op, manifest);
+          }
+          _helperWrittenTargets.add(manifest);
+          return null;
         case InjectGradlePlugin():
           if (!PlatformHelper.hasPlatform(_ctx.projectRoot, 'android')) {
             _logSkip('InjectGradlePlugin', 'android');
@@ -518,32 +546,49 @@ class InstallTransaction {
                 'for key ${op.key} (expected String, bool, or List<String>).',
             rolledBack: false,
           );
+        case InjectInfoPlistUrlScheme():
+          final platform = op.platform;
+          if (!PlatformHelper.hasPlatform(_ctx.projectRoot, platform)) {
+            _logSkip('InjectInfoPlistUrlScheme', platform);
+            return null;
+          }
+          final plistPath = _infoPlistPathFor(platform);
+          PlistWriter.addUrlScheme(plistPath, op.scheme);
+          _helperWrittenTargets.add(plistPath);
+          return null;
         case InjectEntitlement():
           final platform = op.platform;
           if (!PlatformHelper.hasPlatform(_ctx.projectRoot, platform)) {
             _logSkip('InjectEntitlement', platform);
             return null;
           }
-          final entitlementsPath = _entitlementsPathFor(platform);
           final value = op.value;
-          if (value is bool) {
-            PlistWriter.setBoolKey(entitlementsPath, op.key, value);
-            _helperWrittenTargets.add(entitlementsPath);
-            _pointXcodeAtEntitlements(platform);
+          if (!_isEntitlementValue(value)) {
+            return Error(
+              error:
+                  'InjectEntitlement: unsupported value type ${value.runtimeType} '
+                  'for key ${op.key} (expected String, bool, or List<String>).',
+              rolledBack: false,
+            );
+          }
+
+          // The build settings already name the files Xcode signs with, so the
+          // key goes into each of them and the settings stay untouched.
+          final signing = _signingEntitlementPathsFor(platform);
+          if (signing != null) {
+            for (final path in signing) {
+              _setEntitlement(path, op.key, value);
+              _helperWrittenTargets.add(path);
+            }
             return null;
           }
-          if (value is String) {
-            PlistWriter.setStringKey(entitlementsPath, op.key, value);
-            _helperWrittenTargets.add(entitlementsPath);
-            _pointXcodeAtEntitlements(platform);
-            return null;
-          }
-          return Error(
-            error:
-                'InjectEntitlement: unsupported value type ${value.runtimeType} '
-                'for key ${op.key} (expected String or bool).',
-            rolledBack: false,
-          );
+
+          // Nothing is signed yet: write the default file and point Xcode at it.
+          final entitlementsPath = _entitlementsPathFor(platform);
+          _setEntitlement(entitlementsPath, op.key, value);
+          _helperWrittenTargets.add(entitlementsPath);
+          _pointXcodeAtEntitlements(platform);
+          return null;
         case InjectPodfileLine():
           if (!PlatformHelper.hasPlatform(_ctx.projectRoot, op.platform)) {
             _logSkip('InjectPodfileLine', op.platform);
@@ -647,6 +692,74 @@ class InstallTransaction {
     return p.join(_ctx.projectRoot, platform, 'Runner', 'Runner.entitlements');
   }
 
+  /// Whether [value] is a type an entitlement can carry: a string, a bool, or
+  /// a list holding only strings.
+  bool _isEntitlementValue(Object value) {
+    return value is String ||
+        value is bool ||
+        (value is List && value.every((entry) => entry is String));
+  }
+
+  /// Writes [key] into the entitlements plist at [path]. A list is merged into
+  /// the array the file already carries, so entries another plugin or the app
+  /// put there survive.
+  void _setEntitlement(String path, String key, Object value) {
+    if (value is bool) {
+      PlistWriter.setBoolKey(path, key, value);
+    } else if (value is String) {
+      PlistWriter.setStringKey(path, key, value);
+    } else if (value is List) {
+      for (final entry in value.cast<String>()) {
+        PlistWriter.appendToArrayKey(path, key, entry);
+      }
+    }
+  }
+
+  /// Absolute paths of the entitlements files the application target of
+  /// [platform] already signs with, resolved the way Xcode does: relative to
+  /// the directory holding the `.xcodeproj`.
+  ///
+  /// `$(SRCROOT)` and `$(PROJECT_DIR)` both name that directory, so a leading
+  /// one is dropped. Any other build variable cannot be resolved without
+  /// evaluating the project's build settings: the value is reported and its
+  /// file skipped, since joining it literally would create a directory named
+  /// after the variable.
+  ///
+  /// @return `null` when the project has no `.xcodeproj`, names no entitlements
+  ///         file, or has an application target [XcodeProjectEditor] cannot
+  ///         resolve (the last is not swallowed: the caller then takes the
+  ///         default path, and [_pointXcodeAtEntitlements] reports the same
+  ///         refusal to the operator). A list, possibly empty, when the project
+  ///         names files: empty means every one used a variable that could not
+  ///         be resolved, and the caller must not add a default file next to it.
+  List<String>? _signingEntitlementPathsFor(String platform) {
+    final pbxprojPath = _pbxprojPathFor(platform);
+    if (!File(pbxprojPath).existsSync()) return null;
+
+    final Set<String> configured;
+    try {
+      configured = XcodeProjectEditor.entitlementsPaths(pbxprojPath);
+    } on StateError {
+      return null;
+    }
+    if (configured.isEmpty) return null;
+
+    final paths = <String>[];
+    for (final value in configured) {
+      final relative = value.replaceFirst(_projectDirectoryVariable, '');
+      if (_buildVariable.hasMatch(relative)) {
+        _ctx.artisanContext.output.warning(
+          'Skipped the entitlements file $value in $platform/Runner.xcodeproj: '
+          'it names a build variable the installer cannot resolve. Add the '
+          'keys to that file by hand.',
+        );
+        continue;
+      }
+      paths.add(p.normalize(p.join(_ctx.projectRoot, platform, relative)));
+    }
+    return paths;
+  }
+
   /// Resolves `<projectRoot>/<ios|macos>/Runner.xcodeproj/project.pbxproj`.
   String _pbxprojPathFor(String platform) {
     return p.join(
@@ -661,13 +774,14 @@ class InstallTransaction {
   /// file the [InjectEntitlement] arm just wrote.
   ///
   /// Xcode ignores an entitlements plist that no build setting names, so the
-  /// plist write alone leaves the entitlement inert. Three cases leave the
-  /// setting alone, warn, and let the install finish:
+  /// plist write alone leaves the entitlement inert. Only reached when no
+  /// configuration names a file at all; a project that does has the key written
+  /// into those files instead (see [_signingEntitlementPathsFor]). Three cases
+  /// leave the setting alone, warn, and let the install finish:
   ///
   /// 1. A platform directory with no `.xcodeproj`: nothing to point at.
-  /// 2. A project already signing with a different entitlements file:
-  ///    repointing would drop whatever that file grants, which the macOS
-  ///    Flutter template relies on.
+  /// 2. A configuration holding a non-string `CODE_SIGN_ENTITLEMENTS`, which
+  ///    the reader cannot resolve to a file and the editor will not overwrite.
   /// 3. A project [XcodeProjectEditor] refuses to edit, which its round-trip
   ///    guard does for anything it cannot re-emit byte for byte. Xcode writes
   ///    non-ASCII in a `.pbxproj` as `\Uxxxx` and the parser does not model
@@ -729,6 +843,26 @@ class InstallTransaction {
       return;
     }
     _helperWrittenTargets.add(pbxprojPath);
+  }
+
+  /// Tells the operator a hand-edited activity blocked [InjectAndroidActivity].
+  ///
+  /// The manifest is left as it is, so the install finishes without the
+  /// activity this op meant to declare; the warning carries the block that would
+  /// have been written so it can be reconciled by hand.
+  void _warnActivityConflict(InjectAndroidActivity op, String manifestPath) {
+    final expected = XmlEditor.renderAndroidActivity(
+      name: op.name,
+      exported: op.exported,
+      taskAffinity: op.taskAffinity,
+      intentFilters: op.intentFilters,
+    );
+    _ctx.artisanContext.output.warning(
+      'Left <activity android:name="${op.name}"> alone in '
+      '${p.relative(manifestPath, from: _ctx.projectRoot)}: it already declares '
+      'different intent filters. Make it match this block, or remove it and '
+      're-run the install:\n$expected',
+    );
   }
 
   /// Resolves `<projectRoot>/<ios|macos>/Podfile`.
@@ -1009,6 +1143,21 @@ class InstallTransaction {
           'name': name,
           'value': value,
         },
+      InjectAndroidActivity(
+        :final name,
+        :final exported,
+        :final taskAffinity,
+        :final intentFilters,
+      ) =>
+        <String, dynamic>{
+          'type': 'InjectAndroidActivity',
+          'name': name,
+          'exported': exported,
+          'taskAffinity': taskAffinity,
+          'intentFilters': <Map<String, dynamic>>[
+            for (final filter in intentFilters) filter.toJson(),
+          ],
+        },
       InjectInfoPlistKey(:final platform, :final key, :final value) =>
         <String, dynamic>{
           'type': 'InjectInfoPlistKey',
@@ -1016,12 +1165,18 @@ class InstallTransaction {
           'key': key,
           'value': value.toString(),
         },
+      InjectInfoPlistUrlScheme(:final platform, :final scheme) =>
+        <String, dynamic>{
+          'type': 'InjectInfoPlistUrlScheme',
+          'platform': platform,
+          'scheme': scheme,
+        },
       InjectEntitlement(:final platform, :final key, :final value) =>
         <String, dynamic>{
           'type': 'InjectEntitlement',
           'platform': platform,
           'key': key,
-          'value': value.toString(),
+          'value': value is List ? value : value.toString(),
         },
       InjectPodfileLine(:final platform, :final line) => <String, dynamic>{
           'type': 'InjectPodfileLine',

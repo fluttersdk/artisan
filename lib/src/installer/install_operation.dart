@@ -30,11 +30,13 @@
 ///   switch (op) {
 ///     case AddDependency(): executor.addDep(op);
 ///     case InjectAndroidPermission(): executor.injectPermission(op);
-///     // ... all 26 cases required by the sealed contract.
+///     // ... all 28 cases required by the sealed contract.
 ///   }
 /// }
 /// ```
 library;
+
+import 'android_intent_filter.dart';
 
 /// Placement anchor for code injected into `lib/main.dart`.
 ///
@@ -482,6 +484,68 @@ final class InjectAndroidMetaData extends InstallOperation {
   String describe() => '[inject-android-meta] $name = $value';
 }
 
+/// Adds an `<activity>` element, with its intent filters, inside
+/// `<application>` in `AndroidManifest.xml`.
+///
+/// Idempotency compares content, not only the name: an activity with the same
+/// `android:name` and an equal set of intent filters is left as it is, and one
+/// with different filters is never rewritten; the executor warns with the block
+/// it expected instead. [exported] and [taskAffinity] are not part of that
+/// comparison.
+///
+/// ## Example
+///
+/// ```dart
+/// InjectAndroidActivity(
+///   name: 'com.linusu.flutter_web_auth_2.CallbackActivity',
+///   exported: true,
+///   taskAffinity: '',
+///   intentFilters: [
+///     AndroidIntentFilter(
+///       autoVerify: true,
+///       actions: ['android.intent.action.VIEW'],
+///       categories: [
+///         'android.intent.category.DEFAULT',
+///         'android.intent.category.BROWSABLE',
+///       ],
+///       data: [
+///         AndroidIntentData(
+///           scheme: 'https',
+///           host: 'auth.example.com',
+///           path: '/social/callback',
+///         ),
+///       ],
+///     ),
+///   ],
+/// )
+/// ```
+final class InjectAndroidActivity extends InstallOperation {
+  /// The `android:name` attribute value.
+  final String name;
+
+  /// The `android:exported` attribute value.
+  final bool exported;
+
+  /// The `android:taskAffinity` value; `''` is an empty affinity, `null` omits
+  /// the attribute.
+  final String? taskAffinity;
+
+  /// The `<intent-filter>` elements the activity declares.
+  final List<AndroidIntentFilter> intentFilters;
+
+  /// Creates an [InjectAndroidActivity] operation.
+  const InjectAndroidActivity({
+    required this.name,
+    required this.exported,
+    this.taskAffinity,
+    this.intentFilters = const <AndroidIntentFilter>[],
+  });
+
+  @override
+  String describe() => '[inject-android-activity] $name '
+      '(exported=$exported, intent-filters=${intentFilters.length})';
+}
+
 // =============================================================================
 // iOS/macOS native injection operations
 // =============================================================================
@@ -520,10 +584,38 @@ final class InjectInfoPlistKey extends InstallOperation {
   String describe() => '[inject-plist-key:$platform] $key = $value';
 }
 
-/// Sets a key-value pair in the `.entitlements` file for [platform].
+/// Registers a custom URL scheme under `CFBundleURLTypes` in the
+/// `Info.plist` of [platform].
 ///
-/// [platform] must be `'ios'` or `'macos'`. [value] may be a [String],
-/// [bool], [List], or [Map].
+/// The executor appends one `CFBundleURLTypes` dict (role `Editor`) carrying
+/// [scheme], creating the array when the plist has none, and skips the write
+/// when any existing dict already lists [scheme].
+///
+/// ## Example
+///
+/// ```dart
+/// InjectInfoPlistUrlScheme(scheme: 'com.example.app')
+/// ```
+final class InjectInfoPlistUrlScheme extends InstallOperation {
+  /// The URL scheme to register, without the `://` suffix.
+  final String scheme;
+
+  /// Target platform: `'ios'` (default) or `'macos'`.
+  final String platform;
+
+  /// Creates an [InjectInfoPlistUrlScheme] operation.
+  const InjectInfoPlistUrlScheme({required this.scheme, this.platform = 'ios'});
+
+  @override
+  String describe() => '[inject-plist-url-scheme:$platform] $scheme';
+}
+
+/// Sets a key-value pair in every `.entitlements` file the application target
+/// of [platform] signs with.
+///
+/// [platform] must be `'ios'` or `'macos'`. [value] must be a [String], a
+/// [bool] or a `List<String>`; a list is merged into the array the file
+/// already carries, entry by entry, so another plugin's entries survive.
 ///
 /// ## Example
 ///
@@ -541,7 +633,7 @@ final class InjectEntitlement extends InstallOperation {
   /// The entitlement key.
   final String key;
 
-  /// The entitlement value. Must be a [String], [bool], [List], or [Map].
+  /// The entitlement value. Must be a [String], [bool] or `List<String>`.
   final Object value;
 
   /// Creates an [InjectEntitlement] operation.
@@ -553,15 +645,18 @@ final class InjectEntitlement extends InstallOperation {
 
   @override
 
-  /// Names BOTH writes, because this op performs two.
+  /// Names BOTH writes, because this op can perform two.
   ///
-  /// It sets the key in the entitlements plist AND points the Xcode project's
-  /// application target at that file through `CODE_SIGN_ENTITLEMENTS`, without
-  /// which Xcode never reads the plist and the entitlement is inert. A dry run
-  /// that mentioned only the plist would under-report what the real run does to
-  /// the consumer's project, which is the one thing a preview exists to prevent.
+  /// It sets the key in every entitlements plist the application target already
+  /// signs with. When no configuration names one, it writes
+  /// `Runner/Runner.entitlements` AND points the Xcode project's application
+  /// target at it through `CODE_SIGN_ENTITLEMENTS`, without which Xcode never
+  /// reads the plist and the entitlement is inert. A dry run that mentioned only
+  /// the plist would under-report what the real run does to the consumer's
+  /// project, which is the one thing a preview exists to prevent.
   String describe() => '[inject-entitlement] $platform: $key = $value '
-      '(plus CODE_SIGN_ENTITLEMENTS on the application target)';
+      '(in every file the application target signs with, or '
+      'Runner.entitlements plus CODE_SIGN_ENTITLEMENTS when it names none)';
 }
 
 /// Appends a line to the `Podfile` target block for [platform].

@@ -60,6 +60,7 @@ import 'dart:convert';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 
+import 'android_intent_filter.dart';
 import 'install_context.dart';
 import 'install_manifest.dart';
 import 'install_operation.dart';
@@ -386,6 +387,14 @@ class ManifestInstaller {
     android.metaData.forEach((name, value) {
       installer.injectAndroidMetaData(name: name, value: value);
     });
+    for (final activity in android.activities) {
+      installer.injectAndroidActivity(
+        name: activity.name,
+        exported: activity.exported,
+        taskAffinity: activity.taskAffinity,
+        intentFilters: activity.intentFilters,
+      );
+    }
     final gradle = android.gradle;
     if (gradle != null) {
       for (final plugin in gradle.plugins) {
@@ -409,10 +418,21 @@ class ManifestInstaller {
     IosConfig config,
   ) {
     config.infoPlist.forEach((key, value) {
-      installer.injectInfoPlistKey(key: key, value: value, platform: platform);
+      installer.injectInfoPlistKey(
+        key: key,
+        value: _plistValue(value),
+        platform: platform,
+      );
     });
+    for (final scheme in config.urlSchemes) {
+      installer.injectInfoPlistUrlScheme(scheme: scheme, platform: platform);
+    }
     config.entitlements.forEach((key, value) {
-      installer.injectEntitlement(platform: platform, key: key, value: value);
+      installer.injectEntitlement(
+        platform: platform,
+        key: key,
+        value: _plistValue(value),
+      );
     });
     final podfile = config.podfile;
     if (podfile != null) {
@@ -422,12 +442,21 @@ class ManifestInstaller {
     }
   }
 
+  /// Narrows a YAML list to the `List<String>` the dispatcher matches on; a
+  /// `YamlList` is a `List<dynamic>` and would be refused as an unsupported
+  /// value type.
+  Object _plistValue(Object value) {
+    if (value is! List) return value;
+    return value.map((entry) => entry.toString()).toList(growable: false);
+  }
+
   /// Adapts a [MacosConfig] payload to the [IosConfig] shape so
   /// [_applyApplePlatform] can dispatch both with one method. The two configs
   /// share field-by-field structure; this method is a structural cast.
   IosConfig _asIos(MacosConfig macos) {
     return IosConfig(
       infoPlist: macos.infoPlist,
+      urlSchemes: macos.urlSchemes,
       entitlements: macos.entitlements,
       podfile: macos.podfile,
     );
@@ -682,6 +711,23 @@ class ManifestInstaller {
           return InjectAndroidMetaData(name: name, value: value);
         }
         return null;
+      case 'InjectAndroidActivity':
+        final name = entry['name'];
+        final exported = entry['exported'];
+        final taskAffinity = entry['taskAffinity'];
+        final filters = entry['intentFilters'];
+        if (name is String && exported is bool && filters is List) {
+          return InjectAndroidActivity(
+            name: name,
+            exported: exported,
+            taskAffinity: taskAffinity is String ? taskAffinity : null,
+            intentFilters: <AndroidIntentFilter>[
+              for (final filter in filters.whereType<Map<dynamic, dynamic>>())
+                AndroidIntentFilter.fromJson(filter),
+            ],
+          );
+        }
+        return null;
       case 'InjectInfoPlistKey':
         final platform = entry['platform'];
         final key = entry['key'];
@@ -690,12 +736,26 @@ class ManifestInstaller {
           return InjectInfoPlistKey(key: key, value: value, platform: platform);
         }
         return null;
+      case 'InjectInfoPlistUrlScheme':
+        final platform = entry['platform'];
+        final scheme = entry['scheme'];
+        if (platform is String && scheme is String) {
+          return InjectInfoPlistUrlScheme(scheme: scheme, platform: platform);
+        }
+        return null;
       case 'InjectEntitlement':
         final platform = entry['platform'];
         final key = entry['key'];
         final value = entry['value'];
         if (platform is String && key is String && value is String) {
           return InjectEntitlement(platform: platform, key: key, value: value);
+        }
+        if (platform is String && key is String && value is List) {
+          return InjectEntitlement(
+            platform: platform,
+            key: key,
+            value: value.map((item) => item.toString()).toList(),
+          );
         }
         return null;
       case 'InjectPodfileLine':
@@ -829,7 +889,9 @@ class ManifestInstaller {
       InjectAfterPattern() => null,
       InjectAndroidPermission() => null,
       InjectAndroidMetaData() => null,
+      InjectAndroidActivity() => null,
       InjectInfoPlistKey() => null,
+      InjectInfoPlistUrlScheme() => null,
       InjectEntitlement() => null,
       InjectPodfileLine() => null,
       InjectGradlePlugin() => null,

@@ -1,7 +1,11 @@
 import 'dart:convert';
 
+import 'dart:io';
+
 import 'package:fluttersdk_artisan/artisan.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
+import 'package:xml/xml.dart';
 
 // ---------------------------------------------------------------------------
 // Test-only driver fakes (NOT exported from lib/).
@@ -138,6 +142,24 @@ InstallManifest _fullManifestSample() => InstallManifest(
         android: const AndroidConfig(
           permissions: ['android.permission.INTERNET'],
           metaData: {'io.flutter.embedded_views_preview': 'true'},
+          activities: [
+            AndroidActivitySpec(
+              name: 'com.example.CallbackActivity',
+              exported: true,
+              taskAffinity: '',
+              intentFilters: [
+                AndroidIntentFilter(
+                  autoVerify: true,
+                  actions: ['android.intent.action.VIEW'],
+                  categories: ['android.intent.category.DEFAULT'],
+                  data: [
+                    AndroidIntentData(
+                        scheme: 'https', host: 'auth.example.com'),
+                  ],
+                ),
+              ],
+            ),
+          ],
           gradle: GradleConfig(
             plugins: [
               GradlePluginSpec(
@@ -151,6 +173,7 @@ InstallManifest _fullManifestSample() => InstallManifest(
         ),
         ios: const IosConfig(
           infoPlist: {'NSExampleUsageDescription': 'Reason'},
+          urlSchemes: ['com.example.app'],
           entitlements: {'com.apple.security.keychain': true},
           podfile: PodfileConfig(platformVersion: '13.0', pods: ['ExamplePod']),
         ),
@@ -249,9 +272,16 @@ void main() {
       // Native.
       expect(ops.whereType<InjectAndroidPermission>(), hasLength(1));
       expect(ops.whereType<InjectAndroidMetaData>(), hasLength(1));
+      final activity = ops.whereType<InjectAndroidActivity>().single;
+      expect(activity.name, 'com.example.CallbackActivity');
+      expect(activity.exported, isTrue);
+      expect(activity.taskAffinity, '');
+      expect(
+          activity.intentFilters.single.data.single.host, 'auth.example.com');
       expect(ops.whereType<InjectGradlePlugin>(), hasLength(1));
       expect(ops.whereType<InjectGradleDependency>(), hasLength(1));
       expect(ops.whereType<InjectInfoPlistKey>(), hasLength(1));
+      expect(ops.whereType<InjectInfoPlistUrlScheme>(), hasLength(1));
       expect(ops.whereType<InjectEntitlement>(), hasLength(1));
       expect(ops.whereType<InjectPodfileLine>(), hasLength(1));
       expect(ops.whereType<InjectIntoWebHead>(), hasLength(1));
@@ -619,7 +649,9 @@ void main() {
         InjectAfterPattern(targetFile: 'f', pattern: RegExp('x'), code: 'c'),
         const InjectAndroidPermission(permission: 'x'),
         const InjectAndroidMetaData(name: 'n', value: 'v'),
+        const InjectAndroidActivity(name: '.A', exported: true),
         const InjectInfoPlistKey(key: 'k', value: 'v'),
+        const InjectInfoPlistUrlScheme(scheme: 's'),
         const InjectEntitlement(platform: 'ios', key: 'k', value: true),
         const InjectPodfileLine(platform: 'ios', line: 'l'),
         const InjectGradlePlugin(pluginId: 'p'),
@@ -667,9 +699,287 @@ void main() {
         isNull,
       );
       expect(
+        ManifestInstaller.reverseOf(
+            const InjectInfoPlistUrlScheme(scheme: 's')),
+        isNull,
+        reason: 'inject ops stay non-reversible in v1',
+      );
+      expect(
+        ManifestInstaller.reverseOf(
+            const InjectAndroidActivity(name: '.A', exported: true)),
+        isNull,
+        reason: 'inject ops stay non-reversible in v1',
+      );
+      expect(
         ManifestInstaller.reverseOf(const RunShell(command: 'x', args: [])),
         isNull,
       );
+    });
+  });
+
+  group('ManifestInstaller: iOS url_schemes + list entitlements on RealFs', () {
+    const manifestYaml = '''
+plugin_name: example_plugin
+
+native:
+  ios:
+    url_schemes:
+      - com.example.app
+    entitlements:
+      com.apple.developer.applesignin: ["Default"]
+''';
+
+    // Debug signs with Runner.entitlements and Release with its twin, the way
+    // a project with a per-build aps-environment does.
+    const splitPbxproj = r'''// !$*UTF8*$!
+{
+  archiveVersion = 1;
+  objects = {
+    1A00000000000000000001 /* Runner */ = {
+      isa = PBXNativeTarget;
+      buildConfigurationList = 1A00000000000000000002 /* Runner */;
+      name = Runner;
+      productType = "com.apple.product-type.application";
+    };
+    1A00000000000000000002 /* Runner */ = {
+      isa = XCConfigurationList;
+      buildConfigurations = (
+        1A00000000000000000003 /* Debug */,
+        1A00000000000000000004 /* Release */,
+      );
+    };
+    1A00000000000000000003 /* Debug */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
+      };
+      name = Debug;
+    };
+    1A00000000000000000004 /* Release */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        CODE_SIGN_ENTITLEMENTS = Runner/RunnerRelease.entitlements;
+      };
+      name = Release;
+    };
+  };
+  rootObject = 1A00000000000000000000 /* Project object */;
+}
+''';
+
+    const emptyEntitlements = '''<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+</dict>
+</plist>
+''';
+
+    test('the same manifest run twice leaves every file byte-identical',
+        () async {
+      final root = Directory.systemTemp.createTempSync('artisan_manifest_ios_');
+      addTearDown(() {
+        if (root.existsSync()) root.deleteSync(recursive: true);
+      });
+      File(p.join(root.path, 'ios', 'Runner', 'Info.plist'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('''<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+\t<key>CFBundleName</key>
+\t<string>Runner</string>
+</dict>
+</plist>
+''');
+      for (final name in const ['Runner', 'RunnerRelease']) {
+        File(p.join(root.path, 'ios', 'Runner', '$name.entitlements'))
+            .writeAsStringSync(emptyEntitlements);
+      }
+      final pbxproj =
+          File(p.join(root.path, 'ios', 'Runner.xcodeproj', 'project.pbxproj'))
+            ..createSync(recursive: true)
+            ..writeAsStringSync(splitPbxproj);
+      final files = {
+        'Info.plist': File(p.join(root.path, 'ios', 'Runner', 'Info.plist')),
+        'Runner.entitlements':
+            File(p.join(root.path, 'ios', 'Runner', 'Runner.entitlements')),
+        'RunnerRelease.entitlements': File(
+            p.join(root.path, 'ios', 'Runner', 'RunnerRelease.entitlements')),
+      };
+
+      Future<void> run() async {
+        final ctx = InstallContext.test(
+          fs: const RealFs(),
+          prompt: _QueuedPromptDriver(),
+          stubs: _MapStubDriver(const {}),
+          projectRoot: root.path,
+        );
+        final result = await ManifestInstaller(
+          ctx,
+          ManifestParser.parseString(manifestYaml),
+        ).install(force: true);
+        expect(result, isA<Success>(), reason: 'Got: ${result.describe()}');
+      }
+
+      await run();
+      final afterFirst = {
+        for (final entry in files.entries)
+          entry.key: entry.value.readAsStringSync(),
+      };
+      final pbxprojAfterFirst = pbxproj.readAsStringSync();
+
+      // 1. The first run did the work, in every file the target signs with.
+      expect(afterFirst['Info.plist'],
+          contains('<string>com.example.app</string>'));
+      for (final name in const [
+        'Runner.entitlements',
+        'RunnerRelease.entitlements',
+      ]) {
+        expect(afterFirst[name], contains('com.apple.developer.applesignin'));
+        expect(afterFirst[name], contains('<string>Default</string>'));
+      }
+      expect(pbxprojAfterFirst, splitPbxproj);
+
+      // 2. The second run changes nothing.
+      await run();
+      for (final entry in files.entries) {
+        expect(entry.value.readAsStringSync(), afterFirst[entry.key],
+            reason: '${entry.key} drifted on the second run');
+      }
+      expect(pbxproj.readAsStringSync(), splitPbxproj);
+    });
+  });
+
+  group('ManifestInstaller: android activities on RealFs', () {
+    const manifestYaml = '''
+plugin_name: example_plugin
+
+native:
+  android:
+    activities:
+      - name: com.linusu.flutter_web_auth_2.CallbackActivity
+        exported: true
+        task_affinity: ""
+        intent_filters:
+          - auto_verify: true
+            actions:
+              - android.intent.action.VIEW
+            categories:
+              - android.intent.category.DEFAULT
+              - android.intent.category.BROWSABLE
+            data:
+              - scheme: https
+                host: auth.example.com
+                path: /social/callback
+              - scheme: app
+                path_prefix: /cb
+''';
+
+    const androidManifest =
+        '''<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="Example">
+        <activity android:name=".MainActivity" android:exported="true"/>
+    </application>
+</manifest>
+''';
+
+    test('the DSL parses every activity field, including an empty affinity',
+        () {
+      final manifest = ManifestParser.parseString(manifestYaml);
+
+      final activity = manifest.native.android!.activities.single;
+      expect(activity.name, 'com.linusu.flutter_web_auth_2.CallbackActivity');
+      expect(activity.exported, isTrue);
+      expect(activity.taskAffinity, '');
+      final filter = activity.intentFilters.single;
+      expect(filter.autoVerify, isTrue);
+      expect(filter.actions, ['android.intent.action.VIEW']);
+      expect(filter.categories, [
+        'android.intent.category.DEFAULT',
+        'android.intent.category.BROWSABLE',
+      ]);
+      expect(filter.data, hasLength(2));
+      expect(filter.data.first.scheme, 'https');
+      expect(filter.data.first.host, 'auth.example.com');
+      expect(filter.data.first.path, '/social/callback');
+      expect(filter.data.last.pathPrefix, '/cb');
+    });
+
+    test('an activity without a name is refused at parse time', () {
+      expect(
+        () => ManifestParser.parseString('''
+plugin_name: example_plugin
+native:
+  android:
+    activities:
+      - exported: true
+'''),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('install writes the activity once, records it, and uninstall succeeds',
+        () async {
+      final root =
+          Directory.systemTemp.createTempSync('artisan_manifest_activity_');
+      addTearDown(() {
+        if (root.existsSync()) root.deleteSync(recursive: true);
+      });
+      final manifestFile = File(p.join(
+          root.path, 'android', 'app', 'src', 'main', 'AndroidManifest.xml'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync(androidManifest);
+      final manifest = ManifestParser.parseString(manifestYaml);
+
+      InstallContext ctx() => InstallContext.test(
+            fs: const RealFs(),
+            prompt: _QueuedPromptDriver(),
+            stubs: _MapStubDriver(const {}),
+            projectRoot: root.path,
+          );
+
+      Future<void> run() async {
+        final result =
+            await ManifestInstaller(ctx(), manifest).install(force: true);
+        expect(result, isA<Success>(), reason: 'Got: ${result.describe()}');
+      }
+
+      await run();
+      final afterFirst = manifestFile.readAsStringSync();
+      await run();
+
+      // 1. The element landed once, with the filter the DSL described.
+      final callbacks = XmlDocument.parse(afterFirst)
+          .findAllElements('activity')
+          .where((e) =>
+              e.getAttribute('name',
+                  namespace: 'http://schemas.android.com/apk/res/android') ==
+              'com.linusu.flutter_web_auth_2.CallbackActivity');
+      expect(callbacks, hasLength(1));
+      expect(afterFirst, contains('android:path="/social/callback"'));
+      expect(afterFirst, contains('android:pathPrefix="/cb"'));
+      expect(afterFirst, contains('android:taskAffinity=""'));
+
+      // 2. The second run changed nothing.
+      expect(manifestFile.readAsStringSync(), afterFirst);
+
+      // 3. The record carries the whole payload.
+      final record = jsonDecode(
+        File(p.join(root.path, '.artisan', 'installed', 'example_plugin.json'))
+            .readAsStringSync(),
+      ) as Map<String, dynamic>;
+      final entry = (record['ops'] as List)
+          .cast<Map<String, dynamic>>()
+          .singleWhere((o) => o['type'] == 'InjectAndroidActivity');
+      expect(entry['name'], 'com.linusu.flutter_web_auth_2.CallbackActivity');
+      expect(entry['exported'], isTrue);
+      expect(entry['taskAffinity'], '');
+      final filters = (entry['intentFilters'] as List).cast<Map>();
+      expect(filters.single['autoVerify'], isTrue);
+      expect(filters.single['data'] as List, hasLength(2));
+
+      // 4. Uninstall reads the record back without choking on the payload.
+      final uninstall = await ManifestInstaller(ctx(), manifest).uninstall();
+      expect(uninstall, isA<Success>(), reason: uninstall.describe());
     });
   });
 }

@@ -86,7 +86,9 @@ class DryRunRenderer {
           magic.add(op);
         case InjectAndroidPermission():
         case InjectAndroidMetaData():
+        case InjectAndroidActivity():
         case InjectInfoPlistKey():
+        case InjectInfoPlistUrlScheme():
         case InjectEntitlement():
         case InjectPodfileLine():
         case InjectGradlePlugin():

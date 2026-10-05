@@ -35,6 +35,12 @@ import 'package:xml/xml.dart';
 class PlistWriter {
   PlistWriter._();
 
+  /// Info.plist key holding the list of registered URL types.
+  static const String _urlTypesKey = 'CFBundleURLTypes';
+
+  /// Key inside one URL type listing the schemes it answers to.
+  static const String _urlSchemesKey = 'CFBundleURLSchemes';
+
   // ---------------------------------------------------------------------------
   // Public API
   // ---------------------------------------------------------------------------
@@ -187,6 +193,62 @@ class PlistWriter {
     _write(plistPath, doc);
   }
 
+  /// Register [scheme] as a custom URL scheme under `CFBundleURLTypes` in the
+  /// top-level `<dict>` of [plistPath].
+  ///
+  /// Behavior:
+  /// - If `CFBundleURLTypes` is absent, it is created holding one entry.
+  /// - Otherwise a new entry is appended beside the existing ones, so a scheme
+  ///   another plugin or the app registered keeps its own entry.
+  /// - If ANY existing entry already lists [scheme] under `CFBundleURLSchemes`,
+  ///   the call is a no-op and the file is not rewritten.
+  ///
+  /// The entry is `CFBundleTypeRole` = `Editor` plus a `CFBundleURLSchemes`
+  /// array holding [scheme], the shape Xcode writes for a URL type.
+  ///
+  /// @param plistPath  Absolute or relative path to the `Info.plist` file.
+  /// @param scheme     The URL scheme, without the `://` suffix.
+  ///
+  /// @throws [FileSystemException] if the file does not exist.
+  /// @throws [StateError]          if the file has no root `<dict>`, or if
+  ///                               `CFBundleURLTypes` is not an `<array>`.
+  static void addUrlScheme(String plistPath, String scheme) {
+    final doc = _parse(plistPath);
+    final dict = _rootDict(plistPath, doc);
+
+    final existing = _findValueElement(dict, _urlTypesKey);
+    if (existing == null) {
+      // 1. Key is absent: create the array with the one entry.
+      _appendPair(
+        dict,
+        _urlTypesKey,
+        XmlElement(XmlName('array'))..children.add(_buildUrlType(scheme)),
+      );
+      _write(plistPath, doc);
+      return;
+    }
+
+    if (existing.name.local != 'array') {
+      throw StateError(
+        'Expected an <array> value for key "$_urlTypesKey" in $plistPath, '
+        'found <${existing.name.local}>.',
+      );
+    }
+
+    // 2. Idempotency: skip when any entry already lists the scheme.
+    for (final entry in existing.findElements('dict')) {
+      final schemes = _findValueElement(entry, _urlSchemesKey);
+      if (schemes == null) continue;
+      if (schemes.findElements('string').any((e) => e.innerText == scheme)) {
+        return;
+      }
+    }
+
+    // 3. Append a new entry beside the existing ones.
+    existing.children.add(_buildUrlType(scheme));
+    _write(plistPath, doc);
+  }
+
   /// Remove the `<key>K</key>` element and its immediately following sibling
   /// value element from the top-level `<dict>` of [plistPath].
   ///
@@ -299,6 +361,18 @@ class PlistWriter {
       }
     }
     return null;
+  }
+
+  /// Build one `CFBundleURLTypes` entry: role `Editor`, one scheme.
+  static XmlElement _buildUrlType(String scheme) {
+    final entry = XmlElement(XmlName('dict'));
+    _appendPair(
+      entry,
+      'CFBundleTypeRole',
+      XmlElement(XmlName('string'))..children.add(XmlText('Editor')),
+    );
+    _appendPair(entry, _urlSchemesKey, _buildArray([scheme]));
+    return entry;
   }
 
   /// Build an `<array>` element whose children are `<string>` elements, one

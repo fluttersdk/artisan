@@ -1,11 +1,18 @@
+import 'dart:convert';
 import 'dart:io';
+
+import 'package:xml/xml.dart';
+
+import '../installer/android_intent_filter.dart';
 
 /// XML and Plist file manipulation helper for CLI commands.
 ///
-/// Provides pure string/regex-based utilities for reading and modifying
-/// XML files (Android manifests, iOS plist files) without external parser
-/// packages. All mutation methods are idempotent unless the task spec
-/// states otherwise.
+/// Provides string/regex-based utilities for reading and modifying XML files
+/// (Android manifests, iOS plist files). Package `xml` is used only where a
+/// decision needs the structure (is this activity already declared, and with
+/// which filters); every write is a string splice so the rest of the file keeps
+/// its bytes. All mutation methods are idempotent unless the task spec states
+/// otherwise.
 ///
 /// ## Usage
 ///
@@ -178,6 +185,128 @@ class XmlEditor {
     File(manifestPath).writeAsStringSync(content);
   }
 
+  /// Add an `<activity>` element to the `<application>` block of an Android
+  /// manifest.
+  ///
+  /// The manifest is parsed with package `xml` to decide, and the element is
+  /// then spliced in as text immediately before `</application>`, so every
+  /// other byte of the file stays as it was. Idempotency compares content, not
+  /// only the name:
+  ///
+  /// - No `<activity>` with this `android:name` under `<application>` (a name
+  ///   inside an XML comment does not count): the element is inserted.
+  /// - One exists with an equal set of `<intent-filter>` elements (same
+  ///   `autoVerify`, actions, categories and `<data>` attributes, in any order):
+  ///   no-op.
+  /// - One exists with a different set: the file is left alone and
+  ///   [AndroidActivityOutcome.conflict] is returned. The activity may be
+  ///   hand-edited, so it is never rewritten; the caller reports it.
+  ///
+  /// `android:exported` and `android:taskAffinity` are not part of the
+  /// comparison.
+  ///
+  /// @param manifestPath    Path to `AndroidManifest.xml`.
+  /// @param name            Value for `android:name`.
+  /// @param exported        Value for `android:exported`.
+  /// @param taskAffinity    Value for `android:taskAffinity`; `''` renders an
+  ///                        empty affinity, `null` omits the attribute.
+  /// @param intentFilters   The filters the activity must declare.
+  /// @return What was done; see [AndroidActivityOutcome].
+  ///
+  /// @throws [FileSystemException] if the manifest file is not found.
+  /// @throws [XmlException]        if the manifest is not well-formed XML.
+  /// @throws [StateError]          if the manifest has no `<application>`
+  ///                               element with a closing tag.
+  static AndroidActivityOutcome addAndroidActivity(
+    String manifestPath, {
+    required String name,
+    required bool exported,
+    String? taskAffinity,
+    List<AndroidIntentFilter> intentFilters = const <AndroidIntentFilter>[],
+  }) {
+    final content = read(manifestPath);
+
+    // 1. Parse for detection only; the parsed tree is never written back.
+    final application = XmlDocument.parse(content)
+        .rootElement
+        .findElements('application')
+        .firstOrNull;
+    if (application == null) {
+      throw StateError('Cannot find <application> element in: $manifestPath');
+    }
+
+    // 2. Compare content, not only the name, so a hand-edited activity is
+    //    reported instead of being skipped silently or rewritten.
+    final existing = application
+        .findElements('activity')
+        .where((e) => e.getAttribute('name', namespace: _androidNs) == name)
+        .firstOrNull;
+    if (existing != null) {
+      return _sameFilters(existing, intentFilters)
+          ? AndroidActivityOutcome.unchanged
+          : AndroidActivityOutcome.conflict;
+    }
+
+    // 3. Anchor on the real closing tag; one inside a comment is not it.
+    final anchor = _maskComments(content).lastIndexOf('</application>');
+    if (anchor == -1) {
+      throw StateError(
+        'Cannot find </application> closing tag in: $manifestPath',
+      );
+    }
+
+    // 4. Splice the block in one indent level deeper than the closing tag.
+    final eol = content.contains('\r\n') ? '\r\n' : '\n';
+    final lineStart = content.lastIndexOf('\n', anchor - 1) + 1;
+    final leading = content.substring(lineStart, anchor);
+    final onOwnLine = leading.trim().isEmpty;
+    final childIndent = '${onOwnLine ? leading : ''}    ';
+    final block = renderAndroidActivity(
+      name: name,
+      exported: exported,
+      taskAffinity: taskAffinity,
+      intentFilters: intentFilters,
+    ).split('\n').map((line) => '$childIndent$line').join(eol);
+
+    File(manifestPath).writeAsStringSync(
+      onOwnLine
+          ? content.replaceRange(lineStart, lineStart, '$block$eol')
+          : content.replaceRange(anchor, anchor, '$eol$block$eol'),
+    );
+    return AndroidActivityOutcome.added;
+  }
+
+  /// The `<activity>` element [addAndroidActivity] would insert, indented from
+  /// column zero with four spaces per level and `\n` line breaks.
+  ///
+  /// Also what a caller shows an operator when a hand-edited activity of the
+  /// same name blocked the write. Attribute values are escaped.
+  ///
+  /// @param name           Value for `android:name`.
+  /// @param exported       Value for `android:exported`.
+  /// @param taskAffinity   Value for `android:taskAffinity`, or `null` to omit.
+  /// @param intentFilters  The filters the activity declares.
+  static String renderAndroidActivity({
+    required String name,
+    required bool exported,
+    String? taskAffinity,
+    List<AndroidIntentFilter> intentFilters = const <AndroidIntentFilter>[],
+  }) {
+    final attributes = <String>[
+      _attribute('name', name),
+      _attribute('exported', '$exported'),
+      if (taskAffinity != null) _attribute('taskAffinity', taskAffinity),
+    ];
+    final open = '<activity\n${attributes.map((a) => '    $a').join('\n')}';
+    if (intentFilters.isEmpty) return '$open/>';
+
+    return <String>[
+      '$open>',
+      for (final filter in intentFilters) ..._renderIntentFilter(filter),
+      '</activity>',
+    ].join('\n');
+  }
+
   // -------------------------------------------------------------------------
   // Plist
   // -------------------------------------------------------------------------
@@ -205,5 +334,117 @@ class XmlEditor {
     }
 
     return result;
+  }
+
+  // -------------------------------------------------------------------------
+  // Private helpers
+  // -------------------------------------------------------------------------
+
+  /// Namespace the Android manifest binds its `android:` attributes to.
+  static const String _androidNs = 'http://schemas.android.com/apk/res/android';
+
+  /// Renders `android:[local]="[value]"` with the value escaped for a
+  /// double-quoted attribute.
+  static String _attribute(String local, String value) {
+    final escaped = const XmlDefaultEntityMapping.xml()
+        .encodeAttributeValue(value, XmlAttributeType.DOUBLE_QUOTE);
+    return 'android:$local="$escaped"';
+  }
+
+  /// Renders one `<intent-filter>` indented one level, as lines.
+  static List<String> _renderIntentFilter(AndroidIntentFilter filter) {
+    return <String>[
+      filter.autoVerify
+          ? '    <intent-filter android:autoVerify="true">'
+          : '    <intent-filter>',
+      for (final action in filter.actions)
+        '        <action ${_attribute('name', action)}/>',
+      for (final category in filter.categories)
+        '        <category ${_attribute('name', category)}/>',
+      for (final data in filter.data)
+        '        <data ${data.attributes.entries.map((e) => _attribute(e.key, e.value)).join(' ')}/>',
+      '    </intent-filter>',
+    ];
+  }
+
+  /// Copy of [content] with every comment blanked to spaces of the same
+  /// length, so an offset found in it is valid in [content] and a tag spelled
+  /// inside a comment cannot be found.
+  static String _maskComments(String content) {
+    return content.replaceAllMapped(
+      RegExp(r'<!--.*?-->', dotAll: true),
+      (match) => ' ' * match.group(0)!.length,
+    );
+  }
+
+  /// Whether the `<intent-filter>` children of [activity] are exactly
+  /// [expected], ignoring order within and between filters.
+  static bool _sameFilters(
+    XmlElement activity,
+    List<AndroidIntentFilter> expected,
+  ) {
+    final declared = <String>{
+      for (final filter in activity.findElements('intent-filter'))
+        _signature(
+          autoVerify:
+              filter.getAttribute('autoVerify', namespace: _androidNs) ==
+                  'true',
+          actions: _names(filter, 'action'),
+          categories: _names(filter, 'category'),
+          data: [
+            for (final data in filter.findElements('data'))
+              {
+                for (final attribute in data.attributes)
+                  if (attribute.namespaceUri == _androidNs)
+                    attribute.name.local: attribute.value,
+              },
+          ],
+        ),
+    };
+    final wanted = <String>{
+      for (final filter in expected)
+        _signature(
+          autoVerify: filter.autoVerify,
+          actions: filter.actions,
+          categories: filter.categories,
+          data: [for (final data in filter.data) data.attributes],
+        ),
+    };
+    return declared.length == wanted.length && declared.containsAll(wanted);
+  }
+
+  /// The `android:name` of every [tag] child of [filter].
+  static List<String> _names(XmlElement filter, String tag) {
+    return <String>[
+      for (final element in filter.findElements(tag))
+        if (element.getAttribute('name', namespace: _androidNs)
+            case final name?)
+          name,
+    ];
+  }
+
+  /// Order-independent canonical form of one intent filter, so two filters
+  /// compare equal exactly when a device would treat them alike.
+  static String _signature({
+    required bool autoVerify,
+    required Iterable<String> actions,
+    required Iterable<String> categories,
+    required Iterable<Map<String, String>> data,
+  }) {
+    List<String> sorted(Iterable<String> values) => values.toList()..sort();
+
+    String canonical(Map<String, String> attributes) {
+      final keys = attributes.keys.toList()..sort();
+      return jsonEncode(<List<String>>[
+        for (final key in keys) <String>[key, attributes[key]!],
+      ]);
+    }
+
+    return jsonEncode(<Object>[
+      autoVerify,
+      sorted(actions),
+      sorted(categories),
+      sorted(data.map(canonical)),
+    ]);
   }
 }

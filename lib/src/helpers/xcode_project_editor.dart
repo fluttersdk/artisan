@@ -1,10 +1,12 @@
 import 'dart:io';
 
-/// Xcode project (`project.pbxproj`) build-setting writer for the installer.
+/// Xcode project (`project.pbxproj`) build-setting reader and writer for the
+/// installer.
 ///
 /// A `.pbxproj` is an OpenStep plist, not XML, so none of the XML-backed
 /// helpers can touch it. This editor exists for exactly one job: pointing the
-/// application target at an entitlements file. Writing `Runner.entitlements`
+/// application target at an entitlements file, or reporting the files it
+/// already signs with ([entitlementsPaths]). Writing `Runner.entitlements`
 /// to disk is not enough on its own, because Xcode only reads that file when
 /// the target's `CODE_SIGN_ENTITLEMENTS` build setting names it.
 ///
@@ -58,6 +60,44 @@ final class XcodeProjectEditor {
   /// Placeholder reported when a configuration holds a non-string value under
   /// the setting; it still blocks the write.
   static const String _nonStringValue = '<non-string value>';
+
+  /// The distinct entitlements files the application target of [pbxprojPath]
+  /// signs with, one per value of `CODE_SIGN_ENTITLEMENTS` across its build
+  /// configurations, in configuration order.
+  ///
+  /// Read-only: the project is parsed but never re-emitted, so unlike the
+  /// setters this does not need the round-trip proof. More than one path is the
+  /// split case, a Debug and a Release configuration signing against different
+  /// files. A configuration that carries no setting, or a non-string one,
+  /// contributes nothing.
+  ///
+  /// @param pbxprojPath  Path to `<platform>/Runner.xcodeproj/project.pbxproj`.
+  /// @return The paths exactly as the build setting spells them, relative to
+  ///         the directory holding the `.xcodeproj`; empty when no
+  ///         configuration names one.
+  ///
+  /// @throws [FileSystemException]  if the project file does not exist.
+  /// @throws [FormatException]      if the project file cannot be parsed.
+  /// @throws [StateError]           if no single application target and its
+  ///                                configurations can be resolved.
+  static Set<String> entitlementsPaths(String pbxprojPath) {
+    final document = _read(pbxprojPath).document;
+    final objects = _objectsOf(document, pbxprojPath);
+    final target = _applicationTarget(objects, pbxprojPath);
+
+    final paths = <String>{};
+    for (final configuration in _buildSettingsOf(
+      objects,
+      target,
+      pbxprojPath,
+    )) {
+      final value = configuration.settings.valueFor(_entitlementsSetting);
+      if (value is _PbxString && value.value.isNotEmpty) {
+        paths.add(value.value);
+      }
+    }
+    return paths;
+  }
 
   /// Point every build configuration of the application target in
   /// [pbxprojPath] at [entitlementsPath].
@@ -151,15 +191,9 @@ final class XcodeProjectEditor {
     String pbxprojPath,
     String? Function(String configuration) wanted,
   ) {
-    final file = File(pbxprojPath);
-    if (!file.existsSync()) {
-      throw FileSystemException('Xcode project file not found', pbxprojPath);
-    }
-
     // 1. Parse the OpenStep plist, keeping every byte of whitespace and
     //    comment trivia so the document can be re-emitted unchanged.
-    final original = file.readAsStringSync();
-    final document = _PbxParser(original, pbxprojPath).parseDocument();
+    final (source: original, :document) = _read(pbxprojPath);
 
     // 2. Safety gate: prove the parse understood the whole file before
     //    trusting it to write one back.
@@ -244,6 +278,20 @@ final class XcodeProjectEditor {
   // -------------------------------------------------------------------------
   // Private helpers
   // -------------------------------------------------------------------------
+
+  /// Read and parse [pbxprojPath], returning the raw text beside the tree so a
+  /// writer can prove the round trip against it.
+  static ({String source, _PbxDocument document}) _read(String pbxprojPath) {
+    final file = File(pbxprojPath);
+    if (!file.existsSync()) {
+      throw FileSystemException('Xcode project file not found', pbxprojPath);
+    }
+    final source = file.readAsStringSync();
+    return (
+      source: source,
+      document: _PbxParser(source, pbxprojPath).parseDocument(),
+    );
+  }
 
   /// Resolve the root `objects` dictionary, which maps every object ID in the
   /// project to its definition.

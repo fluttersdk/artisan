@@ -147,8 +147,13 @@ Per-platform native configuration. Each platform sub-section is independently op
 |-------|------|---------------|
 | `permissions` | `List<String>` | `<uses-permission>` entries in `AndroidManifest.xml` |
 | `meta_data` | `Map<String, String>` | `<meta-data>` entries in `AndroidManifest.xml` |
+| `activities` | `List<{name, exported?, task_affinity?, intent_filters?}>` | `<activity>` elements inside `<application>` in `AndroidManifest.xml` |
 | `gradle.plugins` | `List<{id, version?}>` | Gradle plugin block entries |
 | `gradle.dependencies` | `List<{scope, notation}>` | Gradle dependency block entries |
+
+Each `activities` entry needs `name` (an entry without it raises `FormatException('Android activity missing required "name".')`). `exported` is `false` when omitted. `task_affinity` sets `android:taskAffinity`; an empty string `""` is an empty affinity and omitting the key omits the attribute. Each `intent_filters` entry takes `auto_verify` (bool), `actions` and `categories` (lists of strings) and `data` (a list of `{scheme, host, path, path_prefix}` maps, one `<data>` element each).
+
+An activity is idempotent by content. The same `name` with an equal set of intent filters (in any order) is left alone, and the same `name` with different filters is never rewritten: the install finishes and warns with the block it expected. `exported` and `task_affinity` are not part of that comparison.
 
 Gradle plugin entries without `id` raise `FormatException('Gradle plugin missing required "id".')`. Gradle dependency entries without both `scope` and `notation` raise `FormatException('Gradle dependency entry requires both "scope" and "notation".')`.
 
@@ -159,6 +164,18 @@ native:
       - android.permission.INTERNET
     meta_data:
       io.flutter.embedded_views_preview: "true"
+    activities:
+      - name: com.example.CallbackActivity
+        exported: true
+        task_affinity: ""
+        intent_filters:
+          - auto_verify: true
+            actions: [android.intent.action.VIEW]
+            categories:
+              - android.intent.category.DEFAULT
+              - android.intent.category.BROWSABLE
+            data:
+              - {scheme: https, host: auth.example.com, path: /callback}
     gradle:
       plugins:
         - id: com.example.gradle.plugin
@@ -173,7 +190,8 @@ native:
 | Field | Type | Notes |
 |-------|------|-------|
 | `info_plist` | `Map<String, Object>` | Values may be String, bool, num, or List. Runtime-type branching happens in the dispatcher. |
-| `entitlements` | `Map<String, Object>` | Same shape as `info_plist`. |
+| `url_schemes` | `List<String>` | Custom URL schemes registered under `CFBundleURLTypes`, written without the `://` suffix. One `CFBundleURLTypes` dict (role `Editor`) is appended per scheme; a scheme any existing dict already lists is skipped. |
+| `entitlements` | `Map<String, Object>` | Values may be String, bool, or a list of strings. Written to every entitlements file the application target signs with; see below. |
 | `podfile.platform_version` | string (optional) | Informational in v1: no chain method consumes it yet. |
 | `podfile.pods` | `List<String>` | Pod declarations appended to `target 'Runner'`. |
 
@@ -183,17 +201,22 @@ native:
     info_plist:
       NSExampleUsageDescription: "Reason shown in iOS permission dialog"
       UIBackgroundModes: ["fetch"]
+    url_schemes:
+      - com.example.app
     entitlements:
       com.apple.security.keychain: true
+      com.apple.developer.applesignin: [Default]
     podfile:
       platform_version: "13.0"
       pods:
         - "ExamplePod"
 ```
 
+`entitlements` keys go into every entitlements file the application target signs with, one per distinct `CODE_SIGN_ENTITLEMENTS` value across its build configurations, and the Xcode build settings are left as they are. A project that signs with none gets `Runner/Runner.entitlements` written and the target pointed at it. A list value is merged entry by entry into the array the file already carries, so entries another plugin or the app put there survive. A value that is not a string, a bool, or a list of strings fails the install. Both the plist and `project.pbxproj` writes are helper-backed and sit outside the transaction's `.tmp` rollback; see [PluginInstaller DSL](installer-dsl.md) for the cases that warn instead of write.
+
 ### native.macos
 
-Shape mirrors `native.ios` exactly. Same field set (`info_plist`, `entitlements`, `podfile.platform_version`, `podfile.pods`), same dispatcher rules. See the [Complete Example](#complete-example) for a macOS block in context.
+Shape mirrors `native.ios` exactly. Same field set (`info_plist`, `url_schemes`, `entitlements`, `podfile.platform_version`, `podfile.pods`), same dispatcher rules. A macOS Flutter project signs Debug and Release with different files (`Runner/DebugProfile.entitlements`, `Runner/Release.entitlements`), so an entitlement lands in both. See the [Complete Example](#complete-example) for a macOS block in context.
 
 ### native.web
 
@@ -351,6 +374,15 @@ native:
       - android.permission.INTERNET
     meta_data:
       io.flutter.embedded_views_preview: "true"
+    activities:
+      - name: com.example.CallbackActivity
+        exported: true
+        intent_filters:
+          - auto_verify: true
+            actions: [android.intent.action.VIEW]
+            categories: [android.intent.category.DEFAULT, android.intent.category.BROWSABLE]
+            data:
+              - {scheme: https, host: auth.example.com, path: /callback}
     gradle:
       plugins:
         - id: com.example.gradle.plugin
@@ -362,6 +394,8 @@ native:
     info_plist:
       NSExampleUsageDescription: "Reason shown in iOS permission dialog"
       UIBackgroundModes: ["fetch"]
+    url_schemes:
+      - com.example.app
     entitlements:
       com.apple.security.keychain: true
     podfile:

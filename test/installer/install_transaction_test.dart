@@ -749,6 +749,36 @@ void main() {
       });
     });
 
+    test('URL scheme and list entitlement ops serialize their typed payload',
+        () async {
+      final root = makeTempProject();
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(const InjectInfoPlistUrlScheme(
+          scheme: 'com.example.app', platform: 'macos'));
+      tx.stage(const InjectEntitlement(
+        platform: 'ios',
+        key: 'com.apple.developer.applesignin',
+        value: <String>['Default'],
+      ));
+
+      final result = await tx.commit();
+      expect(result, isA<Success>(), reason: 'Got: ${result.describe()}');
+
+      final ops =
+          (recordFor(root, 'demo')['ops'] as List).cast<Map<String, dynamic>>();
+      expect(ops[0], {
+        'type': 'InjectInfoPlistUrlScheme',
+        'platform': 'macos',
+        'scheme': 'com.example.app',
+      });
+      expect(ops[1], {
+        'type': 'InjectEntitlement',
+        'platform': 'ios',
+        'key': 'com.apple.developer.applesignin',
+        'value': ['Default'],
+      });
+    });
+
     test('RunShell serializes command + args + workingDir when set', () async {
       final root = makeTempProject();
       Directory('${root.path}/sub').createSync(recursive: true);
@@ -1024,7 +1054,7 @@ class RouteServiceProvider {
       );
     });
 
-    test('a project signing with another file keeps it and gets a warning',
+    test('a project signing with another file gets the key there instead',
         () async {
       final root = seedIosProject(
         pbxproj: _miniPbxproj.replaceAll(
@@ -1047,8 +1077,14 @@ class RouteServiceProvider {
       expect(result, isA<Success>());
       expect(pbxprojOf(root), before, reason: 'must not repoint the signing');
       expect(
-        (ctx.artisanContext.output as BufferedOutput).content,
-        contains('Runner/Custom.entitlements'),
+        File('${root.path}/ios/Runner/Custom.entitlements').readAsStringSync(),
+        contains('aps-environment'),
+        reason: 'the file the project signs with is the one that must carry it',
+      );
+      expect(
+        File('${root.path}/ios/Runner/Runner.entitlements').readAsStringSync(),
+        isNot(contains('aps-environment')),
+        reason: 'the default file is not signed with, so it stays out of it',
       );
     });
 
@@ -1118,6 +1154,264 @@ class RouteServiceProvider {
       expect(out, contains('Runner/Runner.entitlements'));
     });
 
+    test('a list value is written as an array of strings', () async {
+      final root = seedIosProject();
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(const InjectEntitlement(
+        platform: 'ios',
+        key: 'com.apple.developer.applesignin',
+        value: <String>['Default'],
+      ));
+
+      final result = await tx.commit();
+
+      expect(result, isA<Success>(), reason: 'Got: ${result.describe()}');
+      expect(
+        File('${root.path}/ios/Runner/Runner.entitlements')
+            .readAsStringSync()
+            .replaceAll(RegExp(r'\s+'), ''),
+        contains('<key>com.apple.developer.applesignin</key>'
+            '<array><string>Default</string></array>'),
+      );
+    });
+
+    test('a list value merges into an array the file already carries',
+        () async {
+      final root = seedIosProject();
+      File('${root.path}/ios/Runner/Runner.entitlements').writeAsStringSync('''
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+\t<key>com.apple.developer.associated-domains</key>
+\t<array>
+\t\t<string>applinks:example.com</string>
+\t</array>
+</dict>
+</plist>
+''');
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(const InjectEntitlement(
+        platform: 'ios',
+        key: 'com.apple.developer.associated-domains',
+        value: <String>['webcredentials:example.com'],
+      ));
+
+      expect(await tx.commit(), isA<Success>());
+
+      final plist = File('${root.path}/ios/Runner/Runner.entitlements')
+          .readAsStringSync();
+      expect(plist, contains('applinks:example.com'));
+      expect(plist, contains('webcredentials:example.com'));
+    });
+
+    test('a list holding a non-string is an Error and writes nothing',
+        () async {
+      final root = seedIosProject();
+      final before = pbxprojOf(root);
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(const InjectEntitlement(
+        platform: 'ios',
+        key: 'com.apple.developer.applesignin',
+        value: <Object>['Default', 1],
+      ));
+
+      final result = await tx.commit();
+
+      expect(result, isA<Error>());
+      expect((result as Error).error, contains('unsupported value type'));
+      expect(pbxprojOf(root), before);
+      expect(
+        File('${root.path}/ios/Runner/Runner.entitlements').readAsStringSync(),
+        isNot(contains('applesignin')),
+      );
+    });
+
+    group('with entitlements the project already names', () {
+      // The shape uptizm ships: Debug and Profile sign with Runner.entitlements,
+      // Release with RunnerRelease.entitlements, because aps-environment is a
+      // property of the provisioning profile and one file cannot carry both.
+      final split = _miniPbxproj
+          .replaceFirst(
+            '        SWIFT_VERSION = 5.0;\n',
+            '        CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;\n'
+                '        SWIFT_VERSION = 5.0;\n',
+          )
+          .replaceFirst(
+            '        PRODUCT_BUNDLE_IDENTIFIER = com.example.demo;\n'
+                '        SWIFT_VERSION = 5.0;\n'
+                '      };\n'
+                '      name = Release;',
+            '        CODE_SIGN_ENTITLEMENTS = Runner/RunnerRelease.entitlements;\n'
+                '        PRODUCT_BUNDLE_IDENTIFIER = com.example.demo;\n'
+                '        SWIFT_VERSION = 5.0;\n'
+                '      };\n'
+                '      name = Release;',
+          );
+
+      String plistOf(Directory root, String name) =>
+          File('${root.path}/ios/Runner/$name').readAsStringSync();
+
+      test('a split Debug and Release project gets the key in BOTH files',
+          () async {
+        // Guard the fixture: it must really be split before the assertions
+        // mean anything.
+        expect('CODE_SIGN_ENTITLEMENTS'.allMatches(split), hasLength(2));
+        expect(split, contains('Runner/RunnerRelease.entitlements'));
+
+        final root = seedIosProject(pbxproj: split);
+        File('${root.path}/ios/Runner/RunnerRelease.entitlements')
+            .writeAsStringSync(plistOf(root, 'Runner.entitlements'));
+        final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+        tx.stage(const InjectEntitlement(
+          platform: 'ios',
+          key: 'com.apple.developer.applesignin',
+          value: <String>['Default'],
+        ));
+
+        final result = await tx.commit();
+
+        expect(result, isA<Success>(), reason: 'Got: ${result.describe()}');
+        for (final name in const [
+          'Runner.entitlements',
+          'RunnerRelease.entitlements',
+        ]) {
+          expect(
+            plistOf(root, name).replaceAll(RegExp(r'\s+'), ''),
+            contains('<key>com.apple.developer.applesignin</key>'
+                '<array><string>Default</string></array>'),
+            reason: '$name must carry the key',
+          );
+        }
+        expect(pbxprojOf(root), split, reason: 'build settings stay alone');
+      });
+
+      test('a named file that does not exist yet is created, not skipped',
+          () async {
+        final root = seedIosProject(pbxproj: split);
+        final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+        tx.stage(const InjectEntitlement(
+          platform: 'ios',
+          key: 'aps-environment',
+          value: 'production',
+        ));
+
+        expect(await tx.commit(), isA<Success>());
+
+        expect(plistOf(root, 'RunnerRelease.entitlements'),
+            contains('aps-environment'));
+      });
+
+      test('the build setting is left alone and nothing is warned', () async {
+        final root = seedIosProject(pbxproj: split);
+        final ctx = realCtx(root);
+        final tx = InstallTransaction(ctx, pluginName: 'demo');
+        tx.stage(const InjectEntitlement(
+          platform: 'ios',
+          key: 'com.apple.security.network.client',
+          value: true,
+        ));
+
+        expect(await tx.commit(), isA<Success>());
+
+        expect(pbxprojOf(root), split);
+        expect(
+          (ctx.artisanContext.output as BufferedOutput).content,
+          isNot(contains('Left CODE_SIGN_ENTITLEMENTS alone')),
+        );
+      });
+
+      test('a second run leaves every entitlements file byte-identical',
+          () async {
+        final root = seedIosProject(pbxproj: split);
+        const op = InjectEntitlement(
+          platform: 'ios',
+          key: 'com.apple.developer.applesignin',
+          value: <String>['Default'],
+        );
+        final first = InstallTransaction(realCtx(root), pluginName: 'demo')
+          ..stage(op);
+        await first.commit(force: true);
+        final debug = plistOf(root, 'Runner.entitlements');
+        final release = plistOf(root, 'RunnerRelease.entitlements');
+
+        final second = InstallTransaction(realCtx(root), pluginName: 'demo')
+          ..stage(op);
+        await second.commit(force: true);
+
+        expect(plistOf(root, 'Runner.entitlements'), debug);
+        expect(plistOf(root, 'RunnerRelease.entitlements'), release);
+      });
+    });
+
+    group('with a build variable in CODE_SIGN_ENTITLEMENTS', () {
+      String withSetting(String value) => _miniPbxproj.replaceFirst(
+            '        SWIFT_VERSION = 5.0;\n',
+            '        CODE_SIGN_ENTITLEMENTS = "$value";\n'
+                '        SWIFT_VERSION = 5.0;\n',
+          );
+
+      for (final variable in const [r'$(SRCROOT)', r'$(PROJECT_DIR)']) {
+        test('$variable resolves to the directory holding the .xcodeproj',
+            () async {
+          final root = seedIosProject(
+            pbxproj: withSetting('$variable/Runner/Runner.entitlements'),
+          );
+          final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+          tx.stage(const InjectEntitlement(
+            platform: 'ios',
+            key: 'aps-environment',
+            value: 'development',
+          ));
+
+          final result = await tx.commit();
+
+          expect(result, isA<Success>(), reason: 'Got: ${result.describe()}');
+          expect(
+            File('${root.path}/ios/Runner/Runner.entitlements')
+                .readAsStringSync(),
+            contains('aps-environment'),
+          );
+          expect(
+            Directory('${root.path}/ios/$variable').existsSync(),
+            isFalse,
+            reason: 'the variable must never become a directory name',
+          );
+        });
+      }
+
+      test('any other variable warns, names the value and writes nothing',
+          () async {
+        final root = seedIosProject(
+          pbxproj: withSetting(r'$(TARGET_NAME)/x.entitlements'),
+        );
+        final before = pbxprojOf(root);
+        final ctx = realCtx(root);
+        final tx = InstallTransaction(ctx, pluginName: 'demo');
+        tx.stage(const InjectEntitlement(
+          platform: 'ios',
+          key: 'aps-environment',
+          value: 'development',
+        ));
+
+        final result = await tx.commit();
+
+        expect(result, isA<Success>(), reason: 'Got: ${result.describe()}');
+        expect(
+          (ctx.artisanContext.output as BufferedOutput).content,
+          contains(r'$(TARGET_NAME)/x.entitlements'),
+        );
+        expect(Directory('${root.path}/ios/${r'$(TARGET_NAME)'}').existsSync(),
+            isFalse);
+        expect(
+          File('${root.path}/ios/Runner/Runner.entitlements')
+              .readAsStringSync(),
+          isNot(contains('aps-environment')),
+          reason: 'a project that names a file must not get the default one',
+        );
+        expect(pbxprojOf(root), before);
+      });
+    });
+
     test('a malformed project surfaces as an Error and is left untouched',
         () async {
       final malformed = _miniPbxproj.replaceFirst(
@@ -1137,6 +1431,82 @@ class RouteServiceProvider {
       expect(result, isA<Error>());
       expect((result as Error).error, contains('InjectEntitlement'));
       expect(pbxprojOf(root), malformed);
+    });
+  });
+
+  group('InjectInfoPlistUrlScheme: through the installer', () {
+    Directory seedProject(String platform, {String? plist}) {
+      final root = Directory.systemTemp.createTempSync('artisan_tx_scheme_');
+      addTearDown(() {
+        if (root.existsSync()) root.deleteSync(recursive: true);
+      });
+      File('${root.path}/$platform/Runner/Info.plist')
+        ..createSync(recursive: true)
+        ..writeAsStringSync(plist ??
+            '''
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+\t<key>CFBundleName</key>
+\t<string>Runner</string>
+</dict>
+</plist>
+''');
+      return root;
+    }
+
+    InstallContext realCtx(Directory root) => InstallContext.test(
+          fs: RealFs(),
+          prompt: _SilentPromptDriver(),
+          stubs: _SilentStubDriver(),
+          projectRoot: root.path,
+        );
+
+    test('writes the scheme into the platform Info.plist', () async {
+      final root = seedProject('macos');
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(const InjectInfoPlistUrlScheme(
+          scheme: 'com.example.app', platform: 'macos'));
+
+      final result = await tx.commit();
+
+      expect(result, isA<Success>(), reason: 'Got: ${result.describe()}');
+      final plist =
+          File('${root.path}/macos/Runner/Info.plist').readAsStringSync();
+      expect(plist, contains('<key>CFBundleURLTypes</key>'));
+      expect(plist, contains('<string>com.example.app</string>'));
+    });
+
+    test('an absent platform directory is a skip, not a failure', () async {
+      final root = seedProject('ios');
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(const InjectInfoPlistUrlScheme(
+          scheme: 'com.example.app', platform: 'macos'));
+
+      expect(await tx.commit(), isA<Success>());
+      expect(Directory('${root.path}/macos').existsSync(), isFalse);
+    });
+
+    test('a malformed CFBundleURLTypes surfaces as an Error', () async {
+      final root = seedProject(
+        'ios',
+        plist: '''
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+\t<key>CFBundleURLTypes</key>
+\t<string>oops</string>
+</dict>
+</plist>
+''',
+      );
+      final tx = InstallTransaction(realCtx(root), pluginName: 'demo');
+      tx.stage(const InjectInfoPlistUrlScheme(scheme: 'com.example.app'));
+
+      final result = await tx.commit();
+
+      expect(result, isA<Error>());
+      expect((result as Error).error, contains('InjectInfoPlistUrlScheme'));
     });
   });
 

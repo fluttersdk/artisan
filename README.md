@@ -312,7 +312,7 @@ ArtisanRegistry.registerAll(providers + builtins)   # collision-detected
 ArtisanCommand.handle(ArtisanContext)
 ```
 
-Every public type is a `final class`. Sealed dispatch over Dart 3 exhaustiveness wherever an op set or result set is closed (`InstallOperation` has 26 sealed subclasses, `TransactionResult` has 4). New ops or result variants force every dispatcher to update, no silent drift.
+Every public type is a `final class`. Sealed dispatch over Dart 3 exhaustiveness wherever an op set or result set is closed (`InstallOperation` has 28 sealed subclasses, `TransactionResult` has 4). New ops or result variants force every dispatcher to update, no silent drift.
 
 ## AI Agent Integration
 

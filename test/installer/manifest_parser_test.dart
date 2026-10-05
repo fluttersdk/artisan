@@ -55,8 +55,12 @@ native:
     info_plist:
       NSExampleUsageDescription: "Reason shown in iOS permission dialog"
       UIBackgroundModes: ["fetch"]
+    url_schemes:
+      - com.example.app
+      - example-auth
     entitlements:
       com.apple.security.keychain: true
+      com.apple.developer.applesignin: ["Default"]
     podfile:
       platform_version: "13.0"
       pods:
@@ -64,6 +68,8 @@ native:
   macos:
     info_plist:
       NSExampleUsageDescription: "Reason shown in macOS permission dialog"
+    url_schemes:
+      - com.example.mac
     entitlements:
       com.apple.security.network.client: true
     podfile:
@@ -213,6 +219,28 @@ void main() {
       final macos = manifest.native.macos!;
       expect(macos.entitlements['com.apple.security.network.client'], true);
       expect(macos.podfile!.platformVersion, '11.0');
+    });
+
+    test('parses native.ios + macos url_schemes and list entitlements', () {
+      expect(
+          manifest.native.ios!.urlSchemes, ['com.example.app', 'example-auth']);
+      expect(
+          manifest.native.ios!.entitlements['com.apple.developer.applesignin'],
+          ['Default']);
+      expect(manifest.native.macos!.urlSchemes, ['com.example.mac']);
+    });
+
+    test('url_schemes defaults to empty when the key is absent', () {
+      final parsed = ManifestParser.parseString('''
+plugin_name: example_plugin
+
+native:
+  ios:
+    info_plist:
+      NSExampleUsageDescription: "x"
+''');
+
+      expect(parsed.native.ios!.urlSchemes, isEmpty);
     });
 
     test('parses native.web head_scripts + meta_tags', () {

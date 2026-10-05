@@ -8,6 +8,24 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.18] - 2026-10-05
+
+### Added
+
+- **`native.ios.url_schemes` and `native.macos.url_schemes` register a custom URL scheme under `CFBundleURLTypes`.** A new `InjectInfoPlistUrlScheme` op (`PluginInstaller.injectInfoPlistUrlScheme(scheme:, [platform:])`) appends one `CFBundleURLTypes` dict (role `Editor`) carrying the scheme, creates the array when the plist has none, and skips the write when any existing dict already lists the scheme, so a scheme the app or another plugin registered keeps its own entry. (`lib/src/installer/install_operation.dart`, `lib/src/installer/plugin_installer.dart`, `lib/src/installer/install_transaction.dart`, `lib/src/installer/manifest_installer.dart`, `lib/src/installer/install_manifest.dart`, `lib/src/helpers/plist_writer.dart`, `test/`, `doc/plugins/`)
+
+- **`native.android.activities` declares an `<activity>` with its intent filters inside `<application>`.** A new `InjectAndroidActivity` op (`PluginInstaller.injectAndroidActivity(name:, exported:, [taskAffinity:], [intentFilters:])`) takes `name`, `exported`, `task_affinity` and `intent_filters` (`auto_verify`, `actions`, `categories`, `data` with `scheme`, `host`, `path`, `path_prefix`), the shape an Android App Link or custom-scheme callback needs. The manifest is parsed to decide and the element is spliced in as text before the real `</application>` (one inside a comment is ignored), so every other byte of the file stays as it was. Idempotency compares content: an activity with the same name and an equal set of intent filters (in any order) is left alone; one with the same name and different filters is never rewritten, and the install warns with the block it expected. `exported` and `task_affinity` are not part of that comparison. `AndroidIntentFilter`, `AndroidIntentData` and `AndroidActivityOutcome` are exported from `package:fluttersdk_artisan/artisan.dart`. (`lib/src/helpers/xml_editor.dart`, `lib/src/installer/android_intent_filter.dart`, `lib/src/installer/`, `test/`, `doc/plugins/`)
+
+- **List entitlements are accepted and merged.** `InjectEntitlement` takes a `List<String>` beside `String` and `bool` (for example `com.apple.developer.applesignin: [Default]`). A list is merged entry by entry into the array the file already carries, so another plugin's entries survive, and a `YamlList` from `install.yaml` is narrowed to `List<String>` before the dispatcher sees it. The install record stores the list as a list. (`lib/src/installer/install_transaction.dart`, `lib/src/installer/manifest_installer.dart`)
+
+### Changed
+
+- **`InjectEntitlement` writes to every entitlements file the application target signs with, and no longer warns and skips a project that signs with a different file.** The op reads `CODE_SIGN_ENTITLEMENTS` across the application target's build configurations (`XcodeProjectEditor.entitlementsPaths`) and sets the key in each distinct file, leaving the build settings untouched. A macOS Flutter project (`Runner/DebugProfile.entitlements` plus `Runner/Release.entitlements`) now gets the key in both, where it used to print a warning and ask the operator to copy it by hand. Only a project that names no entitlements file at all takes the old path: write `<platform>/Runner/Runner.entitlements` and point the target at it. A configuration holding a non-string `CODE_SIGN_ENTITLEMENTS`, or a project the editor refuses to re-emit, still warns and leaves the build setting alone. `InstallOperation` now has 28 sealed subclasses. (`lib/src/installer/install_transaction.dart`, `lib/src/helpers/xcode_project_editor.dart`, `test/installer/`, `doc/plugins/installer-dsl.md`, `doc/plugins/install-yaml.md`)
+
+### Fixed
+
+- **`InjectEntitlement` resolves `$(SRCROOT)` and `$(PROJECT_DIR)` in `CODE_SIGN_ENTITLEMENTS` instead of joining them literally.** A target signing with `$(SRCROOT)/Runner/Runner.entitlements` made the installer write `ios/$(SRCROOT)/Runner/Runner.entitlements`, a directory named after the variable. Both variables name the directory holding the `.xcodeproj`, so a leading one is dropped and the real file is written. Any other build variable (`$(TARGET_NAME)/...`) cannot be resolved without evaluating the build settings: the install warns with the value, skips that file, and does not add a default `Runner.entitlements` next to a project that already names one. (`lib/src/installer/install_transaction.dart`, `test/installer/install_transaction_test.dart`)
+
 ## [0.0.17] - 2026-09-29
 
 ### Fixed
@@ -374,6 +392,7 @@ Both write through `.tmp` + atomic rename; never hand-edit.
 
 ---
 
+[0.0.18]: https://github.com/fluttersdk/artisan/compare/0.0.17...0.0.18
 [0.0.17]: https://github.com/fluttersdk/artisan/compare/0.0.16...0.0.17
 [0.0.16]: https://github.com/fluttersdk/artisan/compare/0.0.15...0.0.16
 [0.0.15]: https://github.com/fluttersdk/artisan/compare/0.0.14...0.0.15
