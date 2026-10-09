@@ -8,6 +8,14 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.19] - 2026-10-09
+
+### Changed
+
+- **The `xml` constraint admits the 7.x line (`>=6.5.0 <8.0.0`, was `^6.5.0`).** The floor stays at 6.5.0, so this package's Dart SDK floor (3.4) does not move and a consumer that pins `xml` 6 keeps resolving. No public API changed: `PlistWriter` builds elements with `XmlElement.tag` and `XmlEditor` matches `android:` attributes on the namespace URI by hand, so neither calls the `XmlName` constructor or the `namespace:` argument of `getAttribute` that xml 7 deprecates, and installs behave the same on both majors (1418 tests pass against xml 6.5.0 and 7.1.0). What a consumer inherits is the resolution: on Dart 3.13 or newer a fresh `pub get` picks xml 7.1.0, which requires `petitparser` ^7.1.0; Dart 3.11 and 3.12 get xml 7.0.1, and older SDKs stay on 6.x. (#64, `pubspec.yaml`, `lib/src/helpers/plist_writer.dart`, `lib/src/helpers/xml_editor.dart`, `test/`)
+
+- **The example app moves `cupertino_icons` to `^2.0.0`.** It touches only the unpublished `example/` app, not the package. (#65, `example/pubspec.yaml`, `example/pubspec.lock`)
+
 ## [0.0.18] - 2026-10-05
 
 ### Added
@@ -392,6 +400,7 @@ Both write through `.tmp` + atomic rename; never hand-edit.
 
 ---
 
+[0.0.19]: https://github.com/fluttersdk/artisan/compare/0.0.18...0.0.19
 [0.0.18]: https://github.com/fluttersdk/artisan/compare/0.0.17...0.0.18
 [0.0.17]: https://github.com/fluttersdk/artisan/compare/0.0.16...0.0.17
 [0.0.16]: https://github.com/fluttersdk/artisan/compare/0.0.15...0.0.16
