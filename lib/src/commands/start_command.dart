@@ -9,6 +9,7 @@ import '../console/artisan_command.dart';
 import '../console/artisan_context.dart';
 import '../console/command_boot.dart';
 import '../console/pid_parser.dart';
+import '../console/process_alive.dart';
 import '../console/shell_quote.dart';
 import '../state/state_file.dart';
 import '../state/vm_service_log.dart';
@@ -199,6 +200,11 @@ class StartCommand extends ArtisanCommand {
   /// SIGTERM, after SIGKILL, for the ports). Defaults to 5 s.
   @visibleForTesting
   static Duration cdpReapGrace = const Duration(seconds: 5);
+
+  /// Test seam: liveness check for the `flutter run` pid when the plain
+  /// branch's scrape times out (default [processAlive]).
+  @visibleForTesting
+  static bool Function(int pid) startIsAlive = processAlive;
 
   /// Default [CdpPortProbe] implementation. Binds [ServerSocket] on
   /// [InternetAddress.loopbackIPv4] and immediately closes it.
@@ -523,7 +529,19 @@ class StartCommand extends ArtisanCommand {
     );
     await StateFile.write(booting);
 
-    final vmServiceUri = await _runVmServiceScrape(logFile, resolvedTimeout);
+    final String vmServiceUri;
+    try {
+      vmServiceUri = await _runVmServiceScrape(logFile, resolvedTimeout);
+    } on TimeoutException {
+      return _reportScrapeTimeout(
+        ctx,
+        childPid: childPid,
+        holderPid: holderPid,
+        fifoPath: fifoPath,
+        timeoutSeconds: resolvedTimeout,
+        logFile: logFile,
+      );
+    }
 
     await StateFile.write(readyState(booting, vmServiceUri: vmServiceUri));
 
@@ -532,6 +550,46 @@ class StartCommand extends ArtisanCommand {
     ctx.output.success('state=${StateFile.path}');
     ctx.output.success('log=${logFile.path}');
     return 0;
+  }
+
+  /// Reports a scrape that ran out of time on the plain branch.
+  ///
+  /// A first native build (CocoaPods, SwiftPM, Gradle) routinely outlasts the
+  /// default 90s, and the app keeps building after this command returns: the
+  /// booting session stays on disk, and the next connected command reads the
+  /// URI back from the log. So a live `flutter run` is "not ready yet"
+  /// ([ArtisanCommand.exitTryAgain]), not a failure. A `flutter run` that is
+  /// gone exited before announcing a URI, almost always a build error, and the
+  /// log is where it says why. Its session is taken down with it (the FIFO
+  /// holder, the FIFO, the record) so `status` does not report a dead app as
+  /// booting; the log stays.
+  Future<int> _reportScrapeTimeout(
+    ArtisanContext ctx, {
+    required int childPid,
+    required int holderPid,
+    required String fifoPath,
+    required int timeoutSeconds,
+    required File logFile,
+  }) async {
+    if (!startIsAlive(childPid)) {
+      cdpKillPid(holderPid);
+      final File fifo = File(fifoPath);
+      if (fifo.existsSync()) await fifo.delete();
+      await StateFile.delete();
+      ctx.output.error(
+        'flutter run (pid $childPid) exited before announcing a VM Service '
+        'URI. See ${logFile.path} for the reason.',
+      );
+      return 1;
+    }
+    ctx.output.warning(
+      'flutter run (pid $childPid) is still building after ${timeoutSeconds}s '
+      'and has not announced a VM Service URI yet. The session is recorded: '
+      'run `artisan status`, or retry a connected command once the build '
+      'finishes. Pass --timeout=<seconds> to wait longer. Log: '
+      '${logFile.path}',
+    );
+    return ArtisanCommand.exitTryAgain;
   }
 
   /// Handles the `--cdp-port=N` branch: validate, pre-launch Chrome,
@@ -762,7 +820,11 @@ class StartCommand extends ArtisanCommand {
       //     FIFO, no tmp profile dir, and holds none of the ports the retry
       //     that usually follows will bind. The error surfaced to the operator
       //     is the ORIGINAL throw, never a cleanup error.
-      ctx.output.error('CDP start failed after launch: $error');
+      // A TimeoutException prints its Duration first; the message already
+      // names the deadline.
+      final Object reason =
+          error is TimeoutException ? (error.message ?? error) : error;
+      ctx.output.error('CDP start failed after launch: $reason');
       await _reapAfterCdpFailure(
         ctx: ctx,
         flutterProcess: flutterProcess,
@@ -1224,9 +1286,10 @@ class StartCommand extends ArtisanCommand {
       }
       await Future<void>.delayed(const Duration(milliseconds: 250));
     }
-    throw StateError(
+    throw TimeoutException(
       'Timed out after ${timeoutSeconds}s waiting for VM Service URI in '
       '${logFile.path}.',
+      Duration(seconds: timeoutSeconds),
     );
   }
 

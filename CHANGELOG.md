@@ -8,6 +8,16 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`ExtensionNotRegisteredException` and `ArtisanCommand.exitTryAgain` (75).** `VmServiceClient.callServiceExtension` (and so `ArtisanContext.callExtension`) throws `ExtensionNotRegisteredException` when the app answers JSON-RPC `-32601`, so a command can tell "not registered yet" from a failed call without importing `package:vm_service` (which trips `depend_on_referenced_packages` in a consumer). `exitTryAgain` is `EX_TEMPFAIL` from `sysexits.h`: the exit code for "not ready yet, retry". (`lib/src/vm/`, `lib/src/console/artisan_command.dart`)
+
+### Fixed
+
+- **A connected command calling an extension the app has not registered prints one line, not an RPC stack.** Run while the app was still booting, `player:state` printed `Connected command player:state failed: ext.watchools.player: (-32601) Method not found` and a vm_service stack, then worked a few seconds later. The dispatcher now prints `ext.watchools.player is not registered in the running app yet (still booting, a release build, or the plugin is not installed). Retry in a few seconds.` and exits 75. Every other RPC error keeps the unexpected-failure path (exit 3, with the stack). The mapping covers the retries inside `callServiceExtension` too, so a hot restart whose fresh isolate has not registered its extensions yet gets the same line. The mapping applies where the runtime answers `-32601` (the Dart VM, and the Chrome proxy in DWDS 27); a web runtime that reports a missing extension with another code keeps the old output. (`lib/src/vm/vm_service_client.dart`, `lib/src/console/artisan_application.dart`, `test/`)
+
+- **`start` on a cold native build no longer exits on a stack fragment when `--timeout` runs out.** A first macOS build (CocoaPods, SwiftPM) outlasts the 90s scrape, and the timeout's `StateError` escaped as an unexpected error whose visible tail was `<asynchronous suspension>`, while the app kept building and the next connected command recovered the URI from the log. The plain branch now checks the `flutter run` pid: alive, it prints `flutter run (pid <n>) is still building after <n>s` with the `artisan status`, retry and `--timeout` hints, keeps the booting session and exits 75; gone, it reports that `flutter run` exited before announcing a URI, names the log, stops the FIFO holder, removes the session and exits 1. A connected command against a booting session whose `flutter run` is still alive exits 75 as well (it was 1), so a caller can retry on one code from `start` to the first command that connects. The scrape loop throws `TimeoutException` instead of `StateError`; the `--cdp-port` branch still fails and reaps on a timeout, and prints the timeout's message without the `TimeoutException after <duration>` prefix. (`lib/src/commands/start_command.dart`, `test/commands/start_command_early_state_test.dart`, `doc/commands/start.md`)
+
 ## [0.0.18] - 2026-10-05
 
 ### Added

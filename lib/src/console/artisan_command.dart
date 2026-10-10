@@ -44,6 +44,12 @@ import 'command_signature.dart';
 /// args, file conflicts, unreachable VM) should write to
 /// `ctx.output.error(...)` and return non-zero.
 abstract class ArtisanCommand {
+  /// Exit code for "not ready yet, retry": the app is still building, or has
+  /// not registered the extension a connected command called. Matches
+  /// `EX_TEMPFAIL` from `sysexits.h`, so a script can retry on it and treat
+  /// any other non-zero code as a real failure.
+  static const int exitTryAgain = 75;
+
   /// Optional Laravel-style signature DSL. When set, [name] derives from
   /// it and [configure] auto-registers the declared options/flags.
   ///
