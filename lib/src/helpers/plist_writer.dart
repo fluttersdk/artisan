@@ -69,7 +69,7 @@ class PlistWriter {
         return;
       }
       // 2. Different value: replace the sibling in place.
-      final replacement = XmlElement(XmlName('string'))
+      final replacement = XmlElement.tag('string')
         ..children.add(XmlText(value));
       existing.replace(replacement);
     } else {
@@ -77,7 +77,7 @@ class PlistWriter {
       _appendPair(
         dict,
         key,
-        XmlElement(XmlName('string'))..children.add(XmlText(value)),
+        XmlElement.tag('string')..children.add(XmlText(value)),
       );
     }
 
@@ -107,10 +107,10 @@ class PlistWriter {
         return;
       }
       // 2. Different value: replace in place.
-      existing.replace(XmlElement(XmlName(tagName)));
+      existing.replace(XmlElement.tag(tagName));
     } else {
       // 3. Key is absent: append the pair.
-      _appendPair(dict, key, XmlElement(XmlName(tagName)));
+      _appendPair(dict, key, XmlElement.tag(tagName));
     }
 
     _write(plistPath, doc);
@@ -188,7 +188,7 @@ class PlistWriter {
 
     // 3. Append the new <string> child.
     existing.children.add(
-      XmlElement(XmlName('string'))..children.add(XmlText(value)),
+      XmlElement.tag('string')..children.add(XmlText(value)),
     );
     _write(plistPath, doc);
   }
@@ -222,7 +222,7 @@ class PlistWriter {
       _appendPair(
         dict,
         _urlTypesKey,
-        XmlElement(XmlName('array'))..children.add(_buildUrlType(scheme)),
+        XmlElement.tag('array')..children.add(_buildUrlType(scheme)),
       );
       _write(plistPath, doc);
       return;
@@ -365,11 +365,11 @@ class PlistWriter {
 
   /// Build one `CFBundleURLTypes` entry: role `Editor`, one scheme.
   static XmlElement _buildUrlType(String scheme) {
-    final entry = XmlElement(XmlName('dict'));
+    final entry = XmlElement.tag('dict');
     _appendPair(
       entry,
       'CFBundleTypeRole',
-      XmlElement(XmlName('string'))..children.add(XmlText('Editor')),
+      XmlElement.tag('string')..children.add(XmlText('Editor')),
     );
     _appendPair(entry, _urlSchemesKey, _buildArray([scheme]));
     return entry;
@@ -378,10 +378,10 @@ class PlistWriter {
   /// Build an `<array>` element whose children are `<string>` elements, one
   /// per entry in [values].
   static XmlElement _buildArray(List<String> values) {
-    final array = XmlElement(XmlName('array'));
+    final array = XmlElement.tag('array');
     for (final v in values) {
       array.children.add(
-        XmlElement(XmlName('string'))..children.add(XmlText(v)),
+        XmlElement.tag('string')..children.add(XmlText(v)),
       );
     }
     return array;
@@ -389,7 +389,7 @@ class PlistWriter {
 
   /// Append a `<key>` + [valueEl] pair to [dict].
   static void _appendPair(XmlElement dict, String key, XmlElement valueEl) {
-    dict.children.add(XmlElement(XmlName('key'))..children.add(XmlText(key)));
+    dict.children.add(XmlElement.tag('key')..children.add(XmlText(key)));
     dict.children.add(valueEl);
   }
 

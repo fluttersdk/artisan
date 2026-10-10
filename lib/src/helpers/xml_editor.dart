@@ -239,7 +239,7 @@ class XmlEditor {
     //    reported instead of being skipped silently or rewritten.
     final existing = application
         .findElements('activity')
-        .where((e) => e.getAttribute('name', namespace: _androidNs) == name)
+        .where((e) => _androidAttribute(e, 'name') == name)
         .firstOrNull;
     if (existing != null) {
       return _sameFilters(existing, intentFilters)
@@ -343,6 +343,22 @@ class XmlEditor {
   /// Namespace the Android manifest binds its `android:` attributes to.
   static const String _androidNs = 'http://schemas.android.com/apk/res/android';
 
+  /// The value of the `android:[local]` attribute of [element], matched on
+  /// the namespace URI rather than the prefix.
+  ///
+  /// `getAttribute` takes that URI as `namespace` in package `xml` 6 and as
+  /// `namespaceUri` in 7, which deprecates `namespace`; matching by hand keeps
+  /// this package on both majors without a deprecated call.
+  static String? _androidAttribute(XmlElement element, String local) {
+    for (final attribute in element.attributes) {
+      if (attribute.name.local == local &&
+          attribute.namespaceUri == _androidNs) {
+        return attribute.value;
+      }
+    }
+    return null;
+  }
+
   /// Renders `android:[local]="[value]"` with the value escaped for a
   /// double-quoted attribute.
   static String _attribute(String local, String value) {
@@ -386,9 +402,7 @@ class XmlEditor {
     final declared = <String>{
       for (final filter in activity.findElements('intent-filter'))
         _signature(
-          autoVerify:
-              filter.getAttribute('autoVerify', namespace: _androidNs) ==
-                  'true',
+          autoVerify: _androidAttribute(filter, 'autoVerify') == 'true',
           actions: _names(filter, 'action'),
           categories: _names(filter, 'category'),
           data: [
@@ -417,9 +431,7 @@ class XmlEditor {
   static List<String> _names(XmlElement filter, String tag) {
     return <String>[
       for (final element in filter.findElements(tag))
-        if (element.getAttribute('name', namespace: _androidNs)
-            case final name?)
-          name,
+        if (_androidAttribute(element, 'name') case final name?) name,
     ];
   }
 

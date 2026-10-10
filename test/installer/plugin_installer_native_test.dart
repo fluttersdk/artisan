@@ -222,8 +222,6 @@ const String _emptyEntitlements = '''<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 ''';
 
-const String _androidNs = 'http://schemas.android.com/apk/res/android';
-
 const String _callbackName = 'com.linusu.flutter_web_auth_2.CallbackActivity';
 
 const AndroidIntentFilter _callbackFilter = AndroidIntentFilter(
@@ -266,8 +264,7 @@ String _readManifest(Directory root) => File(p.join(
 
 int _callbackActivityCount(String manifest) => XmlDocument.parse(manifest)
     .findAllElements('activity')
-    .where(
-        (e) => e.getAttribute('name', namespace: _androidNs) == _callbackName)
+    .where((e) => e.getAttribute('android:name') == _callbackName)
     .length;
 
 void main() {

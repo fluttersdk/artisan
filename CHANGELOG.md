@@ -18,6 +18,14 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 - **`start` on a cold native build no longer exits on a stack fragment when `--timeout` runs out.** A first macOS build (CocoaPods, SwiftPM) outlasts the 90s scrape, and the timeout's `StateError` escaped as an unexpected error whose visible tail was `<asynchronous suspension>`, while the app kept building and the next connected command recovered the URI from the log. The plain branch now checks the `flutter run` pid: alive, it prints `flutter run (pid <n>) is still building after <n>s` with the `artisan status`, retry and `--timeout` hints, keeps the booting session and exits 75; gone, it reports that `flutter run` exited before announcing a URI, names the log, stops the FIFO holder, removes the session and exits 1. A connected command against a booting session whose `flutter run` is still alive exits 75 as well (it was 1), so a caller can retry on one code from `start` to the first command that connects. The scrape loop throws `TimeoutException` instead of `StateError`; the `--cdp-port` branch still fails and reaps on a timeout, and prints the timeout's message without the `TimeoutException after <duration>` prefix. (`lib/src/commands/start_command.dart`, `test/commands/start_command_early_state_test.dart`, `doc/commands/start.md`)
 
+## [0.0.19] - 2026-10-09
+
+### Changed
+
+- **The `xml` constraint admits the 7.x line (`>=6.5.0 <8.0.0`, was `^6.5.0`).** The floor stays at 6.5.0, so this package's Dart SDK floor (3.4) does not move and a consumer that pins `xml` 6 keeps resolving. No public API changed: `PlistWriter` builds elements with `XmlElement.tag` and `XmlEditor` matches `android:` attributes on the namespace URI by hand, so neither calls the `XmlName` constructor or the `namespace:` argument of `getAttribute` that xml 7 deprecates, and installs behave the same on both majors (1418 tests pass against xml 6.5.0 and 7.1.0). What a consumer inherits is the resolution: on Dart 3.13 or newer a fresh `pub get` picks xml 7.1.0, which requires `petitparser` ^7.1.0; Dart 3.11 and 3.12 get xml 7.0.1, and older SDKs stay on 6.x. (#64, `pubspec.yaml`, `lib/src/helpers/plist_writer.dart`, `lib/src/helpers/xml_editor.dart`, `test/`)
+
+- **The example app moves `cupertino_icons` to `^2.0.0`.** It touches only the unpublished `example/` app, not the package. (#65, `example/pubspec.yaml`, `example/pubspec.lock`)
+
 ## [0.0.18] - 2026-10-05
 
 ### Added
@@ -402,6 +410,7 @@ Both write through `.tmp` + atomic rename; never hand-edit.
 
 ---
 
+[0.0.19]: https://github.com/fluttersdk/artisan/compare/0.0.18...0.0.19
 [0.0.18]: https://github.com/fluttersdk/artisan/compare/0.0.17...0.0.18
 [0.0.17]: https://github.com/fluttersdk/artisan/compare/0.0.16...0.0.17
 [0.0.16]: https://github.com/fluttersdk/artisan/compare/0.0.15...0.0.16

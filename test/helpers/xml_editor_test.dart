@@ -115,7 +115,7 @@ List<XmlElement> _activitiesNamed(String path, String name) {
       .findElements('application')
       .single
       .findElements('activity')
-      .where((e) => e.getAttribute('name', namespace: _androidNs) == name)
+      .where((e) => e.getAttribute('android:name') == name)
       .toList();
 }
 
@@ -271,18 +271,13 @@ void main() {
         );
 
         final activity = _activitiesNamed(manifest, _callbackName).single;
-        expect(
-            activity.getAttribute('exported', namespace: _androidNs), 'true');
-        expect(
-            activity.getAttribute('taskAffinity', namespace: _androidNs), '');
+        expect(activity.getAttribute('android:exported'), 'true');
+        expect(activity.getAttribute('android:taskAffinity'), '');
         final filter = activity.findElements('intent-filter').single;
-        expect(
-            filter.getAttribute('autoVerify', namespace: _androidNs), 'true');
+        expect(filter.getAttribute('android:autoVerify'), 'true');
         final data = filter.findElements('data').single;
-        expect(data.getAttribute('host', namespace: _androidNs),
-            'auth.example.com');
-        expect(data.getAttribute('path', namespace: _androidNs),
-            '/social/callback');
+        expect(data.getAttribute('android:host'), 'auth.example.com');
+        expect(data.getAttribute('android:path'), '/social/callback');
       });
 
       test('a second run is a byte-identical no-op', () {

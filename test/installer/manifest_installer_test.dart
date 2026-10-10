@@ -951,8 +951,7 @@ native:
       final callbacks = XmlDocument.parse(afterFirst)
           .findAllElements('activity')
           .where((e) =>
-              e.getAttribute('name',
-                  namespace: 'http://schemas.android.com/apk/res/android') ==
+              e.getAttribute('android:name') ==
               'com.linusu.flutter_web_auth_2.CallbackActivity');
       expect(callbacks, hasLength(1));
       expect(afterFirst, contains('android:path="/social/callback"'));
