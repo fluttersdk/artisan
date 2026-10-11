@@ -8,6 +8,8 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.20] - 2026-10-11
+
 ### Added
 
 - **`ExtensionNotRegisteredException` and `ArtisanCommand.exitTryAgain` (75).** `VmServiceClient.callServiceExtension` (and so `ArtisanContext.callExtension`) throws `ExtensionNotRegisteredException` when the app answers JSON-RPC `-32601`, so a command can tell "not registered yet" from a failed call without importing `package:vm_service` (which trips `depend_on_referenced_packages` in a consumer). `exitTryAgain` is `EX_TEMPFAIL` from `sysexits.h`: the exit code for "not ready yet, retry". (`lib/src/vm/`, `lib/src/console/artisan_command.dart`)
@@ -410,6 +412,7 @@ Both write through `.tmp` + atomic rename; never hand-edit.
 
 ---
 
+[0.0.20]: https://github.com/fluttersdk/artisan/compare/0.0.19...0.0.20
 [0.0.19]: https://github.com/fluttersdk/artisan/compare/0.0.18...0.0.19
 [0.0.18]: https://github.com/fluttersdk/artisan/compare/0.0.17...0.0.18
 [0.0.17]: https://github.com/fluttersdk/artisan/compare/0.0.16...0.0.17
