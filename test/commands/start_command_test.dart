@@ -221,6 +221,7 @@ void main() {
       StartCommand.cdpPortProbe = StartCommand.defaultPortProbe;
       StartCommand.cdpKillPid = Process.killPid;
       StartCommand.cdpReapGrace = const Duration(seconds: 5);
+      StartCommand.startIsAlive = processAlive;
       if (tempHome.existsSync()) {
         await tempHome.delete(recursive: true);
       }
@@ -1095,7 +1096,10 @@ void main() {
       // contains "120s" (the configured timeout) rather than "90s" (the old
       // hardcoded literal).
       StartCommand.cdpVmServiceScraper = (_) async {
-        throw StateError('Timed out after 120s waiting for VM Service URI');
+        throw TimeoutException(
+          'Timed out after 120s waiting for VM Service URI',
+          const Duration(seconds: 120),
+        );
       };
 
       final killedPids = <int>[];
@@ -1124,6 +1128,11 @@ void main() {
       // The scraper seam surfaces the message that uses the configured value.
       expect(output.content, contains('120s'),
           reason: 'error must report configured timeout value, not a literal');
+      expect(
+        output.content,
+        isNot(contains('TimeoutException after')),
+        reason: 'the message names the deadline; the Duration prefix is noise',
+      );
     });
 
     test('live scrape loop returns the normalized URI when the log yields one',
@@ -1148,11 +1157,13 @@ void main() {
       final log = File('${dir.path}/run.log')
         ..writeAsStringSync('starting up, no service uri yet\n');
 
+      // A TimeoutException rather than a StateError: the plain branch tells a
+      // build that is still running from one that failed by this type.
       await expectLater(
         StartCommand().scrapeVmServiceUriForTest(log, 1),
         throwsA(
-          isA<StateError>().having(
-            (e) => e.toString(),
+          isA<TimeoutException>().having(
+            (e) => e.message,
             'message',
             contains('Timed out after 1s'),
           ),
@@ -1356,6 +1367,9 @@ void main() {
         File(path).writeAsStringSync('');
       };
 
+      StartCommand.startIsAlive = (int _) => true;
+
+      final output = BufferedOutput();
       final ctx = ArtisanContext.bare(
         MapInput(<String, dynamic>{
           'device': 'emulator-5554',
@@ -1364,19 +1378,14 @@ void main() {
           'profile-static': false,
           'timeout': '1',
         }),
-        BufferedOutput(),
+        output,
       );
 
-      await expectLater(
-        StartCommand().handle(ctx).timeout(const Duration(seconds: 10)),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.toString(),
-            'message',
-            contains('Timed out after 1s'),
-          ),
-        ),
-      );
+      final code =
+          await StartCommand().handle(ctx).timeout(const Duration(seconds: 10));
+
+      expect(code, ArtisanCommand.exitTryAgain);
+      expect(output.content, contains('still building after 1s'));
     });
 
     test(

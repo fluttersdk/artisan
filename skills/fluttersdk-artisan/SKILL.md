@@ -172,7 +172,8 @@ Branch on `status`:
 
 ```
 1. artisan_start { device: "chrome" }
-   Writes state.json; blocks until VM Service URI captured (90s default; CLI form takes --timeout=N).
+   Writes state.json; blocks until VM Service URI captured (90s default; CLI form takes --timeout=N
+   and exits 75 when the build is still running at the deadline).
 2. artisan_status
    Confirm vmServiceUri present + alive: true.
 3. artisan_tinker { eval: "WidgetsBinding.instance.lifecycleState.toString()" }

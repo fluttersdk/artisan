@@ -277,7 +277,167 @@ void main() {
         reason: 'the record is complete now',
       );
     });
+
+    group('a connected command against a booting session with no URI', () {
+      late Directory tempHome;
+
+      setUp(() {
+        tempHome = Directory.systemTemp.createTempSync('artisan_booting_');
+        StateFile.debugHomeOverride = tempHome.path;
+        StateFile.debugProjectRootOverride = Directory.current.path;
+      });
+
+      tearDown(() {
+        StateFile.debugHomeOverride = null;
+        StateFile.debugProjectRootOverride = null;
+        tempHome.deleteSync(recursive: true);
+      });
+
+      Future<({int code, String err, String out})> dispatchWithPid(
+        int appPid,
+      ) async {
+        await StateFile.write(<String, dynamic>{
+          'pid': appPid,
+          'vmServiceUri': null,
+          'booting': true,
+          'projectRoot': Directory.current.path,
+        });
+        final registry = ArtisanRegistry()..register(_ConnectedCommand());
+        final app = ArtisanApplication(registry: registry);
+        return _captureDispatch(() => app.dispatch(<String>['connected']));
+      }
+
+      test('exits 75 while the app is still building', () async {
+        // `start` exits 75 on a cold build and tells the caller to retry a
+        // connected command; the retry has to answer in the same terms.
+        final result = await dispatchWithPid(pid);
+
+        expect(result.code, 75);
+        expect(result.err, contains('has no vmServiceUri yet'));
+      });
+
+      test('exits 1 when the recorded app is gone', () async {
+        final result = await dispatchWithPid(999999);
+
+        expect(result.code, 1);
+      });
+    });
+
+    group('a connected command calling an extension', () {
+      late Directory tempHome;
+      late HttpServer server;
+
+      // Answers `getVM` with one isolate and every other call with
+      // [errorCode], which is what a running app does when the extension the
+      // command calls has not been registered.
+      Future<void> serveVm(int errorCode) async {
+        server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        server.transform(WebSocketTransformer()).listen((WebSocket socket) {
+          socket.listen((dynamic raw) {
+            final Map<String, dynamic> request =
+                jsonDecode(raw as String) as Map<String, dynamic>;
+            socket.add(
+              jsonEncode(<String, dynamic>{
+                'jsonrpc': '2.0',
+                'id': request['id'],
+                if (request['method'] == 'getVM')
+                  'result': <String, dynamic>{
+                    'type': 'VM',
+                    'isolates': <Map<String, dynamic>>[
+                      <String, dynamic>{
+                        'type': '@Isolate',
+                        'id': 'isolates/1',
+                        'name': 'main',
+                        'number': '1',
+                      },
+                    ],
+                  }
+                else
+                  'error': <String, dynamic>{
+                    'code': errorCode,
+                    'message': 'Method not found',
+                    'data': <String, dynamic>{},
+                  },
+              }),
+            );
+          });
+        });
+        await StateFile.write(<String, dynamic>{
+          'pid': 4242,
+          'vmServiceUri': 'ws://127.0.0.1:${server.port}/ws',
+          'projectRoot': Directory.current.path,
+        });
+      }
+
+      setUp(() {
+        tempHome = Directory.systemTemp.createTempSync('artisan_ext_');
+        StateFile.debugHomeOverride = tempHome.path;
+        StateFile.debugProjectRootOverride = Directory.current.path;
+      });
+
+      tearDown(() async {
+        StateFile.debugHomeOverride = null;
+        StateFile.debugProjectRootOverride = null;
+        await server.close(force: true);
+        tempHome.deleteSync(recursive: true);
+      });
+
+      test('reports an unregistered extension in one line and exits 75',
+          () async {
+        // The field case: a connected command run while the app is still
+        // booting, before it registered its extension, printed the raw
+        // `(-32601) Method not found` RPC error and a vm_service stack.
+        await serveVm(-32601);
+        final registry = ArtisanRegistry()..register(_ExtensionCommand());
+        final app = ArtisanApplication(registry: registry);
+
+        final result = await _captureDispatch(
+          () => app.dispatch(<String>['player:state']),
+        );
+
+        expect(result.code, 75);
+        expect(
+          result.err,
+          contains(
+            'ext.watchools.player is not registered in the running app yet',
+          ),
+        );
+        expect(result.err, isNot(contains('#0')), reason: 'no stack trace');
+        expect(result.err.trim().split('\n'), hasLength(1));
+      });
+
+      test('keeps any other RPC error on the unexpected-failure path',
+          () async {
+        await serveVm(-32000);
+        final registry = ArtisanRegistry()..register(_ExtensionCommand());
+        final app = ArtisanApplication(registry: registry);
+
+        final result = await _captureDispatch(
+          () => app.dispatch(<String>['player:state']),
+        );
+
+        expect(result.code, 3);
+        expect(result.err, contains('Connected command player:state failed'));
+      });
+    });
   });
+}
+
+class _ExtensionCommand extends ArtisanCommand {
+  @override
+  String get name => 'player:state';
+
+  @override
+  String get description => 'calls an app-registered extension';
+
+  @override
+  CommandBoot get boot => CommandBoot.connected;
+
+  @override
+  Future<int> handle(ArtisanContext ctx) async {
+    await ctx.callExtension<Object?>('ext.watchools.player');
+    return 0;
+  }
 }
 
 class _FixedExitCommand extends ArtisanCommand {

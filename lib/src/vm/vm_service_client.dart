@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:vm_service/vm_service.dart' as vm;
 import 'package:vm_service/vm_service_io.dart';
 
+import 'extension_not_registered_exception.dart';
+
 /// Wrapper around `package:vm_service` exposing the fluttersdk-house-style
 /// surface that artisan connected-mode commands consume.
 ///
@@ -68,6 +70,10 @@ class VmServiceClient {
   /// This makes every connected-mode handler tolerant of the standard
   /// `artisan_hot_restart` → next-MCP-call workflow without forcing every
   /// caller to invalidate its own cache.
+  ///
+  /// Throws [ExtensionNotRegisteredException] when the app has no handler
+  /// for [method] (JSON-RPC `-32601`), so callers can tell "not registered
+  /// yet" from a failed call without depending on `package:vm_service`.
   Future<T> callServiceExtension<T>(
     String method, {
     required String isolateId,
@@ -75,12 +81,7 @@ class VmServiceClient {
   }) async {
     final s = _requireConnected();
     try {
-      final resp = await s.callServiceExtension(
-        method,
-        isolateId: isolateId,
-        args: params,
-      );
-      return resp.json as T;
+      return await _invokeExtension<T>(s, method, isolateId, params);
     } on vm.RPCError catch (e) {
       // DWDS surfaces transient "WipError -32000 Promise was collected"
       // errors when a Chrome eval Promise gets GC'd before resolution
@@ -91,12 +92,7 @@ class VmServiceClient {
       final isWipPromiseCollected =
           e.code == -32603 && e.message.contains('Promise was collected');
       if (!isWipPromiseCollected) rethrow;
-      final resp = await s.callServiceExtension(
-        method,
-        isolateId: isolateId,
-        args: params,
-      );
-      return resp.json as T;
+      return await _invokeExtension<T>(s, method, isolateId, params);
     } on vm.SentinelException catch (e) {
       // Sentinel almost always means "isolate gone". Refresh once and try
       // again; if the id has not actually changed, the sentinel is
@@ -108,17 +104,38 @@ class VmServiceClient {
         rethrow;
       }
       if (fresh == isolateId) rethrow;
-      final resp = await s.callServiceExtension(
-        method,
-        isolateId: fresh,
-        args: params,
-      );
+      final T result = await _invokeExtension<T>(s, method, fresh, params);
       // Surface the fresh id to interested callers (mcp_server caches it)
       // via the dedicated event stream.
       _lastResolvedIsolateId = fresh;
       _isolateRefreshController.add(fresh);
       _markRefreshFromException(e);
+      return result;
+    }
+  }
+
+  // One extension call, with method-not-found mapped. Every attempt goes
+  // through here, retries included: a hot restart that minted a fresh
+  // isolate before its plugins registered their extensions answers the
+  // retry with -32601, which is the case the exception exists for.
+  Future<T> _invokeExtension<T>(
+    vm.VmService s,
+    String method,
+    String isolateId,
+    Map<String, dynamic>? params,
+  ) async {
+    try {
+      final resp = await s.callServiceExtension(
+        method,
+        isolateId: isolateId,
+        args: params,
+      );
       return resp.json as T;
+    } on vm.RPCError catch (e) {
+      if (e.code == vm.RPCErrorKind.kMethodNotFound.code) {
+        throw ExtensionNotRegisteredException(method);
+      }
+      rethrow;
     }
   }
 

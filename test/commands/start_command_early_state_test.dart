@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:fluttersdk_artisan/artisan.dart';
@@ -89,4 +90,141 @@ void main() {
       expect(done['stdinPipe'], equals('/tmp/x.fifo'));
     });
   });
+
+  // The field case: `start --device macos` on a fresh worktree, where the
+  // first native build (CocoaPods, SwiftPM) outlasts the 90s scrape. `start`
+  // used to die on the timeout's StateError and print a stack fragment, while
+  // the app kept building and the next connected command found its URI.
+  group('StartCommand when the VM Service scrape times out', () {
+    late Directory tempHome;
+
+    Future<({int code, String content})> startMacos() async {
+      final output = BufferedOutput();
+      final code = await StartCommand().handle(
+        ArtisanContext.bare(
+          MapInput(<String, dynamic>{
+            'device': 'macos',
+            'port': '3100',
+            'dds': false,
+            'profile-static': false,
+            'timeout': '90',
+          }),
+          output,
+        ),
+      );
+      return (code: code, content: output.content);
+    }
+
+    setUp(() {
+      tempHome = Directory.systemTemp.createTempSync('artisan_cold_build_');
+      StateFile.debugHomeOverride = tempHome.path;
+      StateFile.debugProjectRootOverride = Directory.current.path;
+      StartCommand.cdpFifoMaker = (String path) async {
+        File(path).writeAsStringSync('');
+      };
+      StartCommand.cdpProcessStarter = (
+        String executable,
+        List<String> arguments, {
+        String? workingDirectory,
+        ProcessStartMode? mode,
+      }) async =>
+          _FakeFlutterProcess(holderPid: 4241, flutterPid: 4242);
+      StartCommand.cdpVmServiceScraper = (File _) async {
+        throw TimeoutException('Timed out after 90s');
+      };
+    });
+
+    tearDown(() async {
+      StateFile.debugHomeOverride = null;
+      StateFile.debugProjectRootOverride = null;
+      StartCommand.cdpFifoMaker = null;
+      StartCommand.cdpProcessStarter = (
+        String executable,
+        List<String> arguments, {
+        String? workingDirectory,
+        ProcessStartMode? mode,
+      }) =>
+          Process.start(
+            executable,
+            arguments,
+            workingDirectory: workingDirectory,
+            mode: mode ?? ProcessStartMode.normal,
+          );
+      StartCommand.cdpVmServiceScraper = null;
+      StartCommand.startIsAlive = processAlive;
+      StartCommand.cdpKillPid = Process.killPid;
+      if (tempHome.existsSync()) await tempHome.delete(recursive: true);
+    });
+
+    test('a build still running exits 75 with a still-building line', () async {
+      StartCommand.startIsAlive = (int pid) => pid == 4242;
+
+      final result = await startMacos();
+
+      expect(result.code, ArtisanCommand.exitTryAgain);
+      expect(result.content, contains('still building after 90s'));
+      expect(result.content, contains('artisan status'));
+      expect(result.content, contains('--timeout'));
+      final Map<String, dynamic>? state = await StateFile.read();
+      expect(
+        state!['booting'],
+        isTrue,
+        reason: 'the session stays recorded so a later command can heal it',
+      );
+      expect(state['pid'], 4242);
+    });
+
+    test('a flutter run that exited during the wait fails with exit 1',
+        () async {
+      StartCommand.startIsAlive = (int _) => false;
+      final List<int> killed = <int>[];
+      StartCommand.cdpKillPid = (int pid, [ProcessSignal? _]) {
+        killed.add(pid);
+        return true;
+      };
+
+      final result = await startMacos();
+
+      expect(result.code, 1);
+      expect(result.content, contains('exited before'));
+      expect(result.content, contains('flutter-dev.log'));
+      expect(result.content, isNot(contains('still building')));
+      // A session left behind would have `status` report a dead app as
+      // still booting, and the FIFO holder would outlive it for good.
+      expect(await StateFile.read(), isNull);
+      expect(killed, contains(4241), reason: 'the FIFO holder is reaped');
+      expect(
+        File('${File(StateFile.path).parent.path}/flutter-dev.fifo')
+            .existsSync(),
+        isFalse,
+      );
+    });
+  });
+}
+
+class _FakeFlutterProcess implements Process {
+  _FakeFlutterProcess({required this.holderPid, required this.flutterPid});
+
+  final int holderPid;
+  final int flutterPid;
+
+  @override
+  int get pid => 9999;
+
+  @override
+  Future<int> get exitCode => Future<int>.value(0);
+
+  @override
+  bool kill([ProcessSignal signal = ProcessSignal.sigterm]) => true;
+
+  @override
+  Stream<List<int>> get stdout => Stream<List<int>>.value(
+        'HOLDER=$holderPid\nFLUTTER=$flutterPid\n'.codeUnits,
+      );
+
+  @override
+  Stream<List<int>> get stderr => const Stream<List<int>>.empty();
+
+  @override
+  IOSink get stdin => throw UnimplementedError();
 }

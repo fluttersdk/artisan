@@ -5,6 +5,7 @@ import 'package:args/args.dart';
 import '../helpers/console_style.dart';
 import '../state/state_file.dart';
 import '../state/vm_service_log.dart';
+import '../vm/extension_not_registered_exception.dart';
 import '../vm/vm_service_client.dart';
 import 'artisan_command.dart';
 import 'artisan_context.dart';
@@ -12,6 +13,7 @@ import 'artisan_input.dart';
 import 'artisan_output.dart';
 import 'artisan_registry.dart';
 import 'command_boot.dart';
+import 'process_alive.dart';
 
 /// Core console application + dispatcher.
 ///
@@ -167,7 +169,12 @@ class ArtisanApplication {
         'one. The app may still be building: run `artisan status` and retry, '
         'or `artisan start` again if it is not.',
       );
-      return 1;
+      // A live app mid-build is the retry `start` pointed the caller at when
+      // it timed out with the same exit code; anything else is a failure.
+      final Object? pid = state['pid'];
+      final bool building =
+          state['booting'] == true && pid is int && processAlive(pid);
+      return building ? ArtisanCommand.exitTryAgain : 1;
     }
     final vmClient = VmServiceClient(wsUri);
     try {
@@ -175,6 +182,11 @@ class ArtisanApplication {
       return await command.handle(
         ArtisanContext.connected(input, output, vmClient, registry: registry),
       );
+    } on ExtensionNotRegisteredException catch (e) {
+      // An expected state, not a crash: the stack would only point into
+      // vm_service, and the line below says everything the operator can act on.
+      output.error(e.message);
+      return ArtisanCommand.exitTryAgain;
     } catch (e, s) {
       output.error('Connected command ${command.name} failed: $e');
       stderr.writeln(s);
